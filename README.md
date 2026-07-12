@@ -54,7 +54,7 @@ Install these tools first:
 - Git
 - Python 3.10+
 - Node.js and npm
-- LibreOffice and Poppler for complete rendered QA
+- LibreOffice and Poppler (recommended, for rendered QA and PDF export; PPTX generation works without them)
 
 Check the basic commands:
 
@@ -274,9 +274,24 @@ python .\plugins\student-presentation-suite\scripts\check_claude_pptx_env.py --j
 python .\scripts\check_installed_version.py --json
 ```
 
-Install the exact missing Python, Node.js, LibreOffice, Poppler, or
-`document-skills` dependency reported by the check. Do not weaken the strict
-check.
+Install the missing Python, Node.js, or `document-skills` dependency reported by
+the check. LibreOffice and Poppler are recommended but not required — missing
+them skips rendered QA and PDF export but does not block PPTX generation.
+
+### Workflow State Is Stuck
+
+If the plugin blocks production commands because the Production Summary was not
+confirmed yet, or the state is stuck in `blocked`:
+
+```powershell
+python .\plugins\student-presentation-suite\scripts\workflow_guard.py reset
+```
+
+To recover from `blocked` state after fixing a missing dependency:
+
+```powershell
+python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
+```
 
 ### Where Are Generated Files?
 

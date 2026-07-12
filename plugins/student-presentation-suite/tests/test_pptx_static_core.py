@@ -194,6 +194,114 @@ class PptxStaticCoreTests(unittest.TestCase):
         self.assertIn("font-compatibility-review-required", risks)
         self.assertIn("Rare Decorative Font", result["font_families"])
 
+    # ── Text overflow estimation ──────────────────────────────
+
+    def test_cjk_overflow_detected_with_long_text(self) -> None:
+        """长中文文本在小盒子里应检测到垂直溢出风险"""
+        overflow = core.estimate_text_overflow(
+            chars=120, is_cjk=True, font_size_pt=22,
+            box_width_emu=int(10 * core.EMU_PER_CM),   # 10cm 宽
+            box_height_emu=int(5 * core.EMU_PER_CM),    # 5cm 高
+        )
+        self.assertIsNotNone(overflow)
+        # 22pt 中文: 字宽≈0.77cm, 10cm/0.77≈13 字/行, 120 字需 10 行
+        # 行高≈1.09cm, 10 行≈10.9cm > 5cm → fill_ratio > 1.0
+        self.assertGreater(overflow["fill_ratio"], 1.0)
+
+    def test_cjk_text_fits_in_large_box(self) -> None:
+        """短中文文本在大盒子里不应溢出"""
+        overflow = core.estimate_text_overflow(
+            chars=30, is_cjk=True, font_size_pt=22,
+            box_width_emu=int(14 * core.EMU_PER_CM),   # 14cm 宽
+            box_height_emu=int(8 * core.EMU_PER_CM),    # 8cm 高
+        )
+        self.assertIsNotNone(overflow)
+        self.assertLess(overflow["fill_ratio"], 0.5)
+
+    def test_english_overflow_detected(self) -> None:
+        """长英文文本在小盒子里应检测到垂直溢出"""
+        overflow = core.estimate_text_overflow(
+            chars=200, is_cjk=False, font_size_pt=20,
+            box_width_emu=int(10 * core.EMU_PER_CM),
+            box_height_emu=int(4 * core.EMU_PER_CM),
+        )
+        self.assertIsNotNone(overflow)
+        self.assertGreater(overflow["fill_ratio"], 0.85)
+
+    def test_unknown_font_size_returns_none(self) -> None:
+        """字号未知时无法估算"""
+        overflow = core.estimate_text_overflow(
+            chars=100, is_cjk=True, font_size_pt=None,
+            box_width_emu=1_000_000, box_height_emu=1_000_000,
+        )
+        self.assertIsNone(overflow)
+
+    def test_zero_dimensions_returns_none(self) -> None:
+        """零尺寸文本框无法估算"""
+        overflow = core.estimate_text_overflow(
+            chars=50, is_cjk=True, font_size_pt=22,
+            box_width_emu=0, box_height_emu=1_000_000,
+        )
+        self.assertIsNone(overflow)
+
+    def test_very_short_text_never_overflows(self) -> None:
+        """极短文本不应溢出"""
+        overflow = core.estimate_text_overflow(
+            chars=5, is_cjk=True, font_size_pt=22,
+            box_width_emu=int(5 * core.EMU_PER_CM),
+            box_height_emu=int(3 * core.EMU_PER_CM),
+        )
+        self.assertIsNotNone(overflow)
+        self.assertLess(overflow["fill_ratio"], 0.85)
+
+    def test_pptx_with_overflowing_cjk_text_is_flagged(self) -> None:
+        """生成的 PPTX 中长文本应触发 text-vertical-overflow-risk"""
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "overflow.pptx"
+            # ~100 中文字 + 24pt + 8cm×3cm 盒子 → 确定溢出
+            # 24pt 字宽≈0.84cm, 8cm/0.84≈9 字/行, 100 字≈12 行
+            # 行高≈1.19cm, 12 行≈14.3cm > 3cm → fill_ratio > 4.0
+            chinese_text = (
+                "人工智能技术正在深刻改变教育的面貌从个性化学习路径到智能评估系统"
+                "自适应学习平台可以显著提升学生的学习效率和参与度"
+            )
+            self.write_pptx(
+                pptx,
+                [
+                    bounded_slide_xml(
+                        chinese_text,
+                        x=500_000, y=1_500_000,
+                        cx=int(8 * core.EMU_PER_CM),
+                        cy=int(3 * core.EMU_PER_CM),
+                        typeface="Microsoft YaHei",
+                    )
+                ],
+            )
+            result = core.inspect_pptx(pptx)
+        risks = result["findings"][0]["risk"] if result["findings"] else []
+        self.assertIn("text-vertical-overflow-risk", risks)
+        self.assertIn("overflow_estimate", result["findings"][0])
+
+    def test_pptx_with_short_text_no_overflow_flag(self) -> None:
+        """短文本 PPTX 不应触发溢出风险"""
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "no-overflow.pptx"
+            self.write_pptx(
+                pptx,
+                [
+                    bounded_slide_xml(
+                        "Short title here",
+                        x=500_000, y=1_500_000,
+                        cx=int(12 * core.EMU_PER_CM),
+                        cy=int(7 * core.EMU_PER_CM),
+                        typeface="Calibri",
+                    )
+                ],
+            )
+            result = core.inspect_pptx(pptx)
+        risks = result["findings"][0]["risk"] if result["findings"] else []
+        self.assertNotIn("text-vertical-overflow-risk", risks)
+
 
 if __name__ == "__main__":
     unittest.main()

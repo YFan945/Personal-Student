@@ -7,5 +7,5 @@
   "repository": "https://github.com/YFan945/student-presentation-suite",
   "license": "MIT",
   "keywords": ["presentation", "pptx", "student", "review", "speaker-notes", "coursework", "defense"],
-  "dependencies": ["document-skills@anthropic-agent-skills"]
+  "dependencies": ["document-skills@anthropic-agent-skills>=1.0.0"]
 }

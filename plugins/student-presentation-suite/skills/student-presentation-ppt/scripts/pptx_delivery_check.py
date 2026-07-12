@@ -139,6 +139,7 @@ def summarize_static_risks(static_result: dict[str, Any]) -> dict[str, Any]:
     )
     blocker_risks = {
         "high-text-density-overflow-risk",
+        "text-vertical-overflow-risk",
         "paragraph-heavy-slide-text",
         "heading-font-size-below-24pt",
         "shape-outside-slide",

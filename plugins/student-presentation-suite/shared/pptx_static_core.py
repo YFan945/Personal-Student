@@ -24,6 +24,12 @@ SMALL_TEXT_BOX_HEIGHT_EMU = 250_000
 TEXT_CHARS_PER_CM_LIMIT = 18
 CHINESE_PARAGRAPH_LIMIT = 160
 LATIN_PARAGRAPH_LIMIT = 220
+
+# 垂直溢出预估常量（基于 22pt 中文 / 20pt 英文的最小字号约束）
+CJK_CHAR_WIDTH_RATIO = 0.035   # 中文字宽 ≈ 字号 × 0.035cm
+LATIN_CHAR_WIDTH_RATIO = 0.021  # 英文平均字宽 ≈ 字号 × 0.021cm
+LINE_HEIGHT_RATIO = 1.4          # 行高 ≈ 字号 × 1.4
+OVERFLOW_BOX_FILL_RATIO = 0.85   # 文字总高超过盒高 85% 时判定溢出风险
 HEADING_PLACEHOLDER_TYPES = {"title", "ctrTitle", "subTitle"}
 PRIMARY_TITLE_PLACEHOLDER_TYPES = {"title", "ctrTitle"}
 BODY_PLACEHOLDER_TYPES = {"body", "dt", "ftr", "sldNum"}
@@ -271,6 +277,45 @@ def has_cjk(text: str) -> bool:
     return False
 
 
+def estimate_text_overflow(
+    chars: int,
+    is_cjk: bool,
+    font_size_pt: float | None,
+    box_width_emu: int,
+    box_height_emu: int,
+) -> dict[str, float] | None:
+    """预估文字在给定字号下是否会垂直溢出文本框。
+
+    返回值包含估算详情，或 None 表示无法估算（字号未知）。
+    """
+    if font_size_pt is None or font_size_pt <= 0:
+        return None
+    box_width_cm = box_width_emu / EMU_PER_CM
+    box_height_cm = box_height_emu / EMU_PER_CM
+    if box_width_cm <= 0 or box_height_cm <= 0:
+        return None
+
+    char_width_ratio = CJK_CHAR_WIDTH_RATIO if is_cjk else LATIN_CHAR_WIDTH_RATIO
+    char_width_cm = font_size_pt * char_width_ratio
+    chars_per_line = max(1, int(box_width_cm / char_width_cm))
+    est_lines = (chars + chars_per_line - 1) // chars_per_line  # ceil
+    line_height_cm = font_size_pt * LINE_HEIGHT_RATIO / 72 * 2.54
+    text_height_cm = est_lines * line_height_cm
+    fill_ratio = text_height_cm / box_height_cm if box_height_cm > 0 else 999
+
+    return {
+        "box_width_cm": round(box_width_cm, 1),
+        "box_height_cm": round(box_height_cm, 1),
+        "font_size_pt": font_size_pt,
+        "char_width_cm": round(char_width_cm, 3),
+        "chars_per_line": chars_per_line,
+        "est_lines": est_lines,
+        "line_height_cm": round(line_height_cm, 2),
+        "text_height_cm": round(text_height_cm, 1),
+        "fill_ratio": round(fill_ratio, 2),
+    }
+
+
 def slide_number(name: str) -> int:
     match = re.search(r"slide(\d+)\.xml$", name)
     return int(match.group(1)) if match else 0
@@ -358,6 +403,13 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                             risk.append("high-text-density-overflow-risk")
                         if bounds["cx"] < SMALL_TEXT_BOX_WIDTH_EMU or bounds["cy"] < SMALL_TEXT_BOX_HEIGHT_EMU:
                             risk.append("small-text-box-risk")
+                        # 垂直溢出预估：文字总高 vs 盒高
+                        overflow = estimate_text_overflow(
+                            chars, is_cjk, min_size,
+                            bounds["cx"], bounds["cy"],
+                        )
+                        if overflow and overflow["fill_ratio"] > OVERFLOW_BOX_FILL_RATIO:
+                            risk.append("text-vertical-overflow-risk")
                         if (
                             bounds["x"] < 0
                             or bounds["y"] < 0
@@ -383,22 +435,28 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                     if any(face.casefold() not in PORTABLE_FONT_FAMILIES for face in faces):
                         risk.append("font-compatibility-review-required")
                     if risk:
-                        findings.append(
-                            {
-                                "slide": slide_id,
-                                "shape": idx,
-                                "container_type": container_type,
-                                "text_preview": txt[:80],
-                                "min_font_pt": min_size,
-                                "font_size_source": font_size_source or "unknown",
-                                "char_count": chars,
-                                "detected_cjk": is_cjk,
-                                "heading_shape": heading,
-                                "primary_title_shape": primary_title,
-                                "bounds": bounds,
-                                "risk": risk,
-                            }
-                        )
+                        finding = {
+                            "slide": slide_id,
+                            "shape": idx,
+                            "container_type": container_type,
+                            "text_preview": txt[:80],
+                            "min_font_pt": min_size,
+                            "font_size_source": font_size_source or "unknown",
+                            "char_count": chars,
+                            "detected_cjk": is_cjk,
+                            "heading_shape": heading,
+                            "primary_title_shape": primary_title,
+                            "bounds": bounds,
+                            "risk": risk,
+                        }
+                        if bounds and min_size:
+                            overflow_detail = estimate_text_overflow(
+                                chars, is_cjk, min_size,
+                                bounds["cx"], bounds["cy"],
+                            )
+                            if overflow_detail:
+                                finding["overflow_estimate"] = overflow_detail
+                        findings.append(finding)
                 if bounded_items:
                     total_area = sum(
                         min(item["cx"], slide_width) * min(item["cy"], slide_height)

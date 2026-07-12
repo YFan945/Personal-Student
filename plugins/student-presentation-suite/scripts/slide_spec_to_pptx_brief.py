@@ -100,6 +100,67 @@ def meta_value(meta: dict[str, Any], key: str, default: str = "not specified") -
     return value
 
 
+def _estimate_slide_text_fit(
+    slides: list[dict[str, Any]],
+    meta: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """预估每页内容在最小字号下是否会溢出典型文本框。
+
+    返回有溢出风险的幻灯片列表（不含正常的幻灯片）。
+    """
+    lang = str(meta.get("language", "")).lower()
+    is_cjk = lang in ("chinese", "bilingual")
+    font_size = 22 if is_cjk else 20  # 最小正文字号
+
+    # 典型文本框尺寸（16:9 幻灯片，安全区域内）
+    typical_width_cm = 22.0   # 典型内容区宽度
+    typical_height_cm = 10.5  # 典型内容区高度（扣除标题栏和边距）
+    # 中文 ≈ 字号×0.035, 英文 ≈ 字号×0.021
+    char_width_cm = font_size * (0.035 if is_cjk else 0.021)
+    chars_per_line = max(1, int(typical_width_cm / char_width_cm))
+    line_height_cm = font_size * 1.4 / 72 * 2.54
+    safe_height_cm = typical_height_cm * 0.85
+
+    warnings: list[dict[str, Any]] = []
+    for slide in slides:
+        content = slide.get("content") or {}
+        slide_copy = slide.get("slide_copy") or ""
+        # 计算内容字符数
+        chars = 0
+        if isinstance(content, dict):
+            bullets = content.get("bullets", content.get("text", []))
+            if isinstance(bullets, list):
+                chars = sum(len(str(b)) for b in bullets)
+            else:
+                chars = len(str(content))
+        elif isinstance(content, str):
+            chars = len(content)
+        if not chars and slide_copy:
+            chars = len(str(slide_copy))
+        if chars <= 20:  # 极短内容无需检查
+            continue
+
+        est_lines = (chars + chars_per_line - 1) // chars_per_line
+        text_height = est_lines * line_height_cm
+        fill_ratio = text_height / typical_height_cm if typical_height_cm > 0 else 0
+
+        if fill_ratio > 0.85:
+            warnings.append({
+                "slide_id": slide.get("id"),
+                "title": slide.get("title", "")[:50],
+                "chars": chars,
+                "est_lines": est_lines,
+                "text_height_cm": round(text_height, 1),
+                "fill_ratio": round(fill_ratio * 100),
+                "recommendation": (
+                    "文字量可能超出典型文本框。建议：(1) 拆分幻灯片 "
+                    f"(2) 精简内容至 ~{int(chars_per_line * 4)} 字以内 "
+                    "(3) 将解释移至讲稿"
+                ),
+            })
+    return warnings
+
+
 def build_brief(
     data: dict[str, Any],
     source: Path,
@@ -239,9 +300,43 @@ def build_brief(
             "- Keep one clear message per content slide; use claim-style titles for argumentative and evidence slides.",
             "- Chinese normal body text must be >= 22pt; English normal body text must be >= 20pt.",
             "- Primary slide titles should normally be >= 24pt; visually verify smaller secondary labels.",
+            "- Text must fit its container at minimum font sizes. If content is too long: split slides or "
+            "move explanation to speaker notes. Never shrink below minimums to make text fit.",
             "- Use functional visual structures when they clarify content; do not force decoration onto covers, dividers, references, appendix, or Q&A slides.",
             "- Avoid generic AI-sounding filler; prefer course/project-specific examples and modest claims.",
             "- Include speaker notes or a separate notes file with note goals and transitions.",
+        ]
+    )
+
+    # 文字适配预警
+    overflow_warnings = _estimate_slide_text_fit(slides, meta)
+    if overflow_warnings:
+        lines.extend(
+            [
+                "",
+                "## ⚠ Text Fit Warnings (Review Before Production)",
+                "The following slides may overflow typical text boxes at minimum font sizes.",
+                "Resolve these BEFORE writing pptxgenjs code:",
+                "",
+            ]
+        )
+        for w in overflow_warnings:
+            lines.append(
+                f"- **Slide {w['slide_id']}** ({w['title']}): "
+                f"{w['chars']} 字符 → 约 {w['est_lines']} 行 / {w['text_height_cm']}cm "
+                f"({w['fill_ratio']}% 盒高)。{w['recommendation']}"
+            )
+    else:
+        lines.extend(
+            [
+                "",
+                "## ✓ Text Fit Check Passed",
+                "No slide exceeds the typical text-box capacity at minimum font sizes.",
+            ]
+        )
+
+    lines.extend(
+        [
             "",
             "## Slide Plan",
         ]

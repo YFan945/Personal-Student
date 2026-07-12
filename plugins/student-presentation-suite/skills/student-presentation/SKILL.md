@@ -5,37 +5,44 @@ description: Use only for a clearly student-owned academic context when the user
 
 # Student Presentation
 
-Plan a student presentation without creating a `.pptx`.
+规划学生演示文稿，不创建 `.pptx` 文件。
 
-## Responsibility
+## 快速约束
 
-Load `../../references/shared-standards.md` first and apply its student-context and intent gate.
+- 中文正文 ≥ 22pt / 英文正文 ≥ 20pt / 标题 ≥ 24pt
+- 每页一条核心信息，≤ 4 条要点，≤ 80 中文字 / 40 英文词
+- 避免 AI 套话（"在当今快速发展..."、"具有重要意义..."）
+- 使用具体课程/项目背景，直接主张，承认局限
+- 按目录→逐页主张→PPT文案→演讲版→Slide Spec 分层生成
+- 输出写入 `outputs/`，不得写入 `${CLAUDE_PLUGIN_ROOT}`
 
-- Outline, slide structure, or outline plus notes → stay in this skill.
-- Editable PPTX, PowerPoint, ready slides, or an existing deck to modify → `student-presentation-ppt`.
-- Review, audit, score, or “看看问题” for an existing artifact → `student-presentation-review`.
-- Never create or claim to create a presentation file from this skill.
+## 职责
 
-## Workflow
+- 大纲、结构、讲稿 → 本 skill
+- 可编辑 PPTX/PowerPoint 文件 → `student-presentation-ppt`
+- 审查/评分/诊断已有文件 → `student-presentation-review`
+- 不得声称能创建 .pptx 文件
 
-1. Load `../../references/presentation-intake.md` and use its outline-only intake mode.
-2. Load `../../references/presentation-brief.md`; classify scenario, audience depth, structure mode, interaction mode, quality level, and content controls. Confirm only constraints that materially change story, timing, evidence, or ownership.
-3. Load only the references needed:
-   - `references/slide-structures.md` for structure and topic narrowing
-   - `references/transition-phrases.md` for transitions
-   - `references/group-handoff.md` for group ownership
-   - `references/qa-prediction.md` for defense/report Q&A
-   - `../../references/content-workflow.md` for directory → slide points → PPT copy → speaker version
-   - `../../references/evidence-and-citations.md` when claims need sources
-   - `../../references/revision-training-export.md` for training cards or quality reports
-   - `../../references/slide-spec.md` only when a structured PPTX handoff is useful
-   - `../../references/image-strategy.md` only when visual sourcing matters
-4. For a broad topic, choose or offer 2-3 viable angles based on duration and evidence.
-5. Build one presentation spine, then generate the requested layers in order: directory, per-slide claim/points, PPT copy, speaker version, and optional Slide Spec.
-6. For each content slide, provide its story role, claim, concise copy, optional visual, evidence refs, notes, timing, owner, and transition.
-7. In beginner mode, explain why major structure/layout choices fit the audience. Run `analyze_presentation_spec.py` for structured/high-score output. Add training cards, Q&A, glossary, scoring risks, Evidence Ledger, or revision metadata only when requested or useful.
-8. If file production becomes the requested outcome, hand off to `student-presentation-ppt`; its full intake gate still applies.
+## 工作流
 
-## Output Contract
+1. 加载 `../../references/presentation-intake.md`，使用 outline-only 模式。
+2. 加载 `../../references/presentation-brief.md`，分类场景、受众、结构、交互和质量模式。仅确认会影响故事/时间/证据/归属的约束。
+3. 按需加载：
+   - `references/slide-structures.md` — 结构与主题聚焦
+   - `references/transition-phrases.md` — 转场语
+   - `references/group-handoff.md` — 小组分工交接
+   - `references/qa-prediction.md` — 答辩/汇报 Q&A
+   - `../../references/content-workflow.md` — 分层生成流程
+   - `../../references/evidence-and-citations.md` — 证据与引用
+   - `../../references/revision-training-export.md` — 训练卡/质量报告
+   - `../../references/slide-spec.md` — 结构化 PPTX 交接
+   - `../../references/image-strategy.md` — 视觉素材策略
+4. 宽泛主题时，根据时长和证据提供 2-3 个角度选择。
+5. 沿单一主线构建，按序生成：目录→每页主张/要点→PPT文案→演讲版→可选 Slide Spec。
+6. 每页内容幻灯片提供：故事角色、主张、精简文案、可选视觉、证据引用、讲稿、时间、归属、转场。
+7. 新手模式下解释关键结构/布局选择。需要时运行 `analyze_presentation_spec.py`，添加训练卡、Q&A、词汇表、评分风险、Evidence Ledger 或修订元数据。
+8. 如需文件输出，交接给 `student-presentation-ppt`；其完整 intake 门禁仍适用。
 
-Use `outputs/<topic>-outline.md`, `outputs/<topic>-speaker-notes.md`, or `outputs/<topic>-handoff-plan.md` under the active user project. If `CLAUDE_PROJECT_DIR` is unavailable, use the current project directory. Never write deliverables into `${CLAUDE_PLUGIN_ROOT}`.
+## 输出契约
+
+使用 `outputs/<topic>-outline.md`、`outputs/<topic>-speaker-notes.md` 或 `outputs/<topic>-handoff-plan.md`。不得写入 `${CLAUDE_PLUGIN_ROOT}`。

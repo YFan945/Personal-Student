@@ -5,66 +5,63 @@ description: Use only for a clearly student-owned academic context when the user
 
 # Student Presentation PPT
 
-Create or improve an actual editable student presentation.
+创建或改进实际可编辑的学生演示文稿。
 
-## Responsibility
+## 快速约束
 
-Load `../../references/shared-standards.md` first.
+- 中文正文 ≥ 22pt / 英文正文 ≥ 20pt / 标题 ≥ 24pt
+- **文字适配优先级**：确保文本框能装下文字 > 保持最小字号。文字装不下时，优先拆分幻灯片或删减内容，不得将字号缩小到最小值以下
+- 预估公式：中文字宽 ≈ 字号×0.035cm，英文 ≈ 字号×0.021cm；行高 ≈ 字号×1.4；每行字符数 = 盒宽÷字宽；所需行数 = 总字符数÷每行字符数；文字总高 = 所需行数×行高。文字总高超过盒高 85% 时存在溢出风险
+- 每页一条核心信息，≤ 4 条要点，≤ 80 中文字 / 40 英文词
+- 避免 AI 套话（"在当今快速发展..."、"具有重要意义..."）；用课程/项目具体细节替代
+- 按目录→逐页主张→PPT文案→演讲版→Slide Spec 分层生成
+- 生成前必须确认完整 Production Summary（18 项）— 用户说"你决定"只填充推荐值，不跳过确认
+- 状态机：`intake_pending → intake_confirmed → planned → producing → qa → complete`
+- 输出写入 `${CLAUDE_PROJECT_DIR}/outputs`，不得覆盖源文件
+- PPTX 生产依赖 `document-skills@anthropic-agent-skills`
 
-- A broad academic topic plus an explicit PPTX request belongs here; create a compact internal slide plan and continue.
-- An outline-only request belongs to `student-presentation`.
-- An existing deck plus “直接改好” starts with review diagnosis, then continues here in the same task.
-- An existing deck plus “看看问题” belongs to `student-presentation-review` and must not modify files.
-- Do not overwrite an existing source deck. Produce a separate improved deck and change summary.
+## 职责
 
-PPTX production depends on `document-skills@anthropic-agent-skills`. This skill is the upper-level contract. Its classroom readability, Slide Spec, output, notes, change-summary, and QA requirements override conflicting generic advice from the upstream `pptx` skill.
+- 创建/改进可编辑 PPTX → 本 skill
+- 仅大纲 → `student-presentation`
+- 审查已有文件 → `student-presentation-review`
+- "直接改好" → 先诊断，再在本 skill 中编辑，输出独立改进版 + change summary
 
-## State Gate
+## 状态门禁
 
-Load `../../references/presentation-intake.md`. Use the full PPTX intake and the
-canonical state sequence:
+加载 `../../references/presentation-intake.md`，使用完整 PPTX intake。
 
-`intake_pending → intake_confirmed → planned → producing → qa → complete`
+用 `workflow_guard.py init` 初始化项目状态。保存完整 Production Summary 到 `outputs/`；只有明确批准后运行 `workflow_guard.py confirm --summary-file <摘要>`。`PreToolUse` hook 在确认前阻断生产脚本。
 
-While `intake_pending`, only inspect supplied inputs and ask for confirmation.
-Do not run environment checks or generation commands and do not claim production
-has started. User delegation fills recommendations but still requires approval
-of the complete Production Summary.
+状态卡住时使用 `workflow_guard.py reset` 重置，使用 `workflow_guard.py unblock` 从 blocked 恢复。
 
-Initialize the project state with `workflow_guard.py init`. Save the complete
-Production Summary under `outputs/`; only after explicit approval run
-`workflow_guard.py confirm --summary-file <summary>`. The plugin `PreToolUse`
-hook blocks production scripts while this confirmation state is absent.
+## 工作流
 
-## Workflow
+1. 完成 intake 并获得明确确认。
+2. 按需加载：
+   - `../../references/presentation-brief.md` — 场景/受众/质量/控制
+   - `../../references/content-workflow.md` — 分层生成与故事检查
+   - `../../references/evidence-and-citations.md` — 证据与引用
+   - `../../references/revision-training-export.md` — 锁定/修订/导出
+   - `references/pptx-production.md` — 生产机制
+   - `references/visual-style-menu.md` → 一份 `references/visual-styles/<style>.md`
+   - `../../references/slide-spec.md` — 结构化交接
+   - `../../references/image-strategy.md` — 视觉素材策略
+3. 验证确认的 Presentation Brief。创建分层内容和经过验证的 Slide Spec v2；运行 `analyze_presentation_spec.py`；将工作流状态转为 `planned`。
+4. 运行 `python "${CLAUDE_PLUGIN_ROOT}/scripts/check_claude_pptx_env.py" --json --strict`。必需工具缺失时 `blocked`（node/pptxgenjs/markitdown/Pillow/document-skills）；LibreOffice/Poppler 缺失仅警告。
+5. 对 Slide Spec 输入运行 `slide_spec_to_pptx_brief.py` 生成 Claude pptx brief。
+6. 转为 `producing`，遵循 `document-skills` 的 `pptx` skill：新建 → `pptxgenjs.md`，编辑 → `editing.md`。
+7. 生成的 Node 脚本通过 `run_with_pptxgenjs.js` 运行。
+8. 用 `build_support_outputs.py` 构建辅助输出。转为 `qa`；运行文本提取、渲染、视觉检查、质量报告、至少一次修复-验证循环，以及 `pptx_delivery_check.py --strict --json`。编辑时运行 `create_revision_manifest.py --strict`。用 `manage_versions.py` 做版本快照。所有门禁通过后才转为 `complete`。
 
-1. Complete intake and receive explicit confirmation.
-2. Load only the required references:
-   - `../../references/presentation-brief.md`
-   - `../../references/content-workflow.md`
-   - `../../references/evidence-and-citations.md`
-   - `../../references/revision-training-export.md`
-   - `references/pptx-production.md`
-   - `references/visual-style-menu.md`, then exactly one matching `references/visual-styles/<style>.md`
-   - `../../references/slide-spec.md` for Slide Spec input
-   - `../../references/image-strategy.md` for source and visual policy
-3. Validate the confirmed Presentation Brief when saved. Create layered content and a validated Slide Spec v2; run `analyze_presentation_spec.py`; transition workflow state to `planned`.
-4. Run `python "${CLAUDE_PLUGIN_ROOT}/scripts/check_claude_pptx_env.py" --json --strict`. A failure is `blocked`.
-5. For Slide Spec input, run `slide_spec_to_pptx_brief.py` as specified in `pptx-production.md`; use the current project when `CLAUDE_PROJECT_DIR` is unavailable.
-6. Transition to `producing` and follow the installed `document-skills` `pptx` skill:
-   - new deck → `pptxgenjs.md`
-   - existing deck/template → `editing.md`
-7. Run generated Node scripts through `run_with_pptxgenjs.js`.
-8. Build requested support outputs with `build_support_outputs.py`. Transition to `qa`; run text extraction, rendering, visual inspection, quality report, at least one fix-and-verify loop, and `pptx_delivery_check.py --strict --json`. For edits, run `create_revision_manifest.py --strict` and reject changes to locked slides. Snapshot versioned deliverables with `manage_versions.py`. Transition to `complete` only after all gates pass; otherwise use `incomplete` or `blocked`.
+## 输出契约
 
-## Output Contract
-
-Write only to `${CLAUDE_PROJECT_DIR}/outputs` or the current project’s `outputs/` fallback:
+仅写入 `${CLAUDE_PROJECT_DIR}/outputs`（无此变量时用当前项目）：
 
 - `<topic>-presentation.pptx`
 - `<topic>-speaker-notes.md`
-- `<topic>-preview.png` or contact sheet
-- `<topic>-change-summary.md` for existing-deck improvements
-- requested PDF, teleprompter, quality report, and revision manifest
+- `<topic>-preview.png` 或 contact sheet
+- `<topic>-change-summary.md`（改进已有 deck 时）
+- 按需的 PDF、提词版、质量报告和 revision manifest
 
-The final response must report each file’s absolute path and existence, slide count, static risk summary, rendered QA status, and whether status is `complete`, `incomplete`, or `blocked`.
+最终回复必须报告每项文件的绝对路径与存在性、页数、静态风险摘要、渲染 QA 状态，以及状态是 `complete`、`incomplete` 还是 `blocked`。
