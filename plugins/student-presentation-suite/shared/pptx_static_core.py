@@ -312,7 +312,8 @@ def estimate_text_overflow(
         "est_lines": est_lines,
         "line_height_cm": round(line_height_cm, 2),
         "text_height_cm": round(text_height_cm, 1),
-        "fill_ratio": round(fill_ratio, 2),
+        "fill_ratio": round(fill_ratio, 2),           # 展示用舍入
+        "fill_ratio_raw": fill_ratio,                   # 原始值，用于阈值判断
     }
 
 

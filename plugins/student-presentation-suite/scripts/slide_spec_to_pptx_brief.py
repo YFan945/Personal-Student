@@ -142,16 +142,16 @@ def _estimate_slide_text_fit(
 
         est_lines = (chars + chars_per_line - 1) // chars_per_line
         text_height = est_lines * line_height_cm
-        fill_ratio = text_height / typical_height_cm if typical_height_cm > 0 else 0
+        overflow_fill = text_height / typical_height_cm if typical_height_cm > 0 else 0
 
-        if fill_ratio > 0.85:
+        if text_height > safe_height_cm:
             warnings.append({
                 "slide_id": slide.get("id"),
                 "title": slide.get("title", "")[:50],
                 "chars": chars,
                 "est_lines": est_lines,
                 "text_height_cm": round(text_height, 1),
-                "fill_ratio": round(fill_ratio * 100),
+                "fill_ratio_pct": round(overflow_fill * 100),
                 "recommendation": (
                     "文字量可能超出典型文本框。建议：(1) 拆分幻灯片 "
                     f"(2) 精简内容至 ~{int(chars_per_line * 4)} 字以内 "

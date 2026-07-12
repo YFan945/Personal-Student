@@ -32,16 +32,11 @@ _PRODUCTION_PATTERNS = (
         r"|build_support_outputs\.py"
         r"|pptx_delivery_check\.py"
         r"|create_revision_manifest\.py"
-        r")",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(?:^|\s|['\"]|&|;)\s*\$[{]CLAUDE_PLUGIN_ROOT[}].*(?:"
-        r"slide_spec_to_pptx_brief\.py"
-        r"|run_with_pptxgenjs\.js"
-        r"|build_support_outputs\.py"
-        r"|pptx_delivery_check\.py"
-        r"|create_revision_manifest\.py"
+        r"|\$[{]CLAUDE_PLUGIN_ROOT[}].*slide_spec_to_pptx_brief\.py"
+        r"|\$[{]CLAUDE_PLUGIN_ROOT[}].*run_with_pptxgenjs\.js"
+        r"|\$[{]CLAUDE_PLUGIN_ROOT[}].*build_support_outputs\.py"
+        r"|\$[{]CLAUDE_PLUGIN_ROOT[}].*pptx_delivery_check\.py"
+        r"|\$[{]CLAUDE_PLUGIN_ROOT[}].*create_revision_manifest\.py"
         r")",
         re.IGNORECASE,
     ),

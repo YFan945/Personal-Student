@@ -101,11 +101,17 @@ def check_manifest(errors: list[str]) -> None:
         return
     if manifest.get("name") != "student-presentation-suite":
         errors.append("manifest name 必须为 student-presentation-suite")
-    # 不硬编码版本号，只检查各文件一致性
-    version_error = _version_compare({
+    # 验证版本号非空
+    version_fields = {
         "manifest": manifest.get("version", ""),
         "package.json": package.get("version", ""),
-    })
+    }
+    for source, ver in version_fields.items():
+        if not ver:
+            errors.append(f"{source} 的版本号为空，必须提供有效版本")
+            return  # 空版本无法比较，提前退出
+    # 不硬编码版本号，只检查各文件一致性
+    version_error = _version_compare(version_fields)
     if version_error:
         errors.append(version_error)
     if manifest.get("author", {}).get("name") in {None, "", "Local developer"}:
