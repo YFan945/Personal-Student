@@ -49,6 +49,8 @@ If Slide Spec meta includes `output_prefix`, use it as the `<topic>` slug; other
 
 ## Classroom Readability
 
+### Typography Thresholds
+
 Check:
 - title is readable from the back of a classroom
 - Chinese normal body text is 22pt or larger
@@ -56,6 +58,41 @@ Check:
 - smaller text appears only in minor explanations, captions, citations, footnotes, or chart axes when unavoidable
 - slide titles, subtitles, section headers, card headers, chart titles, panel labels, and other subheadings are 24pt or larger
 - key terms are visually emphasized with bold, accent color, larger type, or callouts
+
+### Text Fit: Preventing Overflow At Minimum Font Sizes
+
+**The minimum font sizes (22pt Chinese / 20pt English / 24pt title) are hard constraints for classroom readability. Text must fit its container at these sizes.** When text at minimum size would overflow the box, the fix is to reduce content or split slides — never to shrink below the minimums.
+
+**Estimation formula** (use before writing pptxgenjs code):
+
+```
+char_width_cm  = font_size_pt × 0.035  (Chinese) or 0.021 (English avg)
+chars_per_line = floor(box_width_cm / char_width_cm)
+est_lines      = ceil(total_chars / chars_per_line)
+line_height_cm = font_size_pt × 1.4 / 72 × 2.54
+text_height_cm = est_lines × line_height_cm
+```
+
+**Overflow threshold**: if `text_height_cm > box_height_cm × 0.85`, the text is likely to overflow or clip.
+
+**Quick reference** (Chinese text, 22pt, with typical padding):
+
+| Box width | Chars/line | 80 chars needs | 120 chars needs |
+|-----------|-----------|----------------|-----------------|
+| 8 cm      | ~10       | 8 lines × 1.1cm = 8.8cm | DO NOT USE — split slide |
+| 10 cm     | ~13       | 7 lines × 1.1cm = 7.7cm | DO NOT USE — split slide |
+| 12 cm     | ~15       | 6 lines × 1.1cm = 6.6cm | 8 lines = 8.8cm |
+| 14 cm     | ~18       | 5 lines × 1.1cm = 5.5cm | 7 lines = 7.7cm |
+
+**When text does not fit at minimum font size (in priority order):**
+1. **Split the slide** — one claim per slide, move details to a second slide
+2. **Reduce content** — cut filler words, move explanation to speaker notes
+3. **Enlarge the text box** — if layout allows without breaking alignment
+4. **NEVER** shrink below 22pt Chinese / 20pt English / 24pt title
+
+**For pptxgenjs**: set `fontSize` to the minimum values above. Do not rely on `autoFit: true` or `shrinkText: true` — these behave inconsistently across PowerPoint, WPS, and LibreOffice. If text needs shrinking to fit, the content or layout is wrong.
+
+**During QA**: when a box's estimated text height exceeds 85% of the box height, the delivery check will flag `text-vertical-overflow-risk`. This is a Major finding that must be resolved before delivery.
 - contrast is high
 - slide is understandable in 3 seconds
 - no dense paragraph blocks

@@ -51,7 +51,7 @@ PPTX 创建和编辑依赖
 - Git
 - Python 3.10+
 - Node.js 与 npm
-- LibreOffice 和 Poppler（用于完整渲染检查）
+- LibreOffice 和 Poppler（推荐，用于渲染检查与 PDF 导出；缺失不影响 PPTX 生成）
 
 可先检查基础命令：
 
@@ -260,8 +260,22 @@ python .\plugins\student-presentation-suite\scripts\check_claude_pptx_env.py --j
 python .\scripts\check_installed_version.py --json
 ```
 
-根据输出安装缺失的 Python、Node.js、LibreOffice、Poppler 或
-`document-skills` 依赖，不要跳过严格检查。
+根据输出安装缺失的 Python、Node.js 或 `document-skills` 依赖。LibreOffice 和
+Poppler 缺失时仅影响渲染检查和 PDF 导出，不阻断 PPTX 生成。
+
+### 工作流状态卡住
+
+如果插件提示需要确认 Production Summary 但你想重新开始：
+
+```powershell
+python .\plugins\student-presentation-suite\scripts\workflow_guard.py reset
+```
+
+如果状态为 `blocked`（环境依赖缺失导致阻断），解决依赖后恢复：
+
+```powershell
+python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
+```
 
 ### 生成文件在哪里
 

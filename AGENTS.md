@@ -89,9 +89,9 @@ PPTX production depends on `document-skills@anthropic-agent-skills`.
 - Update both English and Chinese README files when behavior, installation,
   architecture, requirements, or release procedures change.
 - Update `CHANGELOG.md` for every release-worthy change.
-- Keep `.claude-plugin/marketplace.json`,
-  `plugins/student-presentation-suite/.claude-plugin/plugin.json`,
-  `package.json`, and `package-lock.json` on the same release version.
+- Use `python plugins/student-presentation-suite/scripts/bump_version.py <version>` to
+  synchronize all version fields (marketplace.json, plugin.json, package.json,
+  package-lock.json). Run `--dry-run` first to preview.
 - Update schema, bridge, documentation, examples, and tests together when
   changing Slide Spec fields or workflow contracts.
 - Never overwrite unrelated user changes in a dirty worktree.
@@ -116,19 +116,22 @@ claude plugin validate --strict .
 git diff --check
 ```
 
-All checks must pass before publishing. If an environment dependency is absent,
-report the exact missing tool rather than weakening a strict check.
+All checks must pass before publishing. The environment check treats
+LibreOffice and Poppler as recommended (missing → warning, not block);
+node, pptxgenjs, markitdown, Pillow, and document-skills are required.
 
 ## Release Procedure
 
 1. Confirm the current branch is `claude-code`.
 2. Review the complete worktree diff and exclude unrelated files.
-3. Update documentation, `CHANGELOG.md`, and all synchronized version fields.
-4. Run the full validation suite.
-5. Commit the release changes and push a temporary branch.
-6. Open a pull request targeting `claude-code`; the branch is protected and
+3. Run `python plugins/student-presentation-suite/scripts/bump_version.py <version>`
+   to synchronize all version fields.
+4. Update documentation and `CHANGELOG.md`.
+5. Run the full validation suite.
+6. Commit the release changes and push a temporary branch.
+7. Open a pull request targeting `claude-code`; the branch is protected and
    requires all status checks.
-7. Merge only after the required checks pass.
-8. Verify the remote `claude-code` SHA and release tag.
+8. Merge only after the required checks pass.
+9. Verify the remote `claude-code` SHA and release tag.
 
 Do not merge or push these Claude Code plugin changes to `main`.

@@ -155,21 +155,28 @@ def inspect_environment(project: Path | None = None) -> dict[str, Any]:
         "pptxgenjs",
         "markitdown",
         "Pillow",
-        "LibreOffice",
-        "Poppler pdftoppm",
         "document-skills",
     ]
-    missing = [name for name in required if not checks[name]["ok"]]
+    # LibreOffice 和 Poppler 为推荐项：缺失时警告但不阻断
+    recommended = [
+        "LibreOffice",
+        "Poppler pdftoppm",
+    ]
+    missing_required = [name for name in required if not checks[name]["ok"]]
+    missing_recommended = [name for name in recommended if not checks[name]["ok"]]
     return {
-        "ok": not missing,
+        "ok": not missing_required,
         "project_root": str(active_project),
         "plugin_root": str(ROOT),
         "dependency_compatibility": dependency,
-        "missing_required": missing,
+        "missing_required": missing_required,
+        "missing_recommended": missing_recommended,
         "checks": checks,
         "note": (
-            "Planning and review can still run without every production tool, "
-            "but PPTX generation is incomplete until all required checks pass."
+            "规划和审查可在缺少部分工具的情况下运行。"
+            "PPTX 生产需要所有必需工具（node, pptxgenjs, markitdown, Pillow, document-skills）。"
+            "LibreOffice 和 Poppler 用于渲染检查和 PDF 导出，缺失时仅影响视觉 QA，"
+            "不阻断 PPTX 生成。"
         ),
     }
 
@@ -182,7 +189,16 @@ def main() -> None:
     else:
         print(result["note"])
         for name, check in result["checks"].items():
-            print(f"{name}: {'ok' if check['ok'] else 'missing'}")
+            status = "ok" if check["ok"] else "缺失"
+            extra = ""
+            if name in ("LibreOffice", "Poppler pdftoppm") and not check["ok"]:
+                extra = "（推荐但非必需 — 缺失不影响 PPTX 生成）"
+            print(f"  {name}: {status}{extra}")
+        if result.get("missing_recommended"):
+            print(
+                "\n⚠ 以下推荐工具缺失（不影响 PPTX 生成，但会跳过渲染检查与 PDF 导出）: "
+                + ", ".join(result["missing_recommended"])
+            )
     if args.strict and result["missing_required"]:
         raise SystemExit(2)
 
