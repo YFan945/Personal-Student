@@ -56,38 +56,107 @@ If duration is known but slide count is not, recommend:
 
 ## Required Interaction
 
-For an incomplete PPTX request:
+For an incomplete PPTX request, use `AskUserQuestion` to let the user select
+each unresolved field directly — one question per field, with recommended values
+as the first option. Do NOT list all fields in text and ask for a consolidated
+reply.
 
-1. Extract and display `Confirmed`.
-2. Display only unresolved fields under `Please confirm`.
-3. For every unresolved field, include a recommended value and one short impact
-   statement.
-4. Ask for one consolidated reply.
-5. Do not run environment checks, generation scripts, rendering, or delivery
+### Interaction flow
+
+1. Extract all already-confirmed facts from the user's request; display them as
+   `✅ 已确认` in a short summary.
+2. Identify unresolved fields that have clear option sets. Batch them into
+   `AskUserQuestion` calls (max 4 questions per call, 2-4 options each).
+3. For each question, the first option is always the recommended value, labeled
+   with `（推荐）`. Include a one-line impact statement in each option's
+   `description`.
+4. After the user selects, move to the next batch of unresolved fields. Repeat
+   until all fields are resolved.
+5. If the user types “你决定”, “按推荐来”, or “use the recommendations” at any
+   point, stop asking and fill all remaining fields with recommended values.
+6. After all fields are resolved, show the complete `Production Summary` and ask
+   for final confirmation. Delegation does NOT itself move the state to
+   `intake_confirmed`; approval of the summary does.
+7. Do not run environment checks, generation scripts, rendering, or delivery
    checks while the state is `intake_pending`.
+8. If a field has no natural option set (e.g. Topic, Course/context, Rubric),
+   use `AskUserQuestion` with `”Other”` as a free-text fallback, or ask inline.
 
-Use this response shape:
+### Question batches (by priority)
 
-```markdown
-## Confirmed
-- Topic: ...
-- Language: ...
+Batch fields so that the most impactful decisions come first. Typical grouping:
 
-## Please confirm
-1. Duration — Recommended: 5 minutes. Impact: determines scope and slide count.
-2. Visual style — Recommended: Modern Minimal. Impact: determines layout and palette.
+**Round 1 — 场景与受众** (pick the ones that are unresolved):
+- `Presentation type` → options: Coursework report, Defense/答辩, Competition/竞赛, Club showcase, Research paper
+- `Scenario` → options from scenario classification table
+- `Audience` → options: Teacher + classmates, Non-specialists, Judges/Panel, Mixed
+- `Audience depth` → options: Introductory, Standard, Expert
 
-Reply with changes, or say "use the recommendations".
+**Round 2 — 规模与格式**:
+- `Duration` → options: 3min (5-7页), 5min (7-9页), 8min (9-12页), 10min (10-14页), 15min (14-18页)
+- `Format` → options: Individual/个人, Group/小组 (2-4人), Group/小组 (5+人)
+- `Quality level` → options: Basic, High-score/高分
+- `Interaction mode` → options: Beginner/新手引导, Expert/专家模式
+
+**Round 3 — 视觉与素材**:
+- `Visual style` → **两步选择**（样式 > 4 种时强制分步）:
+  - **Step A — 风格方向**：从 `visual-style-menu.md` 按场景归类为 4 个方向，让用户先选方向
+    → 学术严谨类 / 商务专业类 / 科技现代类 / 创意人文类
+    （每个方向下列出包含的样式名和中文别名，让用户知道里面有什么）
+  - **Step B — 具体样式**：根据用户选的方向，展示该方向下的 3-4 个具体样式，标注最佳推荐
+    → 如果某方向超过 4 个样式，拆成 2 轮
+  - **快捷出口**：Step A 的选项之一始终是 "显示全部 14 种样式"，选此则分 4 轮逐一展示所有样式
+  - **风格方向归类参考**（从 `visual-style-menu.md` 来）:
+    - 学术严谨类：Academic Rigorous、Data Driven、Charcoal Editorial
+    - 商务专业类：Midnight Business、Teal Trust、Modern Minimal
+    - 科技现代类：Ocean Tech、Modern Minimal、Data Driven
+    - 创意人文类：Creative Student、Coral Energy、Forest Moss、Warm Terracotta、Berry Cream、Sage Calm、Cherry Bold
+  - Step A 必须根据 topic 推荐最匹配的方向作为第一个选项 `（推荐）`，而不是机械按固定顺序
+- `Image strategy` → options: Diagram-only/仅图表, Generated abstract/生成抽象图, Photo/照片, No images/无图
+- `Citation style` → options: Classroom/课堂引用, APA, IEEE, MLA, None
+- 如果本轮的 3 个问题填不满 4 个槽位（视觉风格已占 2 轮），把 Citation style 挪到 Round 2 或 Round 4
+
+**Round 4 — 输出格式**:
+- `Deliverables` (multi-select) → options: PPTX, Speaker notes/讲稿, Preview image/预览, PDF export, Contact sheet
+- Other output-specific fields as needed
+
+### Example
+
+```
+已确认：Topic=深度学习入门, Language=中文, Source material=课程讲义
+
+→ 调用 AskUserQuestion（Round 1，4 个问题）让用户选择：
+  1. Presentation type → Coursework report（推荐）
+  2. Scenario → coursework
+  3. Audience → Teacher + classmates（推荐）
+  4. Audience depth → Standard（推荐）
+
+→ 用户选择后，调用 AskUserQuestion（Round 2）：
+  1. Duration → 5min（推荐）
+  2. Format → Individual（推荐）
+  3. Quality level → High-score（推荐）
+  4. Interaction mode → Beginner（推荐）
+
+→ 用户选择后，调用 AskUserQuestion（Round 3a — 风格方向）：
+  1. 风格方向 → 科技现代类（推荐）/ 学术严谨类 / 商务专业类 / 创意人文类
+
+→ 用户选"科技现代类"后，调用 AskUserQuestion（Round 3b — 具体样式）：
+  1. Visual style → Ocean Tech 海洋科技（推荐）/ Modern Minimal 现代简洁 / Data Driven 数据驱动
+  2. Image strategy → Diagram-only（推荐）
+  3. Citation style → Classroom（推荐）
+
+→ 所有字段确认完毕，展示完整 Production Summary 等待最终确认
 ```
 
-If the user says “你决定”, “按推荐来”, “use the recommendations”, or otherwise
-delegates the choices, fill every missing item with the recommended value. Then
-show a complete `Production Summary` and ask for explicit confirmation.
-Delegation does not itself move the state to `intake_confirmed`; approval of the
-summary does.
+### Delegation shortcut
 
-If all fields were already supplied, show the complete `Production Summary` and
-ask for confirmation without repeating questions.
+If the user says “你决定”, “按推荐来”, or “use the recommendations” at any
+point, fill every remaining unresolved field with the recommended value. Then
+show the complete `Production Summary` and ask for explicit confirmation.
+
+If all fields were already supplied in the initial request, skip the question
+rounds and go directly to showing the complete `Production Summary` for
+confirmation.
 
 ## Production Summary
 

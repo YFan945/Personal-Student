@@ -16,6 +16,7 @@ description: Use only for a clearly student-owned academic context when the user
 - 避免 AI 套话（"在当今快速发展..."、"具有重要意义..."）；用课程/项目具体细节替代
 - 按目录→逐页主张→PPT文案→演讲版→Slide Spec 分层生成
 - 生成前必须确认完整 Production Summary（18 项）— 用户说"你决定"只填充推荐值，不跳过确认
+- **intake 阶段必须使用 `AskUserQuestion` 工具逐个让用户选择未确认字段**，禁止用文本列出选项让用户打字回复
 - 状态机：`intake_pending → intake_confirmed → planned → producing → qa → complete`
 - 输出写入 `${CLAUDE_PROJECT_DIR}/outputs`，不得覆盖源文件
 - PPTX 生产依赖 `document-skills@anthropic-agent-skills`
@@ -37,7 +38,7 @@ description: Use only for a clearly student-owned academic context when the user
 
 ## 工作流
 
-1. 完成 intake 并获得明确确认。
+1. 完成 intake 并获得明确确认。**必须使用 `AskUserQuestion` 工具**分轮让用户逐个选择未确认的字段（场景→规模→视觉→输出），详见 `presentation-intake.md` 的 Required Interaction 章节。禁止用文本列表代替。
 2. 按需加载：
    - `../../references/presentation-brief.md` — 场景/受众/质量/控制
    - `../../references/content-workflow.md` — 分层生成与故事检查
