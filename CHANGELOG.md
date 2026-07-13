@@ -4,6 +4,23 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## Unreleased
+
+- 严格交付门禁现在会阻断静态 blocker、损坏/空白预览以及缺少或失效的 QA manifest。
+- 新增与 PPTX、渲染预览 hash 和全页检查绑定的 QA manifest，并要求其通过后才能转换到 `complete`。
+- 修复超长文本预警的 bridge 字段错误，并改用未舍入的溢出比率进行阈值判断。
+- `unblock` 现在回到 `intake_pending`，生产 hook 同时验证 Production Summary 文件与 hash。
+- 14 套标准视觉风格现有机器可读 design tokens；production brief 会展开 palette、几何、字体与线条约束，并可生成 style-adherence report。
+- Slide Spec 现按 scenario 验证必需 story role，静态检查新增可见对象的大面积重叠风险。
+- 新增低分辨率/拉伸图片 blocker、connector 线宽 token 检查，以及 LibreOffice/Poppler 驱动的临时场景渲染矩阵；CI 在 Ubuntu 上强制渲染九种代表性场景。
+- 静态 QA 继续增加标题区/页脚区、最小 gutter、前景背景对比度、connector 路由，以及图表标题和标签字号门禁。
+- 新增显式文本框 padding、叠放对象对齐误差和图片 containment 的结构化检查。
+- delivery check 现可写出包含 static/render/style 证据与最终状态的 `delivery-report.json`。
+- QA manifest 现必须明确记录 `scenario_contract_passed: true`，交付报告同步输出该结论。
+- 文本溢出估算现在考虑段落、显式换行、bullet 缩进与文本框内边距，降低复杂排版漏报。
+- `visual-led` Slide Spec 现强制提供内容页视觉结构；timeline、comparison、process 和 chart 各自验证可生成的结构化 details。
+- 静态报告新增 deck 级布局模式统计，配合已有颜色和字体统计支持风格重复审查。
+
 ## 0.4.0 — 2026-06-21
 
 ### 版本概述

@@ -61,10 +61,13 @@ class SlideSpecBridgeTests(unittest.TestCase):
         self.assertIn("Target skill: `pptx`", brief)
         self.assertIn("pptxgenjs.md", brief)
         self.assertIn("ai-class-demo-presentation.pptx", brief)
+        self.assertIn("ai-class-demo-delivery-report.json", brief)
         self.assertIn("AI 帮助我们更快形成初稿", brief)
         self.assertIn("Responsible use of generative AI", brief)
         self.assertIn("Teacher and classmates", brief)
         self.assertIn("Modern Minimal", brief)
+        self.assertIn("Resolved Design Tokens", brief)
+        self.assertIn('"standard_pt": 1.25', brief)
         self.assertIn("Student reflection", brief)
         self.assertIn("python -m markitdown output.pptx", brief)
 
@@ -121,6 +124,20 @@ class SlideSpecBridgeTests(unittest.TestCase):
         self.assertIn("Use `editing.md`", brief)
         self.assertIn("improved-demo-change-summary.md", brief)
         self.assertIn("Rewrite it as a claim-style title", brief)
+
+    def test_long_text_warning_builds_without_key_error(self) -> None:
+        bridge = load_bridge_module()
+        data = {
+            "meta": {"output_prefix": "long-copy"},
+            "slides": [{
+                "id": 1, "title": "Long copy", "layout": "content",
+                "content": {"bullets": ["这是需要触发文本适配预警的长文本。" * 30]},
+                "timing_sec": 60, "owner": "A",
+            }],
+        }
+        brief = bridge.build_brief(data, Path("input.yaml"))
+        self.assertIn("Text Fit Warnings", brief)
+        self.assertIn("盒高", brief)
 
     def test_script_writes_output_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -234,6 +251,54 @@ slides:
         )
 
         self.assertTrue(any("Additional properties" in error["message"] for error in errors))
+
+    def test_each_scenario_rejects_missing_required_story_role(self) -> None:
+        bridge = load_bridge_module()
+        required_missing = {
+            "coursework": "method", "defense": "qa", "competition": "solution",
+            "club-showcase": "method", "research": "limitation",
+        }
+        common_roles = ["opening", "background", "problem", "method", "evidence", "result", "solution", "value", "limitation", "conclusion", "qa", "closing"]
+        for scenario, missing in required_missing.items():
+            with self.subTest(scenario=scenario):
+                roles = [role for role in common_roles if role != missing]
+                data = {
+                    "meta": {"scenario": scenario, "slide_count": len(roles)},
+                    "slides": [
+                        {"id": index + 1, "title": role, "layout": "content", "content": role,
+                         "role": role, "timing_sec": 30, "owner": "A"}
+                        for index, role in enumerate(roles)
+                    ],
+                }
+                errors = bridge.validate_spec(data, ROOT / "references" / "slide-spec.schema.json", __import__("jsonschema"))
+                messages = "\n".join(error["message"] for error in errors)
+                self.assertIn(f"scenario={scenario} requires", messages)
+
+    def test_visual_semantics_require_structured_layout_details(self) -> None:
+        bridge = load_bridge_module()
+        data = {
+            "meta": {"visual_text_ratio": "visual-led", "slide_count": 2},
+            "slides": [
+                {"id": 1, "title": "Timeline", "layout": "timeline", "content": "x", "timing_sec": 30, "owner": "A",
+                 "visual": {"type": "timeline", "purpose": "show sequence", "details": {"stages": ["a", "b"]}}},
+                {"id": 2, "title": "Visual missing", "layout": "content", "content": "x", "timing_sec": 30, "owner": "A"},
+            ],
+        }
+        errors = bridge.validate_spec(data, ROOT / "references" / "slide-spec.schema.json", __import__("jsonschema"))
+        messages = "\n".join(error["message"] for error in errors)
+        self.assertIn("timeline requires at least 3 stages", messages)
+        self.assertIn("visual-led mode requires a visual", messages)
+
+    def test_chart_visual_requires_complete_evidence_metadata(self) -> None:
+        bridge = load_bridge_module()
+        data = {
+            "slides": [{
+                "id": 1, "title": "Chart", "layout": "chart", "content": "x", "timing_sec": 30, "owner": "A",
+                "visual": {"type": "chart", "purpose": "show evidence", "details": {"measure": "score"}},
+            }],
+        }
+        errors = bridge.validate_spec(data, ROOT / "references" / "slide-spec.schema.json", __import__("jsonschema"))
+        self.assertIn("chart requires: unit, scope, source, takeaway", "\n".join(error["message"] for error in errors))
 
 
 if __name__ == "__main__":

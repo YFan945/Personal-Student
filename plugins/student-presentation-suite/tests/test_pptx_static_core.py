@@ -4,8 +4,12 @@ import tempfile
 import unittest
 import zipfile
 import sys
+import warnings
+from io import BytesIO
 from pathlib import Path
 from unittest import mock
+
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -127,6 +131,161 @@ class PptxStaticCoreTests(unittest.TestCase):
 
         self.assertEqual(result["findings"], [])
         self.assertEqual(wrapped.call_count, 1)
+        self.assertEqual(0, result["deck_statistics"]["distinct_layout_patterns"])
+
+    def test_flags_large_overlap_between_non_text_visible_objects(self) -> None:
+        overlap_slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'
+          xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'><p:cSld><p:spTree>
+          <p:pic><p:spPr><a:xfrm><a:off x='1000000' y='1000000'/><a:ext cx='3000000' cy='2000000'/></a:xfrm></p:spPr></p:pic>
+          <p:pic><p:spPr><a:xfrm><a:off x='2000000' y='1500000'/><a:ext cx='3000000' cy='2000000'/></a:xfrm></p:spPr></p:pic>
+          </p:spTree></p:cSld></p:sld>"""
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "overlap.pptx"
+            self.write_pptx(pptx, [overlap_slide])
+            result = core.inspect_pptx(pptx)
+        risks = [risk for finding in result["findings"] for risk in finding["risk"]]
+        self.assertIn("unexpected-object-overlap-risk", risks)
+
+    def test_flags_low_resolution_embedded_picture(self) -> None:
+        image_buffer = BytesIO()
+        Image.new("RGB", (20, 20), "navy").save(image_buffer, format="PNG")
+        picture_slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'
+          xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'
+          xmlns:r='http://schemas.openxmlformats.org/officeDocument/2006/relationships'><p:cSld><p:spTree>
+          <p:pic><p:blipFill><a:blip r:embed='rIdImage'/></p:blipFill><p:spPr><a:xfrm><a:off x='0' y='0'/><a:ext cx='9144000' cy='9144000'/></a:xfrm></p:spPr></p:pic>
+          </p:spTree></p:cSld></p:sld>"""
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "low-res.pptx"
+            self.write_pptx(pptx, [picture_slide])
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                with zipfile.ZipFile(pptx, "a") as archive:
+                    archive.writestr("ppt/slides/_rels/slide1.xml.rels", """<Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'>
+                    <Relationship Id='rIdImage' Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/image' Target='../media/image1.png'/>
+                    </Relationships>""")
+                    archive.writestr("ppt/media/image1.png", image_buffer.getvalue())
+            result = core.inspect_pptx(pptx)
+        risks = [risk for finding in result["findings"] for risk in finding["risk"]]
+        self.assertIn("low-resolution-image-risk", risks)
+
+    def test_flags_stretched_embedded_picture(self) -> None:
+        image_buffer = BytesIO()
+        Image.new("RGB", (2000, 2000), "navy").save(image_buffer, format="PNG")
+        picture_slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'
+          xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'
+          xmlns:r='http://schemas.openxmlformats.org/officeDocument/2006/relationships'><p:cSld><p:spTree>
+          <p:pic><p:blipFill><a:blip r:embed='rIdImage'/></p:blipFill><p:spPr><a:xfrm><a:off x='0' y='0'/><a:ext cx='9144000' cy='4572000'/></a:xfrm></p:spPr></p:pic>
+          </p:spTree></p:cSld></p:sld>"""
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "stretched.pptx"
+            self.write_pptx(pptx, [picture_slide])
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                with zipfile.ZipFile(pptx, "a") as archive:
+                    archive.writestr("ppt/slides/_rels/slide1.xml.rels", """<Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'>
+                    <Relationship Id='rIdImage' Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/image' Target='../media/image1.png'/>
+                    </Relationships>""")
+                    archive.writestr("ppt/media/image1.png", image_buffer.getvalue())
+            result = core.inspect_pptx(pptx)
+        risks = [risk for finding in result["findings"] for risk in finding["risk"]]
+        self.assertIn("image-aspect-distortion-risk", risks)
+
+    def test_flags_title_outside_title_zone_and_footer_invasion(self) -> None:
+        slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'
+          xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'><p:cSld><p:spTree>
+          <p:sp><p:nvSpPr><p:cNvPr id='2' name='Title 1'/><p:nvPr><p:ph type='title'/></p:nvPr></p:nvSpPr>
+          <p:spPr><a:xfrm><a:off x='300000' y='2000000'/><a:ext cx='5000000' cy='1000000'/></a:xfrm></p:spPr>
+          <p:txBody><a:p><a:r><a:rPr sz='3000'/><a:t>Late title</a:t></a:r></a:p></p:txBody></p:sp>
+          <p:sp><p:nvSpPr><p:cNvPr id='3' name='Body 1'/><p:nvPr><p:ph type='body'/></p:nvPr></p:nvSpPr>
+          <p:spPr><a:xfrm><a:off x='300000' y='6500000'/><a:ext cx='3000000' cy='500000'/></a:xfrm></p:spPr>
+          <p:txBody><a:p><a:r><a:rPr sz='2400'/><a:t>Footer invasion</a:t></a:r></a:p></p:txBody></p:sp>
+          </p:spTree></p:cSld></p:sld>"""
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "zones.pptx"
+            self.write_pptx(pptx, [slide])
+            result = core.inspect_pptx(pptx)
+        risks = [risk for finding in result["findings"] for risk in finding["risk"]]
+        self.assertIn("title-outside-title-zone", risks)
+        self.assertIn("footer-zone-invasion", risks)
+
+    def test_flags_low_contrast_text_and_insufficient_gutter(self) -> None:
+        slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'
+          xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'><p:cSld><p:spTree>
+          <p:sp><p:spPr><a:xfrm><a:off x='1000000' y='1000000'/><a:ext cx='1000000' cy='1000000'/></a:xfrm><a:solidFill><a:srgbClr val='EEEEEE'/></a:solidFill></p:spPr>
+          <p:txBody><a:p><a:r><a:rPr sz='2400'><a:solidFill><a:srgbClr val='CCCCCC'/></a:solidFill></a:rPr><a:t>Low contrast</a:t></a:r></a:p></p:txBody></p:sp>
+          <p:pic><p:spPr><a:xfrm><a:off x='2050000' y='1000000'/><a:ext cx='1000000' cy='1000000'/></a:xfrm></p:spPr></p:pic>
+          </p:spTree></p:cSld></p:sld>"""
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "contrast-gutter.pptx"
+            self.write_pptx(pptx, [slide])
+            result = core.inspect_pptx(pptx)
+        risks = [risk for finding in result["findings"] for risk in finding["risk"]]
+        self.assertIn("low-foreground-background-contrast", risks)
+        self.assertIn("insufficient-gutter-risk", risks)
+
+    def test_flags_connector_routed_through_unrelated_object(self) -> None:
+        slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'
+          xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'><p:cSld><p:spTree>
+          <p:cxnSp><p:spPr><a:xfrm><a:off x='500000' y='2000000'/><a:ext cx='5000000' cy='0'/></a:xfrm><a:ln w='25400'/></p:spPr></p:cxnSp>
+          <p:pic><p:spPr><a:xfrm><a:off x='2500000' y='1500000'/><a:ext cx='1000000' cy='1000000'/></a:xfrm></p:spPr></p:pic>
+          </p:spTree></p:cSld></p:sld>"""
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "connector-crossing.pptx"
+            self.write_pptx(pptx, [slide])
+            result = core.inspect_pptx(pptx)
+        risks = [risk for finding in result["findings"] for risk in finding["risk"]]
+        self.assertIn("connector-crosses-object-risk", risks)
+
+    def test_flags_chart_without_title_and_small_labels(self) -> None:
+        slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'
+          xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'
+          xmlns:c='http://schemas.openxmlformats.org/drawingml/2006/chart'
+          xmlns:r='http://schemas.openxmlformats.org/officeDocument/2006/relationships'><p:cSld><p:spTree>
+          <p:graphicFrame><p:xfrm><a:off x='1000000' y='1000000'/><a:ext cx='4000000' cy='3000000'/></p:xfrm>
+          <a:graphic><a:graphicData><c:chart r:id='rIdChart'/></a:graphicData></a:graphic></p:graphicFrame>
+          </p:spTree></p:cSld></p:sld>"""
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "chart.pptx"
+            self.write_pptx(pptx, [slide])
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                with zipfile.ZipFile(pptx, "a") as archive:
+                    archive.writestr("ppt/slides/_rels/slide1.xml.rels", """<Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'>
+                    <Relationship Id='rIdChart' Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart' Target='../charts/chart1.xml'/>
+                    </Relationships>""")
+                    archive.writestr("ppt/charts/chart1.xml", """<c:chartSpace xmlns:c='http://schemas.openxmlformats.org/drawingml/2006/chart'
+                    xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'><c:chart><c:plotArea><a:p><a:r><a:rPr sz='1400'/><a:t>Small label</a:t></a:r></a:p></c:plotArea></c:chart></c:chartSpace>""")
+            result = core.inspect_pptx(pptx)
+        risks = [risk for finding in result["findings"] for risk in finding["risk"]]
+        self.assertIn("chart-missing-title-risk", risks)
+        self.assertIn("chart-label-font-size-below-18pt", risks)
+
+    def test_flags_explicit_text_padding_below_token(self) -> None:
+        slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'
+          xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'><p:cSld><p:spTree>
+          <p:sp><p:nvSpPr><p:cNvPr id='2' name='Body'/><p:nvPr><p:ph type='body'/></p:nvPr></p:nvSpPr>
+          <p:spPr><a:xfrm><a:off x='500000' y='1000000'/><a:ext cx='3000000' cy='1000000'/></a:xfrm></p:spPr>
+          <p:txBody><a:bodyPr lIns='100000' rIns='100000'/><a:p><a:r><a:rPr sz='2400'/><a:t>Too close</a:t></a:r></a:p></p:txBody></p:sp>
+          </p:spTree></p:cSld></p:sld>"""
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "padding.pptx"
+            self.write_pptx(pptx, [slide])
+            result = core.inspect_pptx(pptx)
+        risks = [risk for finding in result["findings"] for risk in finding["risk"]]
+        self.assertIn("text-box-padding-below-16pt", risks)
+
+    def test_flags_nearly_aligned_stacked_objects(self) -> None:
+        slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'
+          xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'><p:cSld><p:spTree>
+          <p:pic><p:spPr><a:xfrm><a:off x='1000000' y='1000000'/><a:ext cx='2000000' cy='1000000'/></a:xfrm></p:spPr></p:pic>
+          <p:pic><p:spPr><a:xfrm><a:off x='1050000' y='2500000'/><a:ext cx='2000000' cy='1000000'/></a:xfrm></p:spPr></p:pic>
+          </p:spTree></p:cSld></p:sld>"""
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "alignment.pptx"
+            self.write_pptx(pptx, [slide])
+            result = core.inspect_pptx(pptx)
+        risks = [risk for finding in result["findings"] for risk in finding["risk"]]
+        self.assertIn("alignment-tolerance-risk", risks)
 
     def test_resolves_layout_body_style_and_reports_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -253,6 +412,24 @@ class PptxStaticCoreTests(unittest.TestCase):
         )
         self.assertIsNotNone(overflow)
         self.assertLess(overflow["fill_ratio"], 0.85)
+
+    def test_explicit_paragraphs_margins_and_indent_increase_estimated_lines(self) -> None:
+        plain = core.estimate_text_overflow(
+            chars=40, is_cjk=False, font_size_pt=20,
+            box_width_emu=int(10 * core.EMU_PER_CM), box_height_emu=int(8 * core.EMU_PER_CM),
+        )
+        formatted = core.estimate_text_overflow(
+            chars=40, is_cjk=False, font_size_pt=20,
+            box_width_emu=int(10 * core.EMU_PER_CM), box_height_emu=int(8 * core.EMU_PER_CM),
+            paragraphs=["twenty words split", "into separate paragraph"],
+            horizontal_margin_emu=int(2 * core.EMU_PER_CM),
+            vertical_margin_emu=int(1 * core.EMU_PER_CM),
+            bullet_indent_emu=int(1 * core.EMU_PER_CM),
+        )
+        self.assertIsNotNone(plain)
+        self.assertIsNotNone(formatted)
+        self.assertGreater(formatted["est_lines"], plain["est_lines"])
+        self.assertEqual(2.0, formatted["horizontal_margin_cm"])
 
     def test_pptx_with_overflowing_cjk_text_is_flagged(self) -> None:
         """生成的 PPTX 中长文本应触发 text-vertical-overflow-risk"""

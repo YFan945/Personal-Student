@@ -17,6 +17,9 @@
 student-presentation-suite@claude-personal
 ```
 
+当前 PPT 生成质量保障能力、已知缺口和整改验收标准详见
+[PPT-GENERATION-QUALITY-AUDIT.md](PPT-GENERATION-QUALITY-AUDIT.md)。
+
 ## 功能
 
 | 需求 | 使用的 Skill | 结果 |
@@ -215,6 +218,9 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 <topic>-presentation.pptx
 <topic>-speaker-notes.md
 <topic>-preview.png
+<topic>-qa-manifest.json
+<topic>-style-adherence-report.json
+<topic>-delivery-report.json
 <topic>-change-summary.md
 <topic>-presentation.pdf
 <topic>-teleprompter.html
@@ -224,7 +230,10 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 ```
 
 最终回复会说明文件绝对路径、页数、渲染检查结果，以及任务状态：
-`complete`、`incomplete` 或 `blocked`。
+`complete`、`incomplete` 或 `blocked`。进入 `complete` 必须提供与当前 PPTX 和
+渲染预览 hash 绑定的 QA manifest，其中记录全页检查和零遗留 blocker。
+标准视觉风格还会解析为 palette、间距、字体和线条 token，并可生成风格一致性报告。
+发布工作流还会在 Linux 上临时渲染课程汇报、英语课堂、答辩、竞赛、社团展示、研究展示、软件项目、数据调查和学校模板编辑场景矩阵。
 
 ## 更新与卸载
 
@@ -276,6 +285,8 @@ python .\plugins\student-presentation-suite\scripts\workflow_guard.py reset
 ```powershell
 python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
 ```
+
+`unblock` 会回到 `intake_pending`；恢复生产前必须重新确认 Production Summary。
 
 ### 生成文件在哪里
 

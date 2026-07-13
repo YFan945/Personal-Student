@@ -33,7 +33,7 @@ description: Use only for a clearly student-owned academic context when the user
 
 用 `workflow_guard.py init` 初始化项目状态。保存完整 Production Summary 到 `outputs/`；只有明确批准后运行 `workflow_guard.py confirm --summary-file <摘要>`。`PreToolUse` hook 在确认前阻断生产脚本。
 
-状态卡住时使用 `workflow_guard.py reset` 重置，使用 `workflow_guard.py unblock` 从 blocked 恢复。
+状态卡住时使用 `workflow_guard.py reset` 重置，使用 `workflow_guard.py unblock` 从 blocked 回到 `intake_pending` 并重新确认摘要。`complete` 只能通过携带当前 PPTX 的 `--qa-manifest` 和 `--pptx` 的状态转换获得。
 
 ## 工作流
 
@@ -52,7 +52,7 @@ description: Use only for a clearly student-owned academic context when the user
 5. 对 Slide Spec 输入运行 `slide_spec_to_pptx_brief.py` 生成 Claude pptx brief。
 6. 转为 `producing`，遵循 `document-skills` 的 `pptx` skill：新建 → `pptxgenjs.md`，编辑 → `editing.md`。
 7. 生成的 Node 脚本通过 `run_with_pptxgenjs.js` 运行。
-8. 用 `build_support_outputs.py` 构建辅助输出。转为 `qa`；运行文本提取、渲染、视觉检查、质量报告、至少一次修复-验证循环，以及 `pptx_delivery_check.py --strict --json`。编辑时运行 `create_revision_manifest.py --strict`。用 `manage_versions.py` 做版本快照。所有门禁通过后才转为 `complete`。
+8. 用 `build_support_outputs.py` 构建辅助输出。转为 `qa`；运行文本提取、渲染、视觉检查、质量报告、至少一次修复-验证循环，写入带 PPTX/preview hash、页数、检查页和 blocker 数的 `qa-manifest.json`。用 `style_adherence_check.py --pptx <pptx> --visual-style <style> --output <style-report> --strict` 检查 token 一致性，再运行 `pptx_delivery_check.py --qa-manifest <manifest> --style-report <style-report> --strict --json`。编辑时运行 `create_revision_manifest.py --strict`。用 `manage_versions.py` 做版本快照。所有门禁通过后用 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest>` 完成状态转换。
 
 ## 输出契约
 
@@ -61,6 +61,9 @@ description: Use only for a clearly student-owned academic context when the user
 - `<topic>-presentation.pptx`
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` 或 contact sheet
+- `<topic>-qa-manifest.json`
+- `<topic>-style-adherence-report.json`
+- `<topic>-delivery-report.json`
 - `<topic>-change-summary.md`（改进已有 deck 时）
 - 按需的 PDF、提词版、质量报告和 revision manifest
 

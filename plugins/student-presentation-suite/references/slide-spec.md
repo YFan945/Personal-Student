@@ -48,6 +48,7 @@ Meta field rules:
 - `image_source`: `"user-assets" | "web-search" | "generated" | "diagram-only" | "text-only" | "ask-before-web-search"`
 - `source_material`: a short evidence-boundary description or a list of supplied sources
 - `visual_style`: confirmed style name from the style menu or a user-defined direction
+- `visual_text_ratio: visual-led` requires a structured `visual` for every content slide. `timeline` needs 3+ stages; `comparison` needs 2+ items plus dimensions; `process` needs 2+ steps; `chart` needs measure, unit, scope, source, and takeaway.
 - `deliverables`: confirmed output names such as `"pptx"`, `"speaker-notes"`,
   `"preview"`, `"change-summary"`, `"full-script"`, or `"pdf"`
 - Use short ASCII-safe `output_prefix` when a later PPTX output filename needs a stable slug.

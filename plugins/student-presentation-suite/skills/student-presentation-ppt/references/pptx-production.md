@@ -141,7 +141,11 @@ Required QA inherited from the `pptx` skill:
 - Render the deck with the `pptx` skill's LibreOffice helper, then convert PDF pages to images with Poppler, for example `scripts/office/soffice.py` plus `pdftoppm`.
 - Inspect rendered images or a contact sheet and complete at least one fix-and-verify loop before calling the deck ready-to-present.
 - Run generated deck JavaScript with `node "${CLAUDE_PLUGIN_ROOT}/scripts/run_with_pptxgenjs.js" <deck-script.js>`.
-- Run `python "${CLAUDE_PLUGIN_ROOT}/skills/student-presentation-ppt/scripts/pptx_delivery_check.py" --pptx <pptx> --notes <notes> --preview <preview> --strict --json`. A failed gate makes delivery `incomplete`.
+- Write `<topic>-qa-manifest.json` after rendering. It must bind the current PPTX SHA-256, PPTX/rendered page counts, `scenario_contract_passed: true`, preview file SHA-256 values, every inspected page, repair-cycle evidence (or an explicit no-repair reason), and zero remaining blockers.
+- Resolve the selected visual style from `../../../references/design-tokens.json`. Apply its palette roles, geometry, typography scale, and line system; do not invent new line widths or colors without recording an approved template/custom-style exception.
+- Before strict delivery, resolve every static blocker: objects must stay inside the safe area with token-scale gutters, alignment, and explicit text-box padding; titles and content must respect title/footer zones; text/background contrast must be readable; connectors must not cross unrelated objects; pictures must retain ratio and usable resolution; chart titles and labels must remain readable. Review picture containment findings even when no blocker is raised.
+- Run `python "${CLAUDE_PLUGIN_ROOT}/scripts/style_adherence_check.py" --pptx <pptx> --visual-style "<style>" --output <style-report> --strict`.
+- Run `python "${CLAUDE_PLUGIN_ROOT}/skills/student-presentation-ppt/scripts/pptx_delivery_check.py" --pptx <pptx> --notes <notes> --preview <preview> --qa-manifest <manifest> --style-report <style-report> --strict --json`. A failed gate makes delivery `incomplete`; strict success means the static scan has no blocker-like findings and the rendered QA evidence is valid.
 - Add `--pdf`, `--teleprompter`, `--quality-report`, and
   `--revision-manifest` when those exports were confirmed.
 - For revisions, run `create_revision_manifest.py <old-spec> <new-spec> --strict`;

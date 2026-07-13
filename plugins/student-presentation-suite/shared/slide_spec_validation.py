@@ -5,6 +5,82 @@ from __future__ import annotations
 from typing import Any
 
 
+SCENARIO_REQUIRED_ROLE_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
+    "coursework": (("background", "problem"), ("method",), ("evidence", "result"), ("conclusion", "closing")),
+    "defense": (("problem",), ("method",), ("result", "evidence"), ("solution", "value"), ("limitation",), ("qa",)),
+    "competition": (("problem",), ("solution",), ("method",), ("result", "evidence"), ("value",), ("limitation",)),
+    "club-showcase": (("opening", "background"), ("method",), ("result", "evidence"), ("value", "closing")),
+    "research": (("problem",), ("background",), ("method",), ("result", "evidence"), ("limitation",), ("conclusion", "closing")),
+}
+
+
+def _validate_scenario_roles(meta: dict[str, Any], slides: list[Any]) -> list[dict[str, str]]:
+    scenario = meta.get("scenario")
+    required = SCENARIO_REQUIRED_ROLE_GROUPS.get(scenario)
+    if not required:
+        return []
+    roles = [slide.get("role") for slide in slides if isinstance(slide, dict) and slide.get("role")]
+    errors: list[dict[str, str]] = []
+    if not roles:
+        return [{"path": ".slides", "message": f"scenario={scenario} requires story roles on slides"}]
+    for alternatives in required:
+        if not any(role in alternatives for role in roles):
+            errors.append({
+                "path": ".slides",
+                "message": f"scenario={scenario} requires one of story roles: {', '.join(alternatives)}",
+            })
+    # Core narrative roles must not appear after the conclusion/closing unless this is Q&A.
+    final_indices = [index for index, slide in enumerate(slides) if isinstance(slide, dict) and slide.get("role") in {"conclusion", "closing"}]
+    if final_indices:
+        last_final = min(final_indices)
+        late_core = [
+            str(slide.get("role"))
+            for slide in slides[last_final + 1:]
+            if isinstance(slide, dict) and slide.get("role") in {"background", "problem", "method", "evidence", "result", "solution", "value"}
+        ]
+        if late_core:
+            errors.append({"path": ".slides", "message": "core story roles cannot follow conclusion/closing: " + ", ".join(late_core)})
+    return errors
+
+
+def _validate_visual_semantics(meta: dict[str, Any], slides: list[Any]) -> list[dict[str, str]]:
+    errors: list[dict[str, str]] = []
+    exempt_kinds = {"cover", "section-divider", "quotation", "references", "appendix", "qa", "closing"}
+    for index, slide in enumerate(slides):
+        if not isinstance(slide, dict):
+            continue
+        visual = slide.get("visual")
+        kind = slide.get("kind", "content")
+        if meta.get("visual_text_ratio") == "visual-led" and kind not in exempt_kinds and not isinstance(visual, dict):
+            errors.append({"path": f".slides.{index}.visual", "message": "visual-led mode requires a visual on every content slide"})
+        if not isinstance(visual, dict):
+            continue
+        visual_type = str(visual.get("type", "")).casefold()
+        details = visual.get("details")
+        if visual_type not in {"timeline", "comparison", "process", "chart"}:
+            continue
+        if not isinstance(details, dict):
+            errors.append({"path": f".slides.{index}.visual.details", "message": f"visual type {visual_type} requires structured details"})
+            continue
+        if visual_type == "timeline" and not isinstance(details.get("stages"), list):
+            errors.append({"path": f".slides.{index}.visual.details.stages", "message": "timeline requires an ordered stages list with at least 3 stages"})
+        elif visual_type == "timeline" and len(details["stages"]) < 3:
+            errors.append({"path": f".slides.{index}.visual.details.stages", "message": "timeline requires at least 3 stages"})
+        if visual_type == "comparison":
+            if not isinstance(details.get("items"), list) or len(details["items"]) < 2:
+                errors.append({"path": f".slides.{index}.visual.details.items", "message": "comparison requires at least 2 items"})
+            if not isinstance(details.get("dimensions"), list) or not details["dimensions"]:
+                errors.append({"path": f".slides.{index}.visual.details.dimensions", "message": "comparison requires comparison dimensions"})
+        if visual_type == "process" and (not isinstance(details.get("steps"), list) or len(details["steps"]) < 2):
+            errors.append({"path": f".slides.{index}.visual.details.steps", "message": "process requires at least 2 steps"})
+        if visual_type == "chart":
+            required = ("measure", "unit", "scope", "source", "takeaway")
+            missing = [field for field in required if not details.get(field)]
+            if missing:
+                errors.append({"path": f".slides.{index}.visual.details", "message": "chart requires: " + ", ".join(missing)})
+    return errors
+
+
 def semantic_errors(data: Any) -> list[dict[str, str]]:
     """Return semantic errors that JSON Schema cannot express clearly."""
     if not isinstance(data, dict):
@@ -95,6 +171,9 @@ def semantic_errors(data: Any) -> list[dict[str, str]]:
                         "message": f"high-score mode requires {field}",
                     }
                 )
+
+    errors.extend(_validate_scenario_roles(meta, slides))
+    errors.extend(_validate_visual_semantics(meta, slides))
 
     revision_operation = data.get("revision_operation")
     if revision_operation in {"rewrite-slide", "compress", "expand", "add-evidence"}:

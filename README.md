@@ -19,6 +19,9 @@ Plugin install ID:
 student-presentation-suite@claude-personal
 ```
 
+The current PPT generation quality controls and known enforcement gaps are
+documented in [PPT-GENERATION-QUALITY-AUDIT.md](PPT-GENERATION-QUALITY-AUDIT.md).
+
 ## Features
 
 | Request | Skill | Result |
@@ -229,6 +232,9 @@ Depending on the request, `outputs/` may contain:
 <topic>-presentation.pptx
 <topic>-speaker-notes.md
 <topic>-preview.png
+<topic>-qa-manifest.json
+<topic>-style-adherence-report.json
+<topic>-delivery-report.json
 <topic>-change-summary.md
 <topic>-presentation.pdf
 <topic>-teleprompter.html
@@ -238,7 +244,14 @@ Depending on the request, `outputs/` may contain:
 ```
 
 The final response reports each absolute file path, slide count, rendered QA
-result, and the status: `complete`, `incomplete`, or `blocked`.
+result, and the status: `complete`, `incomplete`, or `blocked`. A `complete`
+delivery now requires a QA manifest bound to the current PPTX and rendered
+preview hashes; it records full-page inspection and zero remaining blockers.
+Standard visual styles also resolve to tokenized palette, spacing, typography,
+and line constraints, with a style-adherence report available for delivery QA.
+The release workflow also renders a temporary scenario matrix on Linux for
+coursework, English-classroom, defense, competition, club-showcase, research,
+software projects, data surveys, and school-template editing.
 
 ## Update And Uninstall
 
@@ -292,6 +305,9 @@ To recover from `blocked` state after fixing a missing dependency:
 ```powershell
 python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
 ```
+
+`unblock` returns the project to `intake_pending`; confirm the Production Summary
+again before resuming production.
 
 ### Where Are Generated Files?
 

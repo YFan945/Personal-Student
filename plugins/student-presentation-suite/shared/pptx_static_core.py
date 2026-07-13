@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import posixpath
 import zipfile
+from collections import Counter
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -16,6 +17,8 @@ NS = {
     "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
     "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
     "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
+    "c": "http://schemas.openxmlformats.org/drawingml/2006/chart",
+    "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
 }
 
 EMU_PER_CM = 360_000
@@ -38,6 +41,10 @@ DEFAULT_MAX_PPTX_BYTES = 80 * 1024 * 1024
 DEFAULT_SLIDE_WIDTH_EMU = 12_192_000
 DEFAULT_SLIDE_HEIGHT_EMU = 6_858_000
 EDGE_MARGIN_EMU = 72_000
+MIN_UNINTENDED_OVERLAP_EMU = 72_000
+ALIGNMENT_TOLERANCE_EMU = 38_100  # 3pt
+MIN_GUTTER_EMU = 228_600  # 18pt
+MIN_CARD_PADDING_EMU = 203_200  # 16pt
 PORTABLE_FONT_FAMILIES = {
     "arial",
     "calibri",
@@ -106,6 +113,38 @@ def relationship_target(zf: zipfile.ZipFile, source_part: str, type_suffix: str)
         if target and rel_type.endswith(type_suffix):
             return resolve_relationship_target(source_part, target)
     return None
+
+
+def relationship_id_target(zf: zipfile.ZipFile, source_part: str, rel_id: str | None) -> str | None:
+    if not rel_id:
+        return None
+    rels_name = rels_path(source_part)
+    if rels_name not in zf.namelist():
+        return None
+    root = ET.fromstring(zf.read(rels_name))
+    for rel in root.findall("./rel:Relationship", NS):
+        if rel.attrib.get("Id") == rel_id and rel.attrib.get("Target"):
+            return resolve_relationship_target(source_part, rel.attrib["Target"])
+    return None
+
+
+def picture_resolution(zf: zipfile.ZipFile, slide_name: str, picture: ET.Element) -> tuple[int, int] | None:
+    blip = picture.find(".//a:blip", NS)
+    media = relationship_id_target(zf, slide_name, blip.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed") if blip is not None else None)
+    if not media or media not in zf.namelist():
+        return None
+    try:
+        from PIL import Image  # noqa: PLC0415
+        from io import BytesIO  # noqa: PLC0415
+        with Image.open(BytesIO(zf.read(media))) as image:
+            return image.size
+    except (ImportError, OSError, ValueError):
+        return None
+
+
+def chart_part(zf: zipfile.ZipFile, slide_name: str, frame: ET.Element) -> str | None:
+    chart = frame.find(".//c:chart", NS)
+    return relationship_id_target(zf, slide_name, chart.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id") if chart is not None else None)
 
 
 def read_xml(zf: zipfile.ZipFile, part_name: str | None) -> ET.Element | None:
@@ -204,8 +243,11 @@ def inherited_font_sizes(
 
 
 def shape_bounds(el: ET.Element) -> dict[str, int] | None:
-    off = el.find(".//a:xfrm/a:off", NS)
-    ext = el.find(".//a:xfrm/a:ext", NS)
+    transform = el.find(".//a:xfrm", NS)
+    if transform is None:
+        transform = el.find(".//p:xfrm", NS)
+    off = transform.find("./a:off", NS) if transform is not None else None
+    ext = transform.find("./a:ext", NS) if transform is not None else None
     if off is None or ext is None:
         return None
     try:
@@ -254,6 +296,40 @@ def fill_colors(el: ET.Element) -> list[str]:
     return colors
 
 
+def _srgb_from_node(node: ET.Element | None) -> str | None:
+    if node is None:
+        return None
+    color = node.find(".//a:srgbClr", NS)
+    return color.attrib.get("val", "").upper() if color is not None else None
+
+
+def solid_fill_color(el: ET.Element) -> str | None:
+    fill = el.find("./p:spPr/a:solidFill", NS)
+    if fill is None:
+        fill = el.find("./p:spPr/a:noFill", NS)
+    return _srgb_from_node(fill)
+
+
+def text_colors(el: ET.Element) -> list[str]:
+    colors = []
+    for rpr in el.findall(".//a:rPr", NS):
+        color = _srgb_from_node(rpr)
+        if color:
+            colors.append(color)
+    return colors
+
+
+def relative_luminance(color: str) -> float:
+    channels = [int(color[index:index + 2], 16) / 255 for index in (0, 2, 4)]
+    linear = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4 for value in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def contrast_ratio(first: str, second: str) -> float:
+    high, low = sorted((relative_luminance(first), relative_luminance(second)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
 def font_families(el: ET.Element) -> list[str]:
     names = []
     for tag in ("latin", "ea", "cs"):
@@ -283,6 +359,11 @@ def estimate_text_overflow(
     font_size_pt: float | None,
     box_width_emu: int,
     box_height_emu: int,
+    *,
+    paragraphs: list[str] | None = None,
+    horizontal_margin_emu: int = 0,
+    vertical_margin_emu: int = 0,
+    bullet_indent_emu: int = 0,
 ) -> dict[str, float] | None:
     """预估文字在给定字号下是否会垂直溢出文本框。
 
@@ -290,15 +371,22 @@ def estimate_text_overflow(
     """
     if font_size_pt is None or font_size_pt <= 0:
         return None
-    box_width_cm = box_width_emu / EMU_PER_CM
-    box_height_cm = box_height_emu / EMU_PER_CM
+    box_width_cm = (box_width_emu - horizontal_margin_emu - bullet_indent_emu) / EMU_PER_CM
+    box_height_cm = (box_height_emu - vertical_margin_emu) / EMU_PER_CM
     if box_width_cm <= 0 or box_height_cm <= 0:
         return None
 
     char_width_ratio = CJK_CHAR_WIDTH_RATIO if is_cjk else LATIN_CHAR_WIDTH_RATIO
     char_width_cm = font_size_pt * char_width_ratio
     chars_per_line = max(1, int(box_width_cm / char_width_cm))
-    est_lines = (chars + chars_per_line - 1) // chars_per_line  # ceil
+    if paragraphs:
+        est_lines = sum(
+            max(1, (len(line) + chars_per_line - 1) // chars_per_line)
+            for paragraph in paragraphs
+            for line in (paragraph.split("\n") or [""])
+        )
+    else:
+        est_lines = (chars + chars_per_line - 1) // chars_per_line  # ceil
     line_height_cm = font_size_pt * LINE_HEIGHT_RATIO / 72 * 2.54
     text_height_cm = est_lines * line_height_cm
     fill_ratio = text_height_cm / box_height_cm if box_height_cm > 0 else 999
@@ -309,6 +397,9 @@ def estimate_text_overflow(
         "font_size_pt": font_size_pt,
         "char_width_cm": round(char_width_cm, 3),
         "chars_per_line": chars_per_line,
+        "horizontal_margin_cm": round(horizontal_margin_emu / EMU_PER_CM, 2),
+        "vertical_margin_cm": round(vertical_margin_emu / EMU_PER_CM, 2),
+        "bullet_indent_cm": round(bullet_indent_emu / EMU_PER_CM, 2),
         "est_lines": est_lines,
         "line_height_cm": round(line_height_cm, 2),
         "text_height_cm": round(text_height_cm, 1),
@@ -332,6 +423,77 @@ def iter_text_containers(root: ET.Element) -> list[tuple[str, ET.Element]]:
     return containers
 
 
+def iter_visible_objects(root: ET.Element) -> list[tuple[str, ET.Element]]:
+    """Return text, pictures, connectors, tables/charts, and grouped visible objects."""
+    objects: list[tuple[str, ET.Element]] = []
+    tags = (("shape", "p:sp"), ("picture", "p:pic"), ("connector", "p:cxnSp"), ("graphicFrame", "p:graphicFrame"), ("group", "p:grpSp"))
+    for kind, tag in tags:
+        objects.extend((kind, item) for item in root.findall(f".//{tag}", NS))
+    return objects
+
+
+def overlap_area(first: dict[str, int], second: dict[str, int]) -> int:
+    left = max(first["x"], second["x"])
+    top = max(first["y"], second["y"])
+    right = min(first["x"] + first["cx"], second["x"] + second["cx"])
+    bottom = min(first["y"] + first["cy"], second["y"] + second["cy"])
+    return max(0, right - left) * max(0, bottom - top)
+
+
+def is_background(bounds: dict[str, int], slide_width: int, slide_height: int) -> bool:
+    return bounds["cx"] >= slide_width * 0.95 and bounds["cy"] >= slide_height * 0.95
+
+
+def is_footer_shape(el: ET.Element) -> bool:
+    return placeholder_type(el) in {"ftr", "sldNum", "dt"}
+
+
+def text_box_padding_risk(el: ET.Element) -> bool:
+    """Only evaluate explicitly-set margins; inherited defaults remain renderer-owned."""
+    body = el.find("./p:txBody/a:bodyPr", NS)
+    if body is None:
+        return False
+    values = [body.attrib.get(key) for key in ("lIns", "rIns", "tIns", "bIns") if key in body.attrib]
+    try:
+        return any(int(value) < MIN_CARD_PADDING_EMU for value in values)
+    except ValueError:
+        return False
+
+
+def text_layout_inputs(el: ET.Element) -> tuple[list[str], int, int, int]:
+    paragraphs = [text_of(paragraph) for paragraph in el.findall(".//a:p", NS)]
+    body = el.find("./p:txBody/a:bodyPr", NS)
+    def value(name: str) -> int:
+        try:
+            return int(body.attrib.get(name, "0")) if body is not None else 0
+        except ValueError:
+            return 0
+    horizontal_margin = value("lIns") + value("rIns")
+    vertical_margin = value("tIns") + value("bIns")
+    indents = []
+    for ppr in el.findall(".//a:p/a:pPr", NS):
+        for name in ("marL", "indent"):
+            try:
+                indents.append(abs(int(ppr.attrib.get(name, "0"))))
+            except ValueError:
+                continue
+    return paragraphs, horizontal_margin, vertical_margin, max(indents, default=0)
+
+
+def expanded_connector_bounds(el: ET.Element, bounds: dict[str, int]) -> dict[str, int]:
+    line = el.find(".//a:ln", NS)
+    try:
+        thickness = max(int(line.attrib.get("w", "12700")) if line is not None else 12700, 12700)
+    except ValueError:
+        thickness = 12700
+    return {
+        "x": bounds["x"] - thickness,
+        "y": bounds["y"] - thickness,
+        "cx": max(bounds["cx"], thickness * 2) + thickness * 2,
+        "cy": max(bounds["cy"], thickness * 2) + thickness * 2,
+    }
+
+
 def slide_size(zf: zipfile.ZipFile) -> tuple[int, int]:
     root = read_xml(zf, "ppt/presentation.xml")
     if root is not None:
@@ -347,6 +509,7 @@ def slide_size(zf: zipfile.ZipFile) -> tuple[int, int]:
 def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
     findings = []
     detected_fonts: set[str] = set()
+    layout_pattern_counts: Counter[str] = Counter()
     try:
         size = path.stat().st_size
         if size > max_bytes:
@@ -372,6 +535,90 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                     layout_cache[layout_cache_key] = inherited_font_context_for_layout(zf, layout_name)
                 inherited_context = layout_cache[layout_cache_key]
                 bounded_items: list[tuple[int, dict[str, int]]] = []
+                visible_objects: list[tuple[str, int, dict[str, int]]] = []
+                connector_objects: list[tuple[int, ET.Element, dict[str, int]]] = []
+                for object_index, (object_kind, obj) in enumerate(iter_visible_objects(root), start=1):
+                    object_bounds = shape_bounds(obj)
+                    if object_bounds and not is_background(object_bounds, slide_width, slide_height):
+                        visible_objects.append((object_kind, object_index, object_bounds))
+                        if object_kind == "connector":
+                            connector_objects.append((object_index, obj, object_bounds))
+                    if object_kind == "picture" and object_bounds:
+                        resolution = picture_resolution(zf, slide_name, obj)
+                        if resolution:
+                            width_in = object_bounds["cx"] / 914400
+                            height_in = object_bounds["cy"] / 914400
+                            effective_ppi = min(resolution[0] / max(width_in, 0.01), resolution[1] / max(height_in, 0.01))
+                            if effective_ppi < 100:
+                                findings.append(
+                                    {
+                                        "slide": slide_id,
+                                        "shape": object_index,
+                                        "container_type": "picture",
+                                        "text_preview": "embedded picture",
+                                        "min_font_pt": None,
+                                        "font_size_source": "n/a",
+                                        "char_count": 0,
+                                        "detected_cjk": False,
+                                        "heading_shape": False,
+                                        "primary_title_shape": False,
+                                        "bounds": object_bounds,
+                                        "image_resolution_px": {"width": resolution[0], "height": resolution[1]},
+                                        "effective_ppi": round(effective_ppi, 1),
+                                        "risk": ["low-resolution-image-risk"],
+                                    }
+                                )
+                            source_ratio = resolution[0] / max(resolution[1], 1)
+                            display_ratio = object_bounds["cx"] / max(object_bounds["cy"], 1)
+                            if abs(source_ratio - display_ratio) / max(source_ratio, 0.01) > 0.08:
+                                findings.append(
+                                    {
+                                        "slide": slide_id,
+                                        "shape": object_index,
+                                        "container_type": "picture",
+                                        "text_preview": "embedded picture",
+                                        "min_font_pt": None,
+                                        "font_size_source": "n/a",
+                                        "char_count": 0,
+                                        "detected_cjk": False,
+                                        "heading_shape": False,
+                                        "primary_title_shape": False,
+                                        "bounds": object_bounds,
+                                        "image_resolution_px": {"width": resolution[0], "height": resolution[1]},
+                                        "risk": ["image-aspect-distortion-risk"],
+                                    }
+                                )
+                    if object_kind == "graphicFrame":
+                        chart_name = chart_part(zf, slide_name, obj)
+                        chart_root = read_xml(zf, chart_name)
+                        if chart_root is not None:
+                            chart_risk = []
+                            if chart_root.find(".//c:title", NS) is None:
+                                chart_risk.append("chart-missing-title-risk")
+                            chart_sizes = font_sizes(chart_root)
+                            if chart_sizes and min(chart_sizes) < 18:
+                                chart_risk.append("chart-label-font-size-below-18pt")
+                            if chart_risk:
+                                findings.append(
+                                    {
+                                        "slide": slide_id,
+                                        "shape": object_index,
+                                        "container_type": "chart",
+                                        "text_preview": "embedded chart",
+                                        "min_font_pt": min(chart_sizes) if chart_sizes else None,
+                                        "font_size_source": "chart-xml",
+                                        "char_count": 0,
+                                        "detected_cjk": False,
+                                        "heading_shape": False,
+                                        "primary_title_shape": False,
+                                        "bounds": object_bounds,
+                                        "risk": chart_risk,
+                                    }
+                                )
+                if visible_objects:
+                    signature_counts = Counter(kind for kind, _, _ in visible_objects)
+                    signature = ",".join(f"{kind}:{count}" for kind, count in sorted(signature_counts.items()))
+                    layout_pattern_counts[signature] += 1
                 for idx, (container_type, container) in enumerate(iter_text_containers(root), start=1):
                     txt = text_of(container)
                     if not txt:
@@ -388,6 +635,7 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                     bounds = shape_bounds(container)
                     chars = len(txt)
                     is_cjk = has_cjk(txt)
+                    paragraphs, horizontal_margin, vertical_margin, bullet_indent = text_layout_inputs(container)
                     risk = []
                     if min_size is None:
                         risk.append("font-size-not-explicit")
@@ -397,6 +645,8 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                         risk.append("chinese-font-size-below-22pt")
                     if primary_title and min_size is not None and min_size < 24:
                         risk.append("heading-font-size-below-24pt")
+                    if container_type == "shape" and text_box_padding_risk(container):
+                        risk.append("text-box-padding-below-16pt")
                     if bounds:
                         bounded_items.append((idx, bounds))
                         width_cm = max(bounds["cx"] / EMU_PER_CM, 0.1)
@@ -408,8 +658,12 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                         overflow = estimate_text_overflow(
                             chars, is_cjk, min_size,
                             bounds["cx"], bounds["cy"],
+                            paragraphs=paragraphs,
+                            horizontal_margin_emu=horizontal_margin,
+                            vertical_margin_emu=vertical_margin,
+                            bullet_indent_emu=bullet_indent,
                         )
-                        if overflow and overflow["fill_ratio"] > OVERFLOW_BOX_FILL_RATIO:
+                        if overflow and overflow["fill_ratio_raw"] > OVERFLOW_BOX_FILL_RATIO:
                             risk.append("text-vertical-overflow-risk")
                         if (
                             bounds["x"] < 0
@@ -425,10 +679,23 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                             or slide_height - (bounds["y"] + bounds["cy"]) < EDGE_MARGIN_EMU
                         ):
                             risk.append("edge-margin-risk")
+                        title_zone = slide_height * 0.16
+                        footer_start = slide_height * 0.95
+                        if primary_title and bounds["y"] + bounds["cy"] > title_zone:
+                            risk.append("title-outside-title-zone")
+                        if not is_footer_shape(container) and bounds["y"] + bounds["cy"] > footer_start:
+                            risk.append("footer-zone-invasion")
                     paragraph_limit = CHINESE_PARAGRAPH_LIMIT if is_cjk else LATIN_PARAGRAPH_LIMIT
                     if chars > paragraph_limit:
                         risk.append("paragraph-heavy-slide-text")
                     colors = fill_colors(container)
+                    background_color = solid_fill_color(container)
+                    foreground_colors = text_colors(container)
+                    if background_color:
+                        for foreground_color in foreground_colors:
+                            if contrast_ratio(background_color, foreground_color) < 4.5:
+                                risk.append("low-foreground-background-contrast")
+                                break
                     faces = font_families(container)
                     detected_fonts.update(faces)
                     if len(set(colors)) >= 6:
@@ -454,6 +721,10 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                             overflow_detail = estimate_text_overflow(
                                 chars, is_cjk, min_size,
                                 bounds["cx"], bounds["cy"],
+                                paragraphs=paragraphs,
+                                horizontal_margin_emu=horizontal_margin,
+                                vertical_margin_emu=vertical_margin,
+                                bullet_indent_emu=bullet_indent,
                             )
                             if overflow_detail:
                                 finding["overflow_estimate"] = overflow_detail
@@ -495,6 +766,130 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                                 "risk": slide_risks,
                             }
                         )
+                overlap_examples = []
+                gutter_examples = []
+                for first_index, (first_kind, first_id, first_bounds) in enumerate(visible_objects):
+                    if first_kind == "connector":
+                        continue
+                    for second_kind, second_id, second_bounds in visible_objects[first_index + 1:]:
+                        if second_kind == "connector":
+                            continue
+                        area = overlap_area(first_bounds, second_bounds)
+                        min_area = min(first_bounds["cx"] * first_bounds["cy"], second_bounds["cx"] * second_bounds["cy"])
+                        if area >= MIN_UNINTENDED_OVERLAP_EMU ** 2 and area / max(min_area, 1) >= 0.15:
+                            overlap_examples.append({"first": f"{first_kind}:{first_id}", "second": f"{second_kind}:{second_id}", "area_emu2": area})
+                        vertical_overlap = min(first_bounds["y"] + first_bounds["cy"], second_bounds["y"] + second_bounds["cy"]) - max(first_bounds["y"], second_bounds["y"])
+                        horizontal_overlap = min(first_bounds["x"] + first_bounds["cx"], second_bounds["x"] + second_bounds["cx"]) - max(first_bounds["x"], second_bounds["x"])
+                        horizontal_gap = max(second_bounds["x"] - (first_bounds["x"] + first_bounds["cx"]), first_bounds["x"] - (second_bounds["x"] + second_bounds["cx"]), 0)
+                        vertical_gap = max(second_bounds["y"] - (first_bounds["y"] + first_bounds["cy"]), first_bounds["y"] - (second_bounds["y"] + second_bounds["cy"]), 0)
+                        if (vertical_overlap > 0 and 0 < horizontal_gap < MIN_GUTTER_EMU) or (horizontal_overlap > 0 and 0 < vertical_gap < MIN_GUTTER_EMU):
+                            gutter_examples.append({"first": f"{first_kind}:{first_id}", "second": f"{second_kind}:{second_id}", "gap_emu": min(horizontal_gap or MIN_GUTTER_EMU, vertical_gap or MIN_GUTTER_EMU)})
+                if overlap_examples:
+                    findings.append(
+                        {
+                            "slide": slide_id,
+                            "shape": 0,
+                            "container_type": "slide",
+                            "text_preview": "slide-level object overlap",
+                            "min_font_pt": None,
+                            "font_size_source": "n/a",
+                            "char_count": 0,
+                            "detected_cjk": False,
+                            "heading_shape": False,
+                            "primary_title_shape": False,
+                            "risk": ["unexpected-object-overlap-risk"],
+                            "overlap_examples": overlap_examples[:10],
+                        }
+                    )
+                if gutter_examples:
+                    findings.append(
+                        {
+                            "slide": slide_id,
+                            "shape": 0,
+                            "container_type": "slide",
+                            "text_preview": "slide-level gutter spacing",
+                            "min_font_pt": None,
+                            "font_size_source": "n/a",
+                            "char_count": 0,
+                            "detected_cjk": False,
+                            "heading_shape": False,
+                            "primary_title_shape": False,
+                            "risk": ["insufficient-gutter-risk"],
+                            "gutter_examples": gutter_examples[:10],
+                        }
+                    )
+                alignment_examples = []
+                containment_examples = []
+                for first_index, (first_kind, first_id, first_bounds) in enumerate(visible_objects):
+                    if first_kind == "connector":
+                        continue
+                    for second_kind, second_id, second_bounds in visible_objects[first_index + 1:]:
+                        if second_kind == "connector":
+                            continue
+                        horizontal_overlap = min(first_bounds["x"] + first_bounds["cx"], second_bounds["x"] + second_bounds["cx"]) - max(first_bounds["x"], second_bounds["x"])
+                        vertical_gap = max(second_bounds["y"] - (first_bounds["y"] + first_bounds["cy"]), first_bounds["y"] - (second_bounds["y"] + second_bounds["cy"]), 0)
+                        x_delta = abs(first_bounds["x"] - second_bounds["x"])
+                        if horizontal_overlap > min(first_bounds["cx"], second_bounds["cx"]) * 0.7 and vertical_gap >= MIN_GUTTER_EMU and ALIGNMENT_TOLERANCE_EMU < x_delta <= MIN_GUTTER_EMU:
+                            alignment_examples.append({"first": f"{first_kind}:{first_id}", "second": f"{second_kind}:{second_id}", "left_edge_delta_emu": x_delta})
+                        first_contains_second = (
+                            first_bounds["x"] <= second_bounds["x"]
+                            and first_bounds["y"] <= second_bounds["y"]
+                            and first_bounds["x"] + first_bounds["cx"] >= second_bounds["x"] + second_bounds["cx"]
+                            and first_bounds["y"] + first_bounds["cy"] >= second_bounds["y"] + second_bounds["cy"]
+                        )
+                        second_contains_first = (
+                            second_bounds["x"] <= first_bounds["x"]
+                            and second_bounds["y"] <= first_bounds["y"]
+                            and second_bounds["x"] + second_bounds["cx"] >= first_bounds["x"] + first_bounds["cx"]
+                            and second_bounds["y"] + second_bounds["cy"] >= first_bounds["y"] + first_bounds["cy"]
+                        )
+                        if (first_contains_second or second_contains_first) and first_kind == second_kind == "picture":
+                            containment_examples.append({"first": f"{first_kind}:{first_id}", "second": f"{second_kind}:{second_id}"})
+                if alignment_examples:
+                    findings.append(
+                        {
+                            "slide": slide_id, "shape": 0, "container_type": "slide", "text_preview": "slide-level alignment",
+                            "min_font_pt": None, "font_size_source": "n/a", "char_count": 0, "detected_cjk": False,
+                            "heading_shape": False, "primary_title_shape": False,
+                            "risk": ["alignment-tolerance-risk"], "alignment_examples": alignment_examples[:10],
+                        }
+                    )
+                if containment_examples:
+                    findings.append(
+                        {
+                            "slide": slide_id, "shape": 0, "container_type": "slide", "text_preview": "picture containment",
+                            "min_font_pt": None, "font_size_source": "n/a", "char_count": 0, "detected_cjk": False,
+                            "heading_shape": False, "primary_title_shape": False,
+                            "risk": ["picture-contained-by-picture-review"], "containment_examples": containment_examples[:10],
+                        }
+                    )
+                connector_crossings = []
+                for connector_id, connector, connector_bounds in connector_objects:
+                    corridor = expanded_connector_bounds(connector, connector_bounds)
+                    for object_kind, object_id, object_bounds in visible_objects:
+                        if object_kind == "connector":
+                            continue
+                        area = overlap_area(corridor, object_bounds)
+                        # Ignore an endpoint touching a node; a meaningful intersection means a route crosses its interior.
+                        if area > MIN_UNINTENDED_OVERLAP_EMU ** 2:
+                            connector_crossings.append({"connector": connector_id, "crosses": f"{object_kind}:{object_id}"})
+                if connector_crossings:
+                    findings.append(
+                        {
+                            "slide": slide_id,
+                            "shape": 0,
+                            "container_type": "slide",
+                            "text_preview": "connector routing",
+                            "min_font_pt": None,
+                            "font_size_source": "n/a",
+                            "char_count": 0,
+                            "detected_cjk": False,
+                            "heading_shape": False,
+                            "primary_title_shape": False,
+                            "risk": ["connector-crosses-object-risk"],
+                            "connector_crossings": connector_crossings[:10],
+                        }
+                    )
     except (FileNotFoundError, PermissionError, OSError, zipfile.BadZipFile, KeyError, ET.ParseError) as exc:
         return {
             "file": str(path),
@@ -509,5 +904,9 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
             "Common layout/master inherited font sizes are resolved, but PowerPoint rendering may still differ."
         ),
         "font_families": sorted(detected_fonts),
+        "deck_statistics": {
+            "layout_pattern_counts": dict(sorted(layout_pattern_counts.items())),
+            "distinct_layout_patterns": len(layout_pattern_counts),
+        },
         "findings": findings,
     }

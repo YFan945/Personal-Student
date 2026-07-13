@@ -91,6 +91,9 @@ project's `outputs/` directory when the environment variable is unavailable:
 - `<topic>-presentation.pptx`
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` or contact sheet
+- `<topic>-qa-manifest.json` bound to the delivered PPTX and rendered previews
+- `<topic>-style-adherence-report.json` for the selected visual style
+- `<topic>-delivery-report.json` with final gate evidence
 - `<topic>-change-summary.md` for existing-deck improvements
 - requested PDF, HTML teleprompter, training cards, references, quality report,
   and revision manifest
@@ -119,11 +122,18 @@ PPTX delivery requires:
 - text extraction sanity check;
 - LibreOffice rendering and Poppler page images;
 - visual inspection and at least one fix-and-verify loop;
+- a QA manifest with matching PPTX/preview hashes, full slide coverage, and zero blockers;
+- resolved design tokens and a style-adherence report when a standard visual style is selected;
 - strict delivery-check success;
 - separate change summary for an improved existing deck.
 
-Results use `complete`, `incomplete`, or `blocked`. Static XML findings alone are
-not proof of rendered clipping or readability.
+Results use `complete`, `incomplete`, or `blocked`. `complete` additionally
+requires `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest>`.
+Static XML findings alone are not proof of rendered clipping or readability.
+CI also creates and renders a temporary scenario matrix for coursework, English
+classroom, defense, competition, club showcase, research, software project,
+data survey, and school-template editing; no generated deck or preview is
+committed to the repository.
 
 ## Runtime
 

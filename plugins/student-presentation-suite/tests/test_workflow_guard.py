@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -47,8 +49,14 @@ class HookDecisionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             state_path = Path(tmp) / "outputs" / ".student-presentation-state.json"
             state_path.parent.mkdir()
+            summary = Path(tmp) / "summary.md"
+            summary.write_text("confirmed", encoding="utf-8")
             state_path.write_text(
-                json.dumps({"state": "intake_confirmed"}), encoding="utf-8"
+                json.dumps({
+                    "state": "intake_confirmed",
+                    "summary_file": str(summary),
+                    "summary_sha256": module.sha256_file(summary),
+                }), encoding="utf-8"
             )
             with mock.patch.dict("os.environ", {}, clear=True):
                 decision = module.hook_decision(
@@ -72,8 +80,14 @@ class HookDecisionTests(unittest.TestCase):
                         Path(tmp) / "outputs" / ".student-presentation-state.json"
                     )
                     state_path.parent.mkdir()
+                    summary = Path(tmp) / "summary.md"
+                    summary.write_text("confirmed", encoding="utf-8")
                     state_path.write_text(
-                        json.dumps({"state": state}), encoding="utf-8"
+                        json.dumps({
+                            "state": state,
+                            "summary_file": str(summary),
+                            "summary_sha256": module.sha256_file(summary),
+                        }), encoding="utf-8"
                     )
                     with mock.patch.dict("os.environ", {}, clear=True):
                         decision = module.hook_decision(
@@ -111,6 +125,19 @@ class HookDecisionTests(unittest.TestCase):
             "deny",
             decision["hookSpecificOutput"]["permissionDecision"],
         )
+
+    def test_missing_summary_hash_blocks_production(self) -> None:
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "outputs" / ".student-presentation-state.json"
+            state_path.parent.mkdir()
+            state_path.write_text(json.dumps({"state": "intake_confirmed"}), encoding="utf-8")
+            with mock.patch.dict("os.environ", {}, clear=True):
+                decision = module.hook_decision({
+                    "tool_name": "Bash", "cwd": tmp,
+                    "tool_input": {"command": "node run_with_pptxgenjs.js deck.js"},
+                })
+        self.assertIsNotNone(decision)
 
     def test_ignores_unrelated_bash(self) -> None:
         module = load_module()
@@ -290,6 +317,25 @@ class StateTransitionTests(unittest.TestCase):
                 self.assertFalse(
                     module.transition_allowed(state, state)
                 )
+
+    def test_complete_requires_valid_qa_manifest(self) -> None:
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            with zipfile.ZipFile(pptx, "w") as archive:
+                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
+            manifest = root / "qa.json"
+            manifest.write_text(json.dumps({
+                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                "slide_count": 1,
+                "rendered_page_count": 1,
+                "scenario_contract_passed": True,
+                "visual_inspection": {"completed": True, "remaining_blockers": 0},
+            }), encoding="utf-8")
+            self.assertEqual([], module.validate_completion_manifest(manifest, pptx))
+            manifest.write_text("{}", encoding="utf-8")
+            self.assertTrue(module.validate_completion_manifest(manifest, pptx))
 
 
 class FastPreScanTests(unittest.TestCase):

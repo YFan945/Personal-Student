@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sys
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -101,6 +102,53 @@ def transition_allowed(before: str, after: str) -> bool:
     return SEQUENCE.index(after) == SEQUENCE.index(before) + 1
 
 
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def has_valid_summary(state: dict[str, Any] | None) -> bool:
+    if not state or not state.get("summary_sha256") or not state.get("summary_file"):
+        return False
+    try:
+        return sha256_file(Path(state["summary_file"])) == state["summary_sha256"]
+    except OSError:
+        return False
+
+
+def count_slides(pptx: Path) -> int | None:
+    try:
+        with zipfile.ZipFile(pptx) as archive:
+            return sum(
+                name.startswith("ppt/slides/slide") and name.endswith(".xml")
+                for name in archive.namelist()
+            )
+    except (OSError, zipfile.BadZipFile):
+        return None
+
+
+def validate_completion_manifest(manifest_path: Path | None, pptx: Path | None) -> list[str]:
+    if manifest_path is None or pptx is None:
+        return ["转换到 complete 必须提供 --qa-manifest 和 --pptx。"]
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"无法读取 QA manifest: {exc}"]
+    if not isinstance(manifest, dict) or not pptx.is_file():
+        return ["QA manifest 或 PPTX 无效。"]
+    slide_count = count_slides(pptx)
+    inspection = manifest.get("visual_inspection")
+    errors: list[str] = []
+    if manifest.get("pptx_sha256") != sha256_file(pptx):
+        errors.append("QA manifest 的 pptx_sha256 与当前 PPTX 不一致。")
+    if slide_count is None or manifest.get("slide_count") != slide_count or manifest.get("rendered_page_count") != slide_count:
+        errors.append("QA manifest 的页数证据与 PPTX 不一致。")
+    if not isinstance(inspection, dict) or inspection.get("completed") is not True:
+        errors.append("QA manifest 未记录完成视觉检查。")
+    elif inspection.get("remaining_blockers") != 0:
+        errors.append("QA manifest 仍有未解决 blocker。")
+    return errors
+
+
 def _contains_production_command(command: str) -> bool:
     """使用正则精确匹配生产脚本调用，避免注释/echo 中的子串误判。"""
     return any(pattern.search(command) for pattern in _PRODUCTION_PATTERNS)
@@ -117,7 +165,7 @@ def hook_decision(payload: dict[str, Any]) -> dict[str, Any] | None:
     state_path = default_state_file(cwd)
     state = load_state(state_path)
     current = state.get("state") if state else None
-    allowed = current in {"intake_confirmed", "planned", "producing", "qa"}
+    allowed = current in {"intake_confirmed", "planned", "producing", "qa"} and has_valid_summary(state)
     if allowed:
         return None
     if current is None:
@@ -209,12 +257,12 @@ def state_command(args: argparse.Namespace) -> int:
                 f"当前状态为 '{before}'，只有 'blocked' 状态才能 unblock。"
                 f"如需强制重置，请使用 'reset' 命令。"
             )
-        # unblock 回到 intake_confirmed，需要重新确认摘要
-        current["state"] = "intake_confirmed"
+        # unblock 必须重新走确认门禁，不能留在无 hash 的 intake_confirmed。
+        current["state"] = "intake_pending"
         current["summary_sha256"] = None
         save_state(state_path, current)
         print(
-            f"✅ 状态已从 blocked 恢复到 intake_confirmed → {state_path}\n"
+            f"✅ 状态已从 blocked 恢复到 intake_pending → {state_path}\n"
             f"⚠ 注意：您需要重新确认 Production Summary 后才能继续生产。"
         )
 
@@ -263,6 +311,10 @@ def state_command(args: argparse.Namespace) -> int:
                 f"无效的状态转换: {before} → {args.to}\n"
                 f"从 '{before}' 只能转换到: {', '.join(valid_next) if valid_next else '无法转换，请使用 reset'}"
             )
+        if args.to == "complete":
+            errors = validate_completion_manifest(args.qa_manifest, args.pptx)
+            if errors:
+                raise SystemExit("无法完成交付：\n- " + "\n- ".join(errors))
         current["state"] = args.to
         save_state(state_path, current)
         print(f"✅ 状态转换: {before} → {args.to}")
@@ -298,7 +350,7 @@ def main() -> None:
 
     unblock = sub.add_parser(
         "unblock",
-        help="从 blocked 状态恢复到 intake_confirmed",
+        help="从 blocked 状态恢复到 intake_pending，并重新确认摘要",
     )
     unblock.add_argument("--state-file", type=Path, help="状态文件路径")
 
@@ -318,6 +370,8 @@ def main() -> None:
         required=True,
         help=f"目标状态（正向: {', '.join(SEQUENCE[2:])}；终态: {', '.join(sorted(TERMINAL))}）",
     )
+    transition.add_argument("--qa-manifest", type=Path, help="转换到 complete 所需的 QA manifest")
+    transition.add_argument("--pptx", type=Path, help="转换到 complete 所需的交付 PPTX")
 
     raise SystemExit(state_command(parser.parse_args()))
 

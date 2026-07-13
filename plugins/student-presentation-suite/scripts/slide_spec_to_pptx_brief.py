@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 
 from shared.slide_spec_validation import semantic_errors
 from shared.runtime_paths import output_root
+from shared.design_tokens import resolve_design_tokens
 
 
 def load_optional_dependencies():
@@ -177,6 +178,7 @@ def build_brief(
     quality_report_path = resolved_output_dir / f"{output_prefix}-quality-report.json"
     teleprompter_path = resolved_output_dir / f"{output_prefix}-teleprompter.html"
     revision_manifest_path = resolved_output_dir / f"{output_prefix}-revision-manifest.json"
+    delivery_report_path = resolved_output_dir / f"{output_prefix}-delivery-report.json"
     total_timing = sum(int(slide.get("timing_sec", 0)) for slide in slides)
     members = meta.get("members") or []
     member_text = ", ".join(members) if members else "not specified"
@@ -189,6 +191,7 @@ def build_brief(
         or data.get("change_summary_required")
         or data.get("revision_operation")
     )
+    design_tokens = resolve_design_tokens(meta.get("visual_style"))
 
     lines = [
         "# Claude PPTX Production Brief",
@@ -208,6 +211,7 @@ def build_brief(
         f"- PPTX: `{pptx_path}`",
         f"- Notes: `{notes_path}`",
         f"- Preview/contact sheet: `{preview_path}` or a contact sheet in the same directory",
+        f"- Delivery report: `{delivery_report_path}`",
     ]
     export_formats = meta.get("export_formats") or meta.get("deliverables") or []
     if "pdf" in export_formats:
@@ -258,6 +262,19 @@ def build_brief(
             ),
         ]
     )
+    lines.extend(
+        [
+            "",
+            "## Resolved Design Tokens",
+            "These are production constraints, not optional style suggestions. Keep the same palette roles, "
+            "type scale, spacing system, and line semantics throughout the deck.",
+            "```json",
+            json.dumps(design_tokens, ensure_ascii=False, indent=2),
+            "```",
+        ]
+    )
+    if design_tokens.get("custom_style"):
+        lines.append("- Custom visual style: apply the shared safety tokens; record any approved palette override in the QA report.")
     if is_improvement:
         lines.extend(
             [
@@ -324,7 +341,7 @@ def build_brief(
             lines.append(
                 f"- **Slide {w['slide_id']}** ({w['title']}): "
                 f"{w['chars']} 字符 → 约 {w['est_lines']} 行 / {w['text_height_cm']}cm "
-                f"({w['fill_ratio']}% 盒高)。{w['recommendation']}"
+                f"({w['fill_ratio_pct']}% 盒高)。{w['recommendation']}"
             )
     else:
         lines.extend(
@@ -378,7 +395,7 @@ def build_brief(
             "- Run `python -m markitdown output.pptx` and inspect extracted text.",
             "- Render with LibreOffice, then convert PDF pages to images with Poppler.",
             "- Inspect rendered images or a contact sheet and complete at least one fix-and-verify loop.",
-            "- Run `python \"${CLAUDE_PLUGIN_ROOT}/skills/student-presentation-ppt/scripts/pptx_delivery_check.py\" --pptx <pptx> --notes <notes> --preview <preview> --strict --json`.",
+            f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/skills/student-presentation-ppt/scripts/pptx_delivery_check.py\" --pptx <pptx> --notes <notes> --preview <preview> --qa-manifest <manifest> --output \"{delivery_report_path}\" --strict --json`.",
             f"- For existing deck improvements, verify `{change_summary_path}` lists kept content, changed slides, unresolved risks, and QA results.",
             f"- When versioning is enabled, store the versioned package under `{resolved_output_dir / 'versions'}` and write `{revision_manifest_path}`.",
             "- Final response must report file existence, slide count, static XML risks, visual QA status, and limitations.",
