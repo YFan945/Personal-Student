@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import hashlib
 import json
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -344,7 +345,8 @@ class FastPreScanTests(unittest.TestCase):
     def test_skip_json_parsing_for_unrelated_input(self) -> None:
         """非生产命令应跳过 JSON 解析"""
         module = load_module()
-        result = module._check_and_parse_stdin()
+        with mock.patch.object(sys.stdin.buffer, "read", return_value=b""):
+            result = module._check_and_parse_stdin()
         # 无 stdin 输入时应返回 None
         self.assertIsNone(result)
 
@@ -381,6 +383,10 @@ class ProductionPatternTests(unittest.TestCase):
             "node run_with_pptxgenjs.js deck.js",
             "python pptx_delivery_check.py --pptx x.pptx",
             "python create_revision_manifest.py old new --strict",
+            "py slide_spec_to_pptx_brief.py spec.yaml",
+            "python3.12 build_support_outputs.py --json",
+            r"C:\Python312\python.exe slide_spec_to_pptx_brief.py spec.yaml",
+            "uv run python slide_spec_to_pptx_brief.py spec.yaml",
         ]
         for cmd in commands:
             with self.subTest(cmd=cmd):

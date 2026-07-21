@@ -82,6 +82,9 @@ Evidence Ledger 引用、锁定页面及 revision 元数据；旧版 Slide Spec 
 - `<topic>-presentation.pptx`
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` 或 contact sheet
+- `<topic>-qa-manifest.json`（与最终 PPTX 及渲染预览绑定）
+- `<topic>-style-adherence-report.json`（所选视觉风格 token 一致性）
+- `<topic>-delivery-report.json`（最终门禁证据）
 - 已有 deck 改进时的 `<topic>-change-summary.md`
 - 按需输出 PDF、HTML 提词版、训练卡、引用清单、质量报告和 revision manifest
 
@@ -107,11 +110,12 @@ PPTX 交付要求：
 - 文本提取检查；
 - LibreOffice 渲染和 Poppler 页面图片；
 - 视觉检查及至少一轮修复再验证；
+- QA manifest 的 PPTX/preview hash 一致、覆盖全部页面且 blocker 数为零；
+- 使用标准视觉风格时，提供解析后的 design tokens 与 style-adherence report；
 - 严格 delivery check 通过；
 - 已有 deck 改进提供独立 change summary。
 
-最终状态使用 `complete`、`incomplete` 或 `blocked`。静态 XML 风险不能单独
-证明渲染后的裁切或可读性问题。
+`complete` 还额外要求执行 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest>`。CI 也会为 coursework、英语课堂汇报、答辩、竞赛、社团展示、研究展示、软件项目、数据调研和学校模板编辑等场景创建并渲染临时矩阵；不会把生成 deck 或预览提交到仓库。
 
 ## Runtime
 

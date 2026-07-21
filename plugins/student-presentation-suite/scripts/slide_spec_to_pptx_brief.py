@@ -460,7 +460,6 @@ def build_brief(
         visual = slide.get("visual") or {}
         kind = slide.get("kind", "content")
         slide_copy = slide.get("slide_copy") or ""
-        content_text = text_block(slide["content"], "").strip()
         claim = slide.get("claim", "")
 
         # 根据 slide kind 给出代码提示

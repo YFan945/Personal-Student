@@ -6,12 +6,18 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+_SEMVER_RE = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*))?"
+    r"(?:\+([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*))?$"
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -27,6 +33,8 @@ def git_output(*args: str) -> str:
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=20,
     )
     if proc.returncode != 0:
@@ -134,6 +142,12 @@ def main() -> None:
                 "package-lock": lock.get("version"),
                 "package-lock root": (lock.get("packages") or {}).get("", {}).get("version"),
             }
+            if any(ver is None for ver in versions.values()):
+                errors.append(f"{name}: one or more version fields are missing")
+                continue
+            for source, ver in versions.items():
+                if not _SEMVER_RE.fullmatch(ver):
+                    errors.append(f"{name}: {source} version is not valid semver: {ver}")
             if len(set(versions.values())) != 1:
                 errors.append(f"{name}: synchronized versions differ: {versions}")
             for field in ("homepage", "repository", "license", "keywords"):

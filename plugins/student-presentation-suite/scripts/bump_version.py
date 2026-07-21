@@ -5,9 +5,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Callable
+
+
+_SEMVER_RE = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*))?"
+    r"(?:\+([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*))?$"
+)
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
@@ -64,45 +73,93 @@ def current_version() -> str:
     return manifest.get("version", "0.0.0")
 
 
+def _extract_version(data: dict, desc: str) -> str:
+    if desc == "plugins[0].version":
+        try:
+            return data["plugins"][0]["version"]
+        except (KeyError, IndexError, TypeError):
+            return "?"
+    return data.get("version", "?")
+
+
 def bump(target: str, dry_run: bool = False) -> int:
     """更新所有版本字段并同步 lockfile。
 
     返回 0 表示成功，非 0 表示失败。
     """
+    if not _SEMVER_RE.fullmatch(target):
+        print(f"✗ 目标版本不是合法 semver: {target}", file=sys.stderr)
+        return 1
+
     old_version = current_version()
     print(f"当前版本: {old_version} → {target}")
 
-    if not dry_run:
-        # 先同步 lockfile，成功后再写 JSON 文件，确保原子性
-        print("  正在同步 package-lock.json ...")
-        result = subprocess.run(
-            ["npm", "--prefix", str(PLUGIN_ROOT), "install", "--package-lock-only"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode != 0:
-            print(f"✗ npm install --package-lock-only 失败: {result.stderr}", file=sys.stderr)
-            print("⚠ JSON 文件未修改，请解决 npm 问题后重试。", file=sys.stderr)
-            return 1
-        print("  ✓ package-lock.json 已同步")
-
+    # 先加载所有文件，避免中途失败留下半完成状态
+    loaded: list[tuple[Path, str, Callable, dict]] = []
     for path, desc, updater in FILES_TO_UPDATE:
         try:
             data = read_json(path)
         except (OSError, json.JSONDecodeError) as exc:
             print(f"✗ 无法读取 {path}: {exc}", file=sys.stderr)
             return 1
-        if dry_run:
-            new_data = updater(data, target)
-            print(f"  [dry-run] {path.name} {desc}: {new_data.get('version', '?')}")
-        else:
-            updated = updater(data, target)
-            write_json(path, updated)
-            print(f"  ✓ {path.name} {desc}: {target}")
+        loaded.append((path, desc, updater, data))
 
-    print(f"\n{'[dry-run] ' if dry_run else ''}版本升级完成: {old_version} → {target}")
+    if dry_run:
+        for path, desc, updater, data in loaded:
+            new_data = updater(data, target)
+            print(f"  [dry-run] {path.name} {desc}: {_extract_version(new_data, desc)}")
+        print(f"\n[dry-run] 版本升级完成: {old_version} → {target}")
+        return 0
+
+    # 先写 package.json，再让 npm 同步 lockfile，最后写其余 JSON，确保 lockfile 版本一致
+    package_item = next((item for item in loaded if item[0].name == "package.json"), None)
+    if package_item is None:
+        print("✗ 未找到 package.json", file=sys.stderr)
+        return 1
+    package_path, package_desc, package_updater, package_old = package_item
+    package_new = package_updater(package_old, target)
+    write_json(package_path, package_new)
+    print(f"  ✓ {package_path.name} {package_desc}: {target}")
+
+    def _revert_package() -> None:
+        """npm 失败时回滚 package.json，避免半升级状态。"""
+        try:
+            write_json(package_path, package_old)
+        except OSError:
+            pass
+
+    print("  正在同步 package-lock.json ...")
+    try:
+        result = subprocess.run(
+            ["npm", "--prefix", str(PLUGIN_ROOT), "install", "--package-lock-only"],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            shell=sys.platform == "win32",
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        _revert_package()
+        print(f"✗ npm 调用失败: {exc}", file=sys.stderr)
+        print("⚠ package.json 已回滚，请解决 npm 问题后重试。", file=sys.stderr)
+        return 1
+    if result.returncode != 0:
+        _revert_package()
+        print(f"✗ npm install --package-lock-only 失败: {result.stderr}", file=sys.stderr)
+        print("⚠ package.json 已回滚，请解决 npm 问题后重试。", file=sys.stderr)
+        return 1
+    print("  ✓ package-lock.json 已同步")
+
+    for path, desc, updater, data in loaded:
+        if path.name == "package.json":
+            continue
+        updated = updater(data, target)
+        write_json(path, updated)
+        print(f"  ✓ {path.name} {desc}: {target}")
+
+    print(f"\n版本升级完成: {old_version} → {target}")
     return 0
 
 

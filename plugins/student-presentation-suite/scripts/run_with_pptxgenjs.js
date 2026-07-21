@@ -6,8 +6,10 @@ const path = require("node:path");
 const Module = require("node:module");
 
 function npmGlobalRoot() {
-  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  const result = spawnSync(npm, ["root", "-g"], { encoding: "utf8", shell: false });
+  // On Windows, Node 20+ blocks direct spawn of .cmd/.bat without shell.
+  // On Linux/macOS, spawning npm without shell is fine and avoids shell quoting issues.
+  const isWin = process.platform === "win32";
+  const result = spawnSync("npm", ["root", "-g"], { encoding: "utf8", shell: isWin });
   return result.status === 0 ? result.stdout.trim() : "";
 }
 

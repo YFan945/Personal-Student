@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -46,6 +47,11 @@ REQUIRED_FILES = [
 FORBIDDEN_PATH_PARTS = {".codex-plugin", "agents", "__pycache__", ".pytest_cache", "node_modules"}
 FORBIDDEN_SUFFIXES = {".pyc", ".pptx", ".png"}
 REQUIRED_METADATA = ("homepage", "repository", "license", "keywords")
+_SEMVER_RE = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*))?"
+    r"(?:\+([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*))?$"
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,6 +67,8 @@ def run_git(*args: str) -> list[str]:
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=20,
     )
     if proc.returncode != 0:
@@ -101,7 +109,7 @@ def check_manifest(errors: list[str]) -> None:
         return
     if manifest.get("name") != "student-presentation-suite":
         errors.append("manifest name 必须为 student-presentation-suite")
-    # 验证版本号非空
+    # 验证版本号非空且符合 semver
     version_fields = {
         "manifest": manifest.get("version", ""),
         "package.json": package.get("version", ""),
@@ -109,12 +117,14 @@ def check_manifest(errors: list[str]) -> None:
     for source, ver in version_fields.items():
         if not ver:
             errors.append(f"{source} 的版本号为空，必须提供有效版本")
-            return  # 空版本无法比较，提前退出
-    # 不硬编码版本号，只检查各文件一致性
+        elif not _SEMVER_RE.fullmatch(ver):
+            errors.append(f"{source} 的版本号不是合法 semver: {ver}")
+    # 不硬编码版本号，只检查各文件一致性（空版本已在上面拦截）
     version_error = _version_compare(version_fields)
     if version_error:
         errors.append(version_error)
-    if manifest.get("author", {}).get("name") in {None, "", "Local developer"}:
+    author = manifest.get("author") if isinstance(manifest.get("author"), dict) else {}
+    if author.get("name") in {None, "", "Local developer"}:
         errors.append("manifest author.name 必须提供发布者名称")
     if not any("document-skills@anthropic-agent-skills" in dep
                for dep in manifest.get("dependencies", [])):
@@ -127,14 +137,18 @@ def check_manifest(errors: list[str]) -> None:
 
 
 def check_runtime_contract(errors: list[str]) -> None:
-    combined = "\n".join(
-        (ROOT / rel).read_text(encoding="utf-8")
-        for rel in (
-            "skills/student-presentation-ppt/SKILL.md",
-            "skills/student-presentation-review/SKILL.md",
-            "skills/student-presentation-ppt/references/pptx-production.md",
+    try:
+        combined = "\n".join(
+            (ROOT / rel).read_text(encoding="utf-8")
+            for rel in (
+                "skills/student-presentation-ppt/SKILL.md",
+                "skills/student-presentation-review/SKILL.md",
+                "skills/student-presentation-ppt/references/pptx-production.md",
+            )
         )
-    )
+    except OSError as exc:
+        errors.append(f"运行时契约文件读取失败: {exc}")
+        return
     for expected in (
         "${CLAUDE_PLUGIN_ROOT}",
         "${CLAUDE_PROJECT_DIR}",
@@ -148,6 +162,31 @@ def check_runtime_contract(errors: list[str]) -> None:
     for forbidden in ("artifact-tool", "Presentations` skill", "agents/openai.yaml"):
         if forbidden in combined:
             errors.append(f"运行时指令包含 Codex-only 文本: {forbidden}")
+
+
+def check_hooks(errors: list[str]) -> None:
+    """验证 hooks.json 格式及其指向的脚本存在。"""
+    hooks_path = ROOT / "hooks" / "hooks.json"
+    try:
+        hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        errors.append(f"hooks.json 解析失败: {exc}")
+        return
+    pre = hooks.get("hooks", {}).get("PreToolUse")
+    if not isinstance(pre, list) or not pre:
+        errors.append("hooks.json 缺少 PreToolUse 配置")
+        return
+    entry = pre[0]
+    if entry.get("matcher") != "Bash":
+        errors.append("hooks.json PreToolUse matcher 必须是 Bash")
+    commands = [h.get("command") for h in entry.get("hooks", []) if h.get("type") == "command"]
+    if not commands:
+        errors.append("hooks.json PreToolUse 中缺少 command 类型 hook")
+        return
+    for cmd in commands:
+        # The command references workflow_guard.py by path ending.
+        if "workflow_guard.py" not in cmd:
+            errors.append(f"hooks.json 命令未指向 workflow_guard.py: {cmd}")
 
 
 def check_tracked_files(errors: list[str]) -> None:
@@ -176,6 +215,7 @@ def main() -> None:
     args = parse_args()
     errors: list[str] = []
     check_structure(errors)
+    check_hooks(errors)
     check_manifest(errors)
     check_runtime_contract(errors)
     check_tracked_files(errors)

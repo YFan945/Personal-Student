@@ -15,7 +15,7 @@ description: Use only for a clearly student-owned academic context when the user
 - 每页一条核心信息，≤ 4 条要点，≤ 80 中文字 / 40 英文词
 - 避免 AI 套话（"在当今快速发展..."、"具有重要意义..."）；用课程/项目具体细节替代
 - 按目录→逐页主张→PPT文案→演讲版→Slide Spec 分层生成
-- 生成前必须确认完整 Production Summary（18 项）— 用户说"你决定"只填充推荐值，不跳过确认
+- 生成前必须确认完整 Production Summary（20 项）— 用户说"你决定"只填充推荐值，不跳过确认
 - **intake 阶段必须使用 `AskUserQuestion` 工具逐个让用户选择未确认字段**，禁止用文本列出选项让用户打字回复
 - 状态机：`intake_pending → intake_confirmed → planned → producing → qa → complete`
 - 输出写入 `${CLAUDE_PROJECT_DIR}/outputs`，不得覆盖源文件
@@ -53,7 +53,7 @@ description: Use only for a clearly student-owned academic context when the user
 5. 对 Slide Spec 输入运行 `slide_spec_to_pptx_brief.py` 生成 Claude pptx brief。
 6. 转为 `producing`，遵循 `document-skills` 的 `pptx` skill：新建 → `pptxgenjs.md`，编辑 → `editing.md`。
 7. 生成的 Node 脚本通过 `run_with_pptxgenjs.js` 运行。
-8. 用 `build_support_outputs.py` 构建辅助输出。转为 `qa`；运行文本提取、渲染、视觉检查、质量报告、至少一次修复-验证循环，写入带 PPTX/preview hash、页数、检查页和 blocker 数的 `qa-manifest.json`。用 `style_adherence_check.py --pptx <pptx> --visual-style <style> --output <style-report> --strict` 检查 token 一致性，再运行 `pptx_delivery_check.py --qa-manifest <manifest> --style-report <style-report> --strict --json`。编辑时运行 `create_revision_manifest.py --strict`。用 `manage_versions.py` 做版本快照。所有门禁通过后用 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest>` 完成状态转换。
+8. 用 `build_support_outputs.py` 构建辅助输出。转为 `qa`；运行文本提取、渲染、视觉检查、质量报告、至少一次修复-验证循环，写入带 PPTX/preview hash、页数、检查页和 blocker 数的 `qa-manifest.json`。用 `style_adherence_check.py --pptx <pptx> --visual-style <style> --output <style-report> --strict` 检查 token 一致性，再运行 `pptx_delivery_check.py --pptx <pptx> --qa-manifest <manifest> --style-report <style-report> --strict --json`。编辑时运行 `create_revision_manifest.py --strict`。用 `manage_versions.py` 做版本快照。所有门禁通过后用 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest>` 完成状态转换。
 
 ## 输出契约
 

@@ -100,25 +100,25 @@ Batch fields so that the most impactful decisions come first. Typical grouping:
 
 **Round 3 — 视觉与素材**:
 - `Visual style` → **两步选择**（样式 > 4 种时强制分步）:
-  - **Step A — 风格方向**：从 `visual-style-menu.md` 按场景归类为 4 个方向，让用户先选方向
+  - **Step A — 风格方向**：按场景归类为 4 个方向，让用户先选方向（方向定义与示例见 `visual-style-menu.md`）
     → 学术严谨类 / 商务专业类 / 科技现代类 / 创意人文类
     （每个方向下列出包含的样式名和中文别名，让用户知道里面有什么）
   - **Step B — 具体样式**：根据用户选的方向，展示该方向下的 3-4 个具体样式，标注最佳推荐
     → 如果某方向超过 4 个样式，拆成 2 轮
   - **快捷出口**：Step A 的选项之一始终是 "显示全部 14 种样式"，选此则分 4 轮逐一展示所有样式
-  - **风格方向归类参考**（从 `visual-style-menu.md` 来，带 `*` 的样式属于多个方向）:
+  - **风格方向归类参考**（带 `*` 的样式属于多个方向）:
     - 学术严谨类：Academic Rigorous、Data Driven*、Charcoal Editorial
     - 商务专业类：Midnight Business、Teal Trust、Modern Minimal*
     - 科技现代类：Ocean Tech、Modern Minimal*、Data Driven*
     - 创意人文类：Creative Student、Coral Energy、Forest Moss、Warm Terracotta、Berry Cream、Sage Calm、Cherry Bold
   - Step A 必须根据 topic 推荐最匹配的方向作为第一个选项 `（推荐）`，而不是机械按固定顺序
   - 若用户在 Step B 中看到上方带 `*` 的跨方向样式，标注为"也适用于 [另一方向]"
-- `Image strategy` → options: Diagram-only/仅图表, Generated abstract/生成抽象图, Photo/照片, No images/无图
-- `Citation style` → options: Classroom/课堂引用, APA, IEEE, MLA, None
+- `Image strategy` → options: Diagram-only/仅图表, Generated abstract/生成抽象图, Web image/联网图片, User-provided image/用户照片, Ask-before-web-search/每次联网前询问, No images/无图
+- `Citation style` → options: Classroom/课堂引用, GB-T-7714, APA, IEEE, MLA, None
 - 如果本轮的 3 个问题填不满 4 个槽位（视觉风格已占 2 轮），把 Citation style 挪到 Round 2 或 Round 4
 
 **Round 4 — 输出格式**:
-- `Deliverables` (multi-select) → options: PPTX, Speaker notes/讲稿, Preview image/预览, PDF export, Contact sheet
+- `Deliverables` (multi-select) → options: PPTX/幻灯片, Speaker notes/讲稿, Preview/预览图, PDF export/PDF, Contact sheet/缩略图联系人表, Full script/完整演讲稿
 - Other output-specific fields as needed
 
 ### Example

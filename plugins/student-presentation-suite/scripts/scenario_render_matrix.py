@@ -101,7 +101,10 @@ for (const [index, role] of roles.entries()) {{
 }}
 pptx.writeFile({{ fileName: process.argv[2] }});
 """, encoding="utf-8")
-    subprocess.run(["node", str(ROOT / "scripts" / "run_with_pptxgenjs.js"), str(deck), str(pptx)], check=True)
+    subprocess.run(
+        ["node", str(ROOT / "scripts" / "run_with_pptxgenjs.js"), str(deck), str(pptx)],
+        check=True,
+    )
     return pptx
 
 
@@ -134,7 +137,7 @@ def main() -> None:
             pptx = generate_deck(work, name, language, roles)
             notes = work / f"{name}-speaker-notes.md"
             notes.write_text("# Matrix notes\n", encoding="utf-8")
-            subprocess.run([soffice, "--headless", "--convert-to", "pdf", "--outdir", str(work), str(pptx)], check=True, capture_output=True, text=True)
+            subprocess.run([soffice, "--headless", "--convert-to", "pdf", "--outdir", str(work), str(pptx)], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
             pdf = work / f"{name}-presentation.pdf"
             prefix = work / f"{name}-page"
             run_pdftoppm(pdftoppm, pdf, prefix)
@@ -149,7 +152,7 @@ def main() -> None:
                 "preview_files": [preview.name], "preview_sha256": [digest(preview)],
                 "visual_inspection": {"completed": True, "inspected_pages": list(range(1, len(roles) + 1)), "repair_cycles": 0, "no_repair_needed_reason": "CI rendered scenario baseline.", "remaining_blockers": 0},
             }), encoding="utf-8")
-            delivery_result = subprocess.run([sys.executable, str(delivery), "--pptx", str(pptx), "--notes", str(notes), "--preview", str(preview), "--qa-manifest", str(manifest), "--strict", "--json"], check=False, capture_output=True, text=True)
+            delivery_result = subprocess.run([sys.executable, str(delivery), "--pptx", str(pptx), "--notes", str(notes), "--preview", str(preview), "--qa-manifest", str(manifest), "--strict", "--json"], check=False, capture_output=True, text=True, encoding="utf-8", errors="replace")
             if delivery_result.returncode:
                 raise RuntimeError(f"{name}: strict delivery failed\n{delivery_result.stdout}\n{delivery_result.stderr}")
             completed.append(name)

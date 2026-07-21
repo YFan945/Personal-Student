@@ -40,13 +40,13 @@ def main() -> None:
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if args.strict and "error" in result:
-            sys.exit(2)
+            sys.exit(1)
     else:
         if "error" in result:
             print(result["note"])
             print(f"Error: {result['error']}")
             if args.strict:
-                sys.exit(2)
+                sys.exit(1)
             return
         print(result["note"])
         if not result["findings"]:

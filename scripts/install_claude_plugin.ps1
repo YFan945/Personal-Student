@@ -7,7 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Repository = "git@github.com:YFan945/student-presentation-suite.git"
+$Repository = "https://github.com/YFan945/student-presentation-suite.git"
 $Branch = "claude-code"
 $Marketplace = "claude-personal"
 $Plugin = "student-presentation-suite"
@@ -106,6 +106,14 @@ Invoke-Checked claude @("plugin", "marketplace", "add", "--scope", "user", $Inst
 $plugins = (& claude plugin list | Out-String)
 if ($plugins -notmatch [regex]::Escape("document-skills@anthropic-agent-skills")) {
     Invoke-Checked claude @("plugin", "install", "-s", "user", "document-skills@anthropic-agent-skills")
+}
+$savedPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$dsEnableOutput = (& claude plugin enable document-skills@anthropic-agent-skills 2>&1 | Out-String)
+$dsEnableExitCode = $LASTEXITCODE
+$ErrorActionPreference = $savedPreference
+if ($dsEnableExitCode -ne 0 -and $dsEnableOutput -notmatch "already enabled") {
+    throw "Failed to enable document-skills@anthropic-agent-skills: $dsEnableOutput"
 }
 if ($plugins -match [regex]::Escape($PluginId)) {
     Invoke-Checked claude @("plugin", "update", "-s", "user", $PluginId)

@@ -24,20 +24,18 @@ SEQUENCE = (
 )
 TERMINAL = {"incomplete", "blocked"}
 
-# 使用正则精确匹配脚本调用路径，避免注释/echo 中的子串误判
+# 使用正则精确匹配脚本调用路径，避免注释/echo 中的子串误判。
+# 支持绝对/相对路径解释器、版本后缀、py/python3.12、node.exe 等常见形式。
 _PRODUCTION_PATTERNS = (
     re.compile(
-        r"(?:^|\s|['\"]|&|;)\s*(?:python3?|node)\s+.*(?:"
+        r"(?:^|\s|['\"]|&|;)\s*(?:\S+[\\/])?"
+        r"(?:python(?:3(?:\.\d+)?)?|py(?:thon)?(?:\.exe)?|node(?:js)?(?:\.exe)?)"
+        r"\b\s+.*(?:"
         r"slide_spec_to_pptx_brief\.py"
         r"|run_with_pptxgenjs\.js"
         r"|build_support_outputs\.py"
         r"|pptx_delivery_check\.py"
         r"|create_revision_manifest\.py"
-        r"|\$[{]CLAUDE_PLUGIN_ROOT[}].*slide_spec_to_pptx_brief\.py"
-        r"|\$[{]CLAUDE_PLUGIN_ROOT[}].*run_with_pptxgenjs\.js"
-        r"|\$[{]CLAUDE_PLUGIN_ROOT[}].*build_support_outputs\.py"
-        r"|\$[{]CLAUDE_PLUGIN_ROOT[}].*pptx_delivery_check\.py"
-        r"|\$[{]CLAUDE_PLUGIN_ROOT[}].*create_revision_manifest\.py"
         r")",
         re.IGNORECASE,
     ),
@@ -187,7 +185,10 @@ def _check_and_parse_stdin() -> dict[str, Any] | None:
 
     对 99% 的非 PPT 相关 Bash 调用，避免了 json.loads 的开销。
     """
-    raw = sys.stdin.read()
+    try:
+        raw = sys.stdin.buffer.read().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
     if not raw.strip():
         return None
     # 快速子串扫描

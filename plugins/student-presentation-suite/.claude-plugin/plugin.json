@@ -1,11 +1,23 @@
 {
   "name": "student-presentation-suite",
   "description": "University presentation planning, PPTX generation, and review suite with shared standards, image strategy, and anti-AI wording checks.",
-  "author": { "name": "YFan945" },
-  "version": "0.4.0",
+  "author": {
+    "name": "YFan945"
+  },
+  "version": "0.4.1",
   "homepage": "https://github.com/YFan945/student-presentation-suite/tree/claude-code",
   "repository": "https://github.com/YFan945/student-presentation-suite",
   "license": "MIT",
-  "keywords": ["presentation", "pptx", "student", "review", "speaker-notes", "coursework", "defense"],
-  "dependencies": ["document-skills@anthropic-agent-skills"]
+  "keywords": [
+    "presentation",
+    "pptx",
+    "student",
+    "review",
+    "speaker-notes",
+    "coursework",
+    "defense"
+  ],
+  "dependencies": [
+    "document-skills@anthropic-agent-skills"
+  ]
 }

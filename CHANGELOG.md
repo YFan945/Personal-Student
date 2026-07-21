@@ -6,6 +6,22 @@ Codex 发行记录不在此维护。
 
 ## Unreleased
 
+## 0.4.1 — 2026-07-21
+
+| 字段 | 内容 |
+| ---- | ---- |
+| 版本 | `0.4.1` |
+| 时间范围 | 2026-07-21 |
+| Git 范围 | `claude-code` |
+| 发布分支 | `claude-code` |
+| 主要贡献者 | YFan945 |
+
+### 版本概述
+
+本版本为审计后的修复与质量门禁加固版本，统一 schema、references、示例与文档，修复生产 hook、subprocess 编码、单位换算、发布检查等工程缺陷，并补齐 CI 与安装脚本中的遗漏。
+
+### 修复与改进
+
 - 严格交付门禁现在会阻断静态 blocker、损坏/空白预览以及缺少或失效的 QA manifest。
 - 新增与 PPTX、渲染预览 hash 和全页检查绑定的 QA manifest，并要求其通过后才能转换到 `complete`。
 - 修复超长文本预警的 bridge 字段错误，并改用未舍入的溢出比率进行阈值判断。
@@ -21,7 +37,33 @@ Codex 发行记录不在此维护。
 - `visual-led` Slide Spec 现强制提供内容页视觉结构；timeline、comparison、process 和 chart 各自验证可生成的结构化 details。
 - 静态报告新增 deck 级布局模式统计，配合已有颜色和字体统计支持风格重复审查。
 
+
+- 修复 CI `runtime` job 与 `render-matrix` job 未设置 `PYTHONPATH` 导致单测/渲染失败的问题。
+- 统一引用风格枚举：`presentation-intake.md` 增加 `GB-T-7714`，schema 增加 `IEEE`/`MLA`；`evidence-and-citations.md` 同步定义。
+- 修复 `high-score-research-slide-spec.yaml` 因缺 `problem`/`background` story role 导致校验失败的问题，并在 `slide-spec.md` 中补全 scenario role 规则。
+- 修复 `student-presentation-ppt/SKILL.md` 中 `pptx_delivery_check.py` 命令缺少必需 `--pptx` 参数的问题。
+- 消除 `visual-style-menu.md` 中“unsure 用户展示全部样式”与“仅在明确要求时展示全部样式”的矛盾。
+- 修正 `presentation-intake.md` 中 Production Summary 项数（18 → 20）与风格方向归因错误。
+- 补全 audience_type 的 `teacher+classmates`、deliverables 的 `full-script`/`contact-sheet`，并理清 image_source 与 intake 选项的映射。
+- 加固 `workflow_guard.py`：支持 `py`/`python3.12`/`node.exe`/`uv run` 等常见解释器形式；hook 命令改为 `python3 || python` 回退；stdin 使用 UTF-8 读取并捕获 `UnicodeDecodeError`。
+- 修复 `run_with_pptxgenjs.js` 在 Windows 上因 Node 20+ 禁止直接 spawn `.cmd` 导致全局回退失效的问题。
+- 修复 `pptx-helpers.js` 中 `paraSpaceAfter` 单位错误（英寸当磅），统一 exit code 为 `1` 表示 strict/运行时失败、`2` 表示输入解析错误。
+- 修复 `create_revision_manifest.py` 对非法 YAML 崩溃、`build_support_outputs.py` 坏输入 traceback、`analyze_presentation_spec.py` 缺 `yaml` 时 `NameError` 等问题。
+- 统一 `subprocess.run` 的 `encoding="utf-8", errors="replace"`，避免中文 Windows 环境崩溃或乱码。
+- 在 `check_plugin_release.py` 中增加 `hooks.json` 格式与命令指向校验；`bump_version.py` 增加 semver 校验与 Windows `npm` 调用兼容性。
+- 修复 `manage_versions.py` 同名文件覆盖问题，使用相对路径保留目录结构。
+- 同步 `README-zh.md` 的输出清单与质量门禁细节；为 `CHANGELOG.md` 0.4.0 补充元数据表；`AGENTS.md` 补录 `PPT-GENERATION-QUALITY-AUDIT.md`。
+- 安装脚本改用 HTTPS clone 并自动启用 `document-skills`；新增 `.gitattributes` 规范化行尾。
+- 测试：`test_workflow_guard.py` 不再直接读真实 stdin；新增门禁用例；`test_bump_version.py` 验证 dry-run 不修改文件与非法 semver 拒绝。
+
 ## 0.4.0 — 2026-06-21
+| 字段 | 内容 |
+| ---- | ---- |
+| 版本 | `0.4.0` |
+| 时间范围 | 2026-06-21 |
+| Git 范围 | `claude-code` |
+| 发布分支 | `claude-code` |
+| 主要贡献者 | YFan945 |
 
 ### 版本概述
 

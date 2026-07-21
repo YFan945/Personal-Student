@@ -8,6 +8,8 @@ import json
 import sys
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -27,7 +29,6 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     try:
-        import yaml
         raw = args.spec.read_text(encoding="utf-8")
         data = json.loads(raw) if args.spec.suffix.lower() == ".json" else yaml.safe_load(raw)
     except (OSError, json.JSONDecodeError, yaml.YAMLError) as exc:

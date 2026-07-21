@@ -19,6 +19,7 @@ dependencies.
 - `scripts/check_marketplace_release.py`: repository-level release validation.
 - `README.md` / `README-zh.md`: marketplace installation and contributor documentation.
 - `CHANGELOG.md`: newest-first version release history.
+- `PPT-GENERATION-QUALITY-AUDIT.md`: PPTX generation quality audit and ongoing remediation tracker.
 
 Inside the plugin package:
 

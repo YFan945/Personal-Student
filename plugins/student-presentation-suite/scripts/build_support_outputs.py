@@ -38,12 +38,18 @@ def teleprompter_html(data: dict[str, Any]) -> str:
     for slide in data.get("slides", []):
         if not isinstance(slide, dict):
             continue
-        slide_id = int(slide.get("id") or 0)
+        try:
+            slide_id = int(slide.get("id") or 0)
+        except (ValueError, TypeError):
+            slide_id = 0
         title = html.escape(str(slide.get("title") or f"Slide {slide_id}"))
         notes = html.escape(str(slide.get("speaker_notes") or slide.get("note_goal") or ""))
         transition = html.escape(str(slide.get("transition") or ""))
         key_line = html.escape(str(slide.get("key_line") or ""))
-        timing = int(slide.get("timing_sec") or 0)
+        try:
+            timing = int(slide.get("timing_sec") or 0)
+        except (ValueError, TypeError):
+            timing = 0
         sections.append(
             f"""<section data-slide="{slide_id}">
 <div class="meta">Slide {slide_id} · {timing}s</div>
@@ -117,7 +123,11 @@ def main() -> None:
     parser.add_argument("--prefix")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
-    data = load_spec(args.spec)
+    try:
+        data = load_spec(args.spec)
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
+        raise SystemExit(2) from exc
     prefix = args.prefix or (data.get("meta") or {}).get("output_prefix") or args.spec.stem
     args.output_dir.mkdir(parents=True, exist_ok=True)
     outputs = {
@@ -125,9 +135,13 @@ def main() -> None:
         "training_cards": args.output_dir / f"{prefix}-training-cards.md",
         "references": args.output_dir / f"{prefix}-references.md",
     }
-    outputs["teleprompter"].write_text(teleprompter_html(data), encoding="utf-8")
-    outputs["training_cards"].write_text(training_cards(data), encoding="utf-8")
-    outputs["references"].write_text(references_markdown(data), encoding="utf-8")
+    try:
+        outputs["teleprompter"].write_text(teleprompter_html(data), encoding="utf-8")
+        outputs["training_cards"].write_text(training_cards(data), encoding="utf-8")
+        outputs["references"].write_text(references_markdown(data), encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
+        raise SystemExit(1) from exc
     result = {"ok": True, "outputs": {name: str(path.resolve()) for name, path in outputs.items()}}
     print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else "\n".join(result["outputs"].values()))
 

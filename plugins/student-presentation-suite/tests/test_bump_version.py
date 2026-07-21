@@ -36,8 +36,16 @@ class BumpVersionTests(unittest.TestCase):
 
     def test_bump_dry_run_does_not_write_files(self) -> None:
         module = load_module()
+        hashes = {path: path.read_bytes() for path, _, _ in module.FILES_TO_UPDATE}
         result = module.bump("99.99.99", dry_run=True)
         self.assertEqual(0, result)
+        for path in hashes:
+            self.assertEqual(hashes[path], path.read_bytes(), f"{path} should not be modified during dry-run")
+
+    def test_bump_rejects_invalid_semver(self) -> None:
+        module = load_module()
+        result = module.bump("banana", dry_run=True)
+        self.assertEqual(1, result)
 
     def test_bump_invalid_file_returns_error(self) -> None:
         module = load_module()

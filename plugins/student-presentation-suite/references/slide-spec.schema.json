@@ -18,7 +18,7 @@
         },
         "audience": { "type": "string", "minLength": 1 },
         "audience_type": {
-          "enum": ["teacher", "classmates", "judges", "non-specialists", "mixed"]
+          "enum": ["teacher", "classmates", "teacher+classmates", "judges", "non-specialists", "mixed"]
         },
         "audience_depth": { "enum": ["introductory", "standard", "expert"] },
         "language": { "enum": ["Chinese", "English", "bilingual"] },
@@ -41,7 +41,7 @@
         "visual_text_ratio": { "enum": ["text-led", "balanced", "visual-led"] },
         "include_speaker_notes": { "type": "boolean" },
         "include_key_lines": { "type": "boolean" },
-        "citation_style": { "enum": ["none", "classroom", "GB-T-7714", "APA"] },
+        "citation_style": { "enum": ["none", "classroom", "GB-T-7714", "APA", "IEEE", "MLA"] },
         "export_formats": {
           "type": "array",
           "uniqueItems": true,

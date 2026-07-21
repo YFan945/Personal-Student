@@ -60,10 +60,12 @@ def run_probe(command: list[str], env: dict[str, str] | None = None) -> tuple[bo
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=20,
             env=env,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError) as exc:
         return False, str(exc)
     output = (proc.stdout or proc.stderr or "").strip()
     return proc.returncode == 0, output
@@ -200,7 +202,7 @@ def main() -> None:
                 + ", ".join(result["missing_recommended"])
             )
     if args.strict and result["missing_required"]:
-        raise SystemExit(2)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -10,9 +10,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 
 def load(path: Path) -> dict[str, Any]:
-    import yaml
     raw = path.read_text(encoding="utf-8")
     value = json.loads(raw) if path.suffix.lower() == ".json" else yaml.safe_load(raw)
     if not isinstance(value, dict):
@@ -101,7 +102,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         manifest = build_manifest(args.old_spec, args.new_spec, args.reason)
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, yaml.YAMLError, json.JSONDecodeError) as exc:
         print(json.dumps({"valid": False, "error": str(exc)}, ensure_ascii=False, indent=2))
         raise SystemExit(2) from exc
     text = json.dumps(manifest, ensure_ascii=False, indent=2)

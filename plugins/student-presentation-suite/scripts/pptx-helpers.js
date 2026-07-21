@@ -11,7 +11,6 @@
 
 const EMU_PER_CM = 360000;
 const CM_PER_INCH = 2.54;
-const PT_PER_EMU = 12700;
 
 // 16:9 幻灯片默认尺寸（英寸）
 const SLIDE_W_IN = 10;
@@ -219,7 +218,7 @@ function addBody(slide, text, area, tokens, lang, opts) {
     align: "left",
     valign: "top",
     lineSpacingMultiple: 1.3,
-    paraSpaceAfter: (opts && opts.spacing) || spacing(tokens, 1),
+    paraSpaceAfter: ((opts && opts.spacing) ? spacing(tokens, opts.spacing) : spacing(tokens, 1)) * 72,
   };
 
   if (opts && opts.bullet !== false) {

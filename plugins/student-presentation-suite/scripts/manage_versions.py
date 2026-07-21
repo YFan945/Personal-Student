@@ -32,11 +32,16 @@ def snapshot(output_root: Path, revision_id: str, files: list[Path]) -> dict:
         resolved = source.resolve()
         if not resolved.is_file():
             raise ValueError(f"Missing deliverable: {source}")
-        target = version_root / resolved.name
+        try:
+            rel_name = str(resolved.relative_to(output_root))
+        except ValueError:
+            rel_name = resolved.name
+        target = version_root / rel_name
+        target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(resolved, target)
         entries.append(
             {
-                "name": resolved.name,
+                "name": rel_name,
                 "source": str(resolved),
                 "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
             }
@@ -69,6 +74,7 @@ def restore_candidate(output_root: Path, revision_id: str) -> dict:
     for entry in manifest.get("files", []):
         source = safe_child(version_root, version_root / entry["name"])
         target = restored_root / entry["name"]
+        target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         restored.append(str(target))
     return {

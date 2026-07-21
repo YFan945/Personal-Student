@@ -87,6 +87,7 @@ Schema and validation:
 - The validator requires `jsonschema` and `PyYAML` from `requirements.txt`.
 - Unknown fields are rejected in `meta`, slides, visuals, and review findings to catch spelling mistakes.
 - Semantic validation also checks contiguous slide ids, `slide_count`, total timing vs `duration_min`, group members/owners, existing-deck combinations, high-score controls, evidence references, and lock semantics.
+- Scenario-driven story roles are enforced as groups; for example, `research` requires one slide from each of: problem, background, method, result/evidence, limitation, and conclusion/closing. Run the validator to see the exact mapping for a scenario.
 
 ```powershell
 python "${CLAUDE_PLUGIN_ROOT}/scripts/validate_slide_spec.py" path/to/slide-spec.yaml --json

@@ -1,0 +1,3 @@
+# Normalize line endings for text files on check-in.
+# On Windows, Git will convert LF to CRLF on checkout; on Unix, LF is preserved.
+* text=auto

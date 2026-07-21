@@ -45,7 +45,7 @@ slides:
     title: "Reviewing code feels productive even when recall stays weak"
     layout: opening-question
     kind: content
-    role: opening
+    role: problem
     claim: "Passive review creates familiarity, not reliable recall"
     supporting_points: ["Students recognize examples", "Blank-page recall remains difficult"]
     content: "Recognition is not recall"
@@ -59,7 +59,7 @@ slides:
     title: "The study compares passive review with short retrieval practice"
     layout: comparison
     kind: content
-    role: method
+    role: background
     claim: "Both groups used the same material but different review actions"
     supporting_points: ["Same topic and time", "Different review activity"]
     content: "Passive review vs retrieval practice"

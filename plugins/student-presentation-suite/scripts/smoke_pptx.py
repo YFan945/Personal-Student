@@ -114,6 +114,8 @@ pptx.writeFile({ fileName: process.argv[2] });
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if proc.returncode:
             raise SystemExit(proc.stdout + proc.stderr)

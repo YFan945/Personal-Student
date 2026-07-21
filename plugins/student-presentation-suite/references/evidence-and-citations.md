@@ -37,6 +37,8 @@ Flag:
 - `classroom`: short source line on slide, full details in references.
 - `GB-T-7714`: unified Chinese academic reference list.
 - `APA`: author-date in content and APA reference list.
+- `IEEE`: numbered references in the order they appear, standard in engineering and computer-science papers.
+- `MLA`: author-page citations in content and a "Works Cited" list, common in humanities and language courses.
 - `none`: allowed only when the presentation contains no external factual claims
   or the user explicitly accepts an unreferenced informal showcase.
 

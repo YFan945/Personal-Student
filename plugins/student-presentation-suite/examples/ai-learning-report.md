@@ -89,6 +89,7 @@ How university students use AI tools in coursework.
 
 ```yaml
 meta:
+  topic: "AI 如何参与作业过程"
   presentation_type: "coursework report"
   language: "Chinese"
   duration_min: 8

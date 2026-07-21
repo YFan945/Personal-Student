@@ -79,7 +79,7 @@
         "visual_text_ratio": { "enum": ["text-led", "balanced", "visual-led"] },
         "speaker_notes": { "type": "boolean" },
         "key_lines": { "type": "boolean" },
-        "citations": { "enum": ["none", "classroom", "GB-T-7714", "APA"] },
+        "citations": { "enum": ["none", "classroom", "GB-T-7714", "APA", "IEEE", "MLA"] },
         "versioning": { "type": "boolean" }
       }
     },
@@ -100,7 +100,7 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": {
-        "enum": ["outline", "slide-spec", "pptx", "pdf", "speaker-notes", "preview", "teleprompter", "change-summary", "quality-report", "revision-manifest"]
+        "enum": ["outline", "slide-spec", "pptx", "pdf", "speaker-notes", "preview", "teleprompter", "change-summary", "full-script", "contact-sheet", "quality-report", "revision-manifest"]
       }
     },
     "output_prefix": {

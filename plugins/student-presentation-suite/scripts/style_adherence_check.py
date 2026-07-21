@@ -29,7 +29,7 @@ def main() -> None:
         args.output.write_text(payload, encoding="utf-8")
     print(payload, end="")
     if args.strict and not report["ok"]:
-        raise SystemExit(2)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
