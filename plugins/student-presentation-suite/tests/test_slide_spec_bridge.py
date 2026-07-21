@@ -4,6 +4,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -174,7 +175,7 @@ slides:
             bridge = load_bridge_module()
             exit_code = None
             try:
-                with unittest.mock.patch(
+                with mock.patch(
                     "sys.argv",
                     ["slide_spec_to_pptx_brief.py", str(spec_path), "--output", str(output_path)],
                 ):

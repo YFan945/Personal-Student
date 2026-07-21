@@ -130,7 +130,7 @@ class SkillBehaviorContractTests(unittest.TestCase):
             self.assertIn(f"| {field} |", intake)
         self.assertIn("Never ask for a confirmed item again", intake)
         self.assertIn("Do not run environment checks", intake)
-        self.assertIn("Delegation does not itself move the state", intake)
+        self.assertIn("Delegation does NOT itself move the state", intake)
         self.assertIn("确认完整 Production Summary", ppt)
         self.assertIn("PreToolUse", ppt)
         self.assertIn("workflow_guard.py confirm", ppt)

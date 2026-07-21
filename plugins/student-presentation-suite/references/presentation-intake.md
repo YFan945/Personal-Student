@@ -106,12 +106,13 @@ Batch fields so that the most impactful decisions come first. Typical grouping:
   - **Step B — 具体样式**：根据用户选的方向，展示该方向下的 3-4 个具体样式，标注最佳推荐
     → 如果某方向超过 4 个样式，拆成 2 轮
   - **快捷出口**：Step A 的选项之一始终是 "显示全部 14 种样式"，选此则分 4 轮逐一展示所有样式
-  - **风格方向归类参考**（从 `visual-style-menu.md` 来）:
-    - 学术严谨类：Academic Rigorous、Data Driven、Charcoal Editorial
-    - 商务专业类：Midnight Business、Teal Trust、Modern Minimal
-    - 科技现代类：Ocean Tech、Modern Minimal、Data Driven
+  - **风格方向归类参考**（从 `visual-style-menu.md` 来，带 `*` 的样式属于多个方向）:
+    - 学术严谨类：Academic Rigorous、Data Driven*、Charcoal Editorial
+    - 商务专业类：Midnight Business、Teal Trust、Modern Minimal*
+    - 科技现代类：Ocean Tech、Modern Minimal*、Data Driven*
     - 创意人文类：Creative Student、Coral Energy、Forest Moss、Warm Terracotta、Berry Cream、Sage Calm、Cherry Bold
   - Step A 必须根据 topic 推荐最匹配的方向作为第一个选项 `（推荐）`，而不是机械按固定顺序
+  - 若用户在 Step B 中看到上方带 `*` 的跨方向样式，标注为"也适用于 [另一方向]"
 - `Image strategy` → options: Diagram-only/仅图表, Generated abstract/生成抽象图, Photo/照片, No images/无图
 - `Citation style` → options: Classroom/课堂引用, APA, IEEE, MLA, None
 - 如果本轮的 3 个问题填不满 4 个槽位（视觉风格已占 2 轮），把 Citation style 挪到 Round 2 或 Round 4

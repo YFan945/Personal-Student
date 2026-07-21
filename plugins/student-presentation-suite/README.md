@@ -157,6 +157,7 @@ python scripts/build_support_outputs.py path\to\spec.yaml --output-dir <project>
 python scripts/create_revision_manifest.py old.yaml new.yaml --strict
 python scripts/manage_versions.py snapshot --output-root <project>\outputs --revision-id r1 --file <deck>
 python scripts/slide_spec_to_pptx_brief.py path\to\spec.yaml --output-dir <project>\outputs
+python scripts/bump_version.py 0.5.0 --dry-run  # 统一版本升级
 node scripts/run_with_pptxgenjs.js --probe
 python scripts/smoke_pptx.py
 ```

@@ -50,6 +50,7 @@ When the target remains genuinely ambiguous, ask one routing question: outline, 
 
 - Chinese normal body text should be 22pt or larger.
 - English normal body text should be 20pt or larger.
+- **Bilingual slides** (中英混排): use 22pt as the minimum for mixed content to ensure Chinese readability; English at 22pt remains comfortably readable. When Chinese and English appear in separate text blocks on the same slide, Chinese blocks follow the 22pt rule and English blocks follow the 20pt rule.
 - Primary slide titles should normally be 24pt or larger. Subtitles, card headers, chart titles, panel labels, legends, diagram labels, and other secondary text may be smaller when the layout requires it, but must remain projection-readable.
 - Smaller text is allowed for secondary labels, captions, citations, footnotes, chart labels, diagram annotations, or minor explanations.
 - Keep slide text inside boxes with comfortable padding.

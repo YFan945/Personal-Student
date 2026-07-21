@@ -24,13 +24,36 @@ def main() -> None:
         preview = work / "smoke-preview.png"
         deck_script = work / "deck.js"
         deck_script.write_text(
-            """
+            """\
 const pptxgen = require("pptxgenjs");
+const H = require("pptx-helpers");
+
+const TOKENS = {
+  palette: { canvas: "FFFFFF", surface: "FFFFFF", primary_text: "111827",
+             secondary_text: "4B5563", primary_accent: "2563EB", secondary_accent: "93C5FD" },
+  typography: { title_min_pt: 24, body_cjk_min_pt: 22, body_latin_min_pt: 20,
+                title_font: "Aptos Display", body_font: "Aptos" },
+  geometry: { safe_margin_pct: 6, title_zone_pct: 16, footer_zone_pct: 5,
+              spacing_scale_pt: [6,12,18,24,36,48], corner_radius_pt: 8 },
+  lines: { standard_pt: 1.25, emphasis_pt: 2.5 },
+  style_adherence: { max_unapproved_srgb_colors: 2, max_font_families: 3 }
+};
+const LANG = "english";
+
 const pptx = new pptxgen();
-pptx.layout = "LAYOUT_WIDE";
+H.applyTokens(pptx, TOKENS, LANG);
+
+const AREA = H.safeArea(H.SLIDE_W_IN, H.SLIDE_H_IN, TOKENS);
 const slide = pptx.addSlide();
-slide.addText("Claude Code PPTX smoke test", {x: 0.8, y: 0.25, w: 8, h: 0.75, fontSize: 30});
-slide.addText("Runtime resolution and delivery validation", {x: 0.8, y: 1.45, w: 8, h: 0.9, fontSize: 22});
+slide.background = { fill: H.color(TOKENS, "canvas") };
+H.addTitle(slide, "Claude Code PPTX smoke test", AREA, TOKENS, LANG);
+slide.addText("Runtime resolution and delivery validation", {
+  x: AREA.x, y: AREA.y + AREA.h * 0.25, w: AREA.w, h: AREA.h * 0.4,
+  fontSize: H.fontSizeScale(TOKENS, LANG).body,
+  fontFace: H.fontFamily(TOKENS).body,
+  color: H.color(TOKENS, "secondary_text")
+});
+
 pptx.writeFile({ fileName: process.argv[2] });
 """,
             encoding="utf-8",
@@ -46,7 +69,7 @@ pptx.writeFile({ fileName: process.argv[2] });
         )
         notes.write_text("# Speaker notes\n\nSmoke test.", encoding="utf-8")
         image = Image.new("RGB", (640, 360), "white")
-        image.paste("#1f4e79", (0, 0, 640, 80))
+        image.paste((31, 78, 121), (0, 0, 640, 80))
         image.save(preview)
         qa_manifest = work / "smoke-qa-manifest.json"
         delivery_report = work / "smoke-delivery-report.json"
@@ -94,7 +117,12 @@ pptx.writeFile({ fileName: process.argv[2] });
         )
         if proc.returncode:
             raise SystemExit(proc.stdout + proc.stderr)
-        result = json.loads(proc.stdout)
+        try:
+            result = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            raise SystemExit(
+                f"delivery check output is not valid JSON:\n{proc.stdout}\n{proc.stderr}"
+            )
         if result.get("slide_count") != 1 or not result.get("ok") or not delivery_report.is_file():
             raise SystemExit(f"Unexpected smoke result: {result}")
         print(json.dumps({"ok": True, "slide_count": 1}, indent=2))

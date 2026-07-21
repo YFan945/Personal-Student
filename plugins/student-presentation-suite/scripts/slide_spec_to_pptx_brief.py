@@ -206,6 +206,69 @@ def build_brief(
         "- Existing template/editing: follow `editing.md`",
         "- Keep all student-presentation constraints in this brief while using the pptx skill for PPTX generation.",
         "",
+        "## Production Toolkit (MANDATORY)",
+        "",
+        "The generated `deck.js` **must** start with these two requires:",
+        "",
+        "```js",
+        "const pptxgen = require(\"pptxgenjs\");",
+        "const H = require(\"pptx-helpers\");",
+        "```",
+        "",
+        f"`pptx-helpers.js` lives in `${{CLAUDE_PLUGIN_ROOT}}/scripts/` and is auto-resolved",
+        "by `run_with_pptxgenjs.js` via NODE_PATH. All layout calculations below use the",
+        "helper API to avoid ad-hoc positioning. Do NOT calculate x/y/w/h from scratch —",
+        "use H.safeArea(), H.addTitle(), H.addBody(), H.spacing(), and H.color().",
+        "",
+        "### Helper API Quick Reference",
+        "",
+        "```js",
+        "// --- Token access ---",
+        "H.color(TOKENS, \"primary_accent\")   // → \"#2563EB\" (with #)",
+        "H.fontSizeScale(TOKENS, lang)        // → { title: 24, body: 22 }",
+        "H.fontFamily(TOKENS)                 // → { title: \"...\", body: \"...\" }",
+        "",
+        "// --- Geometry ---",
+        "H.safeArea(10, 5.625, TOKENS)        // → { x, y, w, h } in inches",
+        "H.safeArea(10, 5.625, TOKENS, { reserveTitle: false })",
+        "H.spacing(TOKENS, step)              // step 1-6 → inches",
+        "H.cornerRadius(TOKENS)               // → inches",
+        "",
+        "// --- Text fitting ---",
+        "H.estimateTextFit(text, boxW, boxH, fontSize, isCJK)",
+        "// → { lines, fillRatio, overflow }",
+        "",
+        "// --- Box creation (returns pptxgen text object) ---",
+        "H.addTitle(slide, text, area, TOKENS, lang)",
+        "H.addBody(slide, text, area, TOKENS, lang, { bullet: true })",
+        "H.addAccentCard(slide, text, box, TOKENS)",
+        "H.addDivider(slide, x, y, w, TOKENS, \"standard\")",
+        "",
+        "// --- Global ---",
+        "H.applyTokens(pptx, TOKENS, lang)",
+        "```",
+        "",
+        "## Resolved Production Constants (copy-paste into deck.js)",
+        "",
+        "Paste the following block at the top of deck.js, after the require lines.",
+        "TOKENS is the single source of truth for all visual parameters.",
+        "",
+        "```js",
+        f"const TOKENS = {json.dumps(design_tokens, ensure_ascii=False)};",
+        f"const LANG = \"{meta.get('language', 'chinese')}\";",
+        "",
+        "const pptx = new pptxgen();",
+        "H.applyTokens(pptx, TOKENS, LANG);",
+        "",
+        "// Pre-calculated layout zones",
+        "const SLIDE_W = H.SLIDE_W_IN;  // 10",
+        "const SLIDE_H = H.SLIDE_H_IN;  // 5.625",
+        "const AREA = H.safeArea(SLIDE_W, SLIDE_H, TOKENS);",
+        f"const AREA_NO_TITLE = H.safeArea(SLIDE_W, SLIDE_H, TOKENS, {{ reserveTitle: false }});",
+        "const CARD_W = (AREA.w - H.spacing(TOKENS, 3)) / 2;  // 半宽卡片",
+        "const CARD_H = AREA.h * 0.42;",
+        "```",
+        "",
         "## Output Contract",
         f"- Project output directory: `{resolved_output_dir}`",
         f"- PPTX: `{pptx_path}`",
@@ -356,28 +419,98 @@ def build_brief(
         [
             "",
             "## Slide Plan",
+            "",
+            "For each slide, build it using the H helpers. Example patterns:",
+            "",
+            "**Content slide (title + body):**",
+            "```js",
+            "const slide = pptx.addSlide();",
+            "slide.background = { fill: H.color(TOKENS, \"canvas\") };",
+            "H.addTitle(slide, \"Claim-style Title\", AREA, TOKENS, LANG);",
+            "H.addBody(slide, [\"point 1\", \"point 2\", \"point 3\"], AREA, TOKENS, LANG, { bullet: true });",
+            "```",
+            "",
+            "**Cover slide (full-area):**",
+            "```js",
+            "const cover = pptx.addSlide();",
+            "cover.background = { fill: H.color(TOKENS, \"primary_accent\") };",
+            "cover.addText(\"Presentation Title\", {",
+            "  x: AREA.x, y: AREA.y + AREA.h * 0.3, w: AREA.w, h: AREA.h * 0.3,",
+            "  fontSize: H.fontSizeScale(TOKENS, LANG).title + 8,",
+            "  fontFace: H.fontFamily(TOKENS).title,",
+            "  color: H.color(TOKENS, \"surface\"), bold: true, align: \"center\"",
+            "});",
+            "```",
+            "",
+            "**Two-column comparison:**",
+            "```js",
+            "const comp = pptx.addSlide();",
+            "comp.background = { fill: H.color(TOKENS, \"canvas\") };",
+            "H.addTitle(comp, \"Comparison Title\", AREA, TOKENS, LANG);",
+            "const left = { x: AREA.x, y: AREA.y, w: CARD_W, h: AREA.h * 0.7 };",
+            "const right = { x: AREA.x + CARD_W + H.spacing(TOKENS, 3), y: AREA.y, w: CARD_W, h: AREA.h * 0.7 };",
+            "H.addAccentCard(comp, \"Option A\\n...\", left, TOKENS);",
+            "H.addAccentCard(comp, \"Option B\\n...\", right, TOKENS);",
+            "```",
+            "",
+            "---",
         ]
     )
     for slide in slides:
         visual = slide.get("visual") or {}
+        kind = slide.get("kind", "content")
+        slide_copy = slide.get("slide_copy") or ""
+        content_text = text_block(slide["content"], "").strip()
+        claim = slide.get("claim", "")
+
+        # 根据 slide kind 给出代码提示
+        code_hint = ""
+        if kind == "cover":
+            code_hint = (
+                "**js pattern**: `pptx.addSlide()` → background fill=primary_accent → "
+                "addText(title, center, large font) → addText(subtitle, smaller)"
+            )
+        elif kind in ("section-divider",):
+            code_hint = (
+                "**js pattern**: `pptx.addSlide()` → background fill=surface → "
+                "addText(section number, primary_accent) → addText(title, left) → "
+                "H.addDivider(slide, AREA.x, midY, AREA.w, TOKENS, \"emphasis\")"
+            )
+        elif kind in ("qa", "closing", "references", "appendix"):
+            code_hint = (
+                "**js pattern**: `pptx.addSlide()` → background fill=canvas → "
+                "addText(title, primary_text) → addText(body, secondary_text). Minimal decoration."
+            )
+        elif slide_copy and len(slide_copy) > 80:
+            code_hint = (
+                "**js pattern (denso)**: 内容过长，优先用 H.addBody 并确保 "
+                f"H.estimateTextFit 不溢出。如果 H.estimateTextFit 返回 overflow=true，"
+                "拆分幻灯片或精简内容，禁止缩小字号。"
+            )
+        else:
+            code_hint = (
+                "**js pattern**: `pptx.addSlide()` → background fill=canvas → "
+                "H.addTitle(slide, claimTitle, AREA, TOKENS, LANG) → "
+                "H.addBody(slide, points, AREA, TOKENS, LANG, { bullet: true })"
+            )
+
         lines.extend(
             [
                 "",
                 f"### Slide {slide['id']}: {slide['title']}",
+                f"- Slide kind: {kind}",
                 f"- Layout intent: {slide['layout']}",
-                f"- Owner: {slide['owner']}",
-                f"- Timing seconds: {slide['timing_sec']}",
-                f"- Slide kind: {slide.get('kind', 'content')}",
                 f"- Story role: {slide.get('role', 'not specified')}",
-                f"- Claim: {slide.get('claim', 'not specified')}",
+                f"- Claim: {claim or 'not specified'}",
+                f"- Owner: {slide['owner']} / Timing: {slide['timing_sec']}s",
+                f"- {code_hint}",
                 "- Supporting points:",
                 text_block(slide.get("supporting_points") or ["not specified"], "  "),
-                f"- Visual type: {visual.get('type', 'not required')}",
-                f"- Visual purpose: {visual.get('purpose', 'not required')}",
+                f"- Visual: type={visual.get('type', 'none')}, purpose={visual.get('purpose', 'none')}",
                 "- Content:",
                 text_block(slide["content"], "  "),
                 "- PPT copy:",
-                text_block(slide.get("slide_copy") or ["derive from content within confirmed density limits"], "  "),
+                text_block(slide_copy or ["derive from content within confirmed density limits"], "  "),
                 f"- Speaker note goal: {slide.get('note_goal', 'not required')}",
                 f"- Speaker notes: {slide.get('speaker_notes', 'generate from note goal and evidence')}",
                 f"- Key line: {slide.get('key_line', 'not required')}",

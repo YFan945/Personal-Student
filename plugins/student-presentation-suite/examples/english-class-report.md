@@ -1,6 +1,11 @@
 # English Class Report Example
 
-- Request: Create a seven-slide editable deck for an undergraduate English class.
+- Request: Create a seven-slide editable deck for an undergraduate English class on "Social Media and Teen Mental Health."
 - Route: `student-presentation-ppt`
-- Defaults: five minutes, B1-B2 language, individual format, no unsupported statistics.
-- Checks: English body text remains projection-readable and notes sound natural when spoken.
+- Confirmed: Topic, language=English, duration=5min, slide count=7, individual format.
+- To ask: Course/context, scenario, audience, rubric, source material, image strategy, visual style, deliverables.
+- Recommended: Coursework report, Teacher + classmates, B1-B2 English level, `Modern Minimal（现代简洁）`, diagram-only, PPTX + speaker notes + preview.
+- Gate: Confirm full Production Summary before checking environment and generating.
+- Deliverables: PPTX, English speaker notes, preview image; QA passed → `complete`.
+- Checks: English body text ≥ 20pt, 2-4 short sentences per slide, natural connectors in speaker notes (e.g., "First", "This example shows", "So the main point is"), pronunciation support for difficult keywords.
+- Style: Clean spacious layout, white/gray base + bright accent, no dense paragraphs.

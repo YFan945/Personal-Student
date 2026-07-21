@@ -32,7 +32,7 @@ def main() -> None:
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="Exit non-zero when the PPTX cannot be scanned",
+        help="Exit non-zero when the PPTX file is unreadable or corrupt (findings are warnings, not failures)",
     )
     args = parser.parse_args()
 

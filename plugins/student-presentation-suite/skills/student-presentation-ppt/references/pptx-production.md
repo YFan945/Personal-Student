@@ -24,6 +24,74 @@ complete Production Summary is explicitly confirmed.
 6. Run `analyze_presentation_spec.py` and resolve Critical/Major story, density, and evidence findings before production. Run delivery checks for every requested export. Static XML risk counts are not enough on their own: distinguish true production blockers from expected small footer, page marker, caption, source, or kicker text.
 7. Confirm visual QA. Preview/contact sheet review is required before calling a deck ready-to-present; otherwise say the file is generated but visual QA is incomplete. If the first render shows geometry mismatch, blank slides, text collapsed into the corner, overlap, or clipped callouts, fix the slide code and rerender before delivery.
 
+## pptxgenjs Helper Library (MANDATORY)
+
+All generated `deck.js` scripts **must** use the shared `pptx-helpers.js` library shipped at
+`${CLAUDE_PLUGIN_ROOT}/scripts/pptx-helpers.js`. It is auto-resolved by `run_with_pptxgenjs.js`
+via `NODE_PATH` — import it at the top of every deck script:
+
+```js
+const pptxgen = require("pptxgenjs");
+const H = require("pptx-helpers");
+```
+
+### Why the helper is mandatory
+
+- **Deterministic layout**: `H.safeArea()` calculates margins/title-zone/footer-zone from design tokens so every slide respects the same boundary. No ad-hoc x/y/w/h.
+- **Color consistency**: `H.color(TOKENS, "primary_accent")` always returns the correct hex from the resolved palette. No hardcoded color strings.
+- **Font size enforcement**: `H.fontSizeScale(TOKENS, lang)` returns the correct title/body sizes per language. Never goes below 24pt/22pt/20pt.
+- **Text fit validation**: `H.estimateTextFit(text, w, h, fontSize, isCJK)` warns at generation time if content will overflow — before rendering.
+- **Spacing system**: `H.spacing(TOKENS, step)` uses the style's spacing scale (6 tiers). No random gaps.
+
+### What the helper does NOT do
+
+The helper provides geometry, color, and text-fit utilities. It does **not** generate slide content
+automatically. The AI still composes the narrative flow — which slides to create, what content to
+place, and how to vary visual rhythm. But every positioning/coloring/sizing call goes through the
+helper, making the output auditable and reproducible.
+
+### deck.js template
+
+Every generated deck should follow this structure:
+
+```js
+const pptxgen = require("pptxgenjs");
+const H = require("pptx-helpers");
+
+const TOKENS = { /* resolved from design-tokens.json — see Production Brief */ };
+const LANG = "chinese"; // or "english" or "bilingual"
+const pptx = new pptxgen();
+H.applyTokens(pptx, TOKENS, LANG);
+
+const SLIDE_W = H.SLIDE_W_IN;
+const SLIDE_H = H.SLIDE_H_IN;
+const AREA = H.safeArea(SLIDE_W, SLIDE_H, TOKENS);
+const CARD_W = (AREA.w - H.spacing(TOKENS, 3)) / 2;
+
+// --- Slide 1: Cover ---
+const cover = pptx.addSlide();
+cover.background = { fill: H.color(TOKENS, "primary_accent") };
+cover.addText("Title", {
+  x: AREA.x, y: AREA.y + AREA.h * 0.25, w: AREA.w, h: AREA.h * 0.3,
+  fontSize: H.fontSizeScale(TOKENS, LANG).title + 8,
+  fontFace: H.fontFamily(TOKENS).title,
+  color: H.color(TOKENS, "surface"), bold: true, align: "center"
+});
+
+// --- Slide 2: Content ---
+const s2 = pptx.addSlide();
+s2.background = { fill: H.color(TOKENS, "canvas") };
+H.addTitle(s2, "Claim Title", AREA, TOKENS, LANG);
+H.addBody(s2, ["point 1", "point 2"], AREA, TOKENS, LANG, { bullet: true });
+
+// --- Slide N: Closing ---
+const last = pptx.addSlide();
+last.background = { fill: H.color(TOKENS, "surface") };
+H.addTitle(last, "Thank you / Q&A", AREA, TOKENS, LANG);
+
+pptx.writeFile({ fileName: process.argv[2] });
+```
+
 ## Creativity Rules
 
 - Do not make every slide a card grid. Vary structure based on meaning: process, contrast, evidence, story, risk, recommendation, or Q&A.

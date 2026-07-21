@@ -480,5 +480,27 @@ class PptxStaticCoreTests(unittest.TestCase):
         self.assertNotIn("text-vertical-overflow-risk", risks)
 
 
+    # ── CJK detection across languages ──────────────────
+
+    def test_cjk_detects_japanese(self) -> None:
+        """has_cjk should detect Japanese kanji + hiragana."""
+        self.assertTrue(core.has_cjk("日本語のテキスト"))
+        self.assertTrue(core.has_cjk("東京タワー"))
+
+    def test_cjk_detects_korean(self) -> None:
+        """has_cjk should detect Korean Hangul (U+AC00-D7AF)."""
+        self.assertTrue(core.has_cjk("한국어 텍스트"))
+        self.assertTrue(core.has_cjk("안녕하세요"))
+
+    def test_cjk_rejects_pure_ascii(self) -> None:
+        """has_cjk should return False for pure Latin text."""
+        self.assertFalse(core.has_cjk("Hello world"))
+        self.assertFalse(core.has_cjk("Testing 123"))
+
+    def test_cjk_rejects_emoji_only(self) -> None:
+        """has_cjk should return False for emoji-heavy text."""
+        self.assertFalse(core.has_cjk("🚀✨🎉"))
+
+
 if __name__ == "__main__":
     unittest.main()

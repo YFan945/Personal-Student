@@ -72,6 +72,22 @@ def bump(target: str, dry_run: bool = False) -> int:
     old_version = current_version()
     print(f"当前版本: {old_version} → {target}")
 
+    if not dry_run:
+        # 先同步 lockfile，成功后再写 JSON 文件，确保原子性
+        print("  正在同步 package-lock.json ...")
+        result = subprocess.run(
+            ["npm", "--prefix", str(PLUGIN_ROOT), "install", "--package-lock-only"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            print(f"✗ npm install --package-lock-only 失败: {result.stderr}", file=sys.stderr)
+            print("⚠ JSON 文件未修改，请解决 npm 问题后重试。", file=sys.stderr)
+            return 1
+        print("  ✓ package-lock.json 已同步")
+
     for path, desc, updater in FILES_TO_UPDATE:
         try:
             data = read_json(path)
@@ -85,21 +101,6 @@ def bump(target: str, dry_run: bool = False) -> int:
             updated = updater(data, target)
             write_json(path, updated)
             print(f"  ✓ {path.name} {desc}: {target}")
-
-    if not dry_run:
-        # 更新 package-lock.json
-        print("  正在同步 package-lock.json ...")
-        result = subprocess.run(
-            ["npm", "--prefix", str(PLUGIN_ROOT), "install", "--package-lock-only"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode != 0:
-            print(f"✗ npm install --package-lock-only 失败: {result.stderr}", file=sys.stderr)
-            return 1
-        print("  ✓ package-lock.json 已同步")
 
     print(f"\n{'[dry-run] ' if dry_run else ''}版本升级完成: {old_version} → {target}")
     return 0

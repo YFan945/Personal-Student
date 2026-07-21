@@ -49,6 +49,7 @@ PORTABLE_FONT_FAMILIES = {
     "arial",
     "calibri",
     "aptos",
+    "aptos display",
     "times new roman",
     "microsoft yahei",
     "微软雅黑",
@@ -56,6 +57,7 @@ PORTABLE_FONT_FAMILIES = {
     "宋体",
     "noto sans cjk sc",
     "noto serif cjk sc",
+    "georgia",
 }
 
 
@@ -344,10 +346,13 @@ def has_cjk(text: str) -> bool:
     for ch in text:
         cp = ord(ch)
         if (
-            0x4E00 <= cp <= 0x9FFF
-            or 0x3400 <= cp <= 0x4DBF
-            or 0x3000 <= cp <= 0x303F
-            or 0xFF00 <= cp <= 0xFFEF
+            0x4E00 <= cp <= 0x9FFF      # CJK Unified Ideographs (Chinese, Japanese, Korean hanzi/kanji/hanja)
+            or 0x3400 <= cp <= 0x4DBF   # CJK Extension A
+            or 0x3000 <= cp <= 0x303F   # CJK Symbols & Punctuation
+            or 0xFF00 <= cp <= 0xFFEF   # Halfwidth/Fullwidth Forms
+            or 0x3040 <= cp <= 0x309F   # Hiragana (Japanese)
+            or 0x30A0 <= cp <= 0x30FF   # Katakana (Japanese)
+            or 0xAC00 <= cp <= 0xD7AF   # Hangul Syllables (Korean)
         ):
             return True
     return False

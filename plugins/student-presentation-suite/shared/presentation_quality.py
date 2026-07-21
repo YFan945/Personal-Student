@@ -337,5 +337,3 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def canonical_slide(slide: dict[str, Any]) -> str:
-    return json.dumps(slide, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

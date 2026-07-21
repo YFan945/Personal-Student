@@ -49,16 +49,23 @@ function resolveRuntime() {
       // Continue to the next supported location.
     }
   }
-  throw new Error("pptxgenjs was not found in the project, plugin, or global npm roots");
+  throw new Error(
+    "pptxgenjs was not found. Try running:\n" +
+    "  npm --prefix " + path.resolve(__dirname, "..") + " ci\n" +
+    "If the issue persists, install globally: npm install -g pptxgenjs"
+  );
 }
 
 const runtime = resolveRuntime();
 const existing = process.env.NODE_PATH ? process.env.NODE_PATH.split(path.delimiter) : [];
 const moduleRoot =
   runtime.source === "global" ? runtime.root : path.join(runtime.root, "node_modules");
-process.env.NODE_PATH = [moduleRoot, ...existing]
+// 把 scripts 目录也加入 NODE_PATH，让生成的 deck 可以 require("pptx-helpers")
+const scriptsDir = __dirname;
+process.env.NODE_PATH = [scriptsDir, moduleRoot, ...existing]
   .filter(Boolean)
   .join(path.delimiter);
+process.env.PPTX_HELPERS_DIR = scriptsDir;
 Module._initPaths();
 
 if (process.argv[2] === "--probe") {

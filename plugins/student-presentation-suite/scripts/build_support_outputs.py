@@ -6,8 +6,21 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import sys
 from pathlib import Path
 from typing import Any
+
+
+def load_optional_dependencies():
+    try:
+        import yaml  # noqa: F401
+    except ImportError as exc:
+        print(
+            "Missing dependency. Install Slide Spec dependencies with: "
+            "python -m pip install -r requirements.txt",
+            file=sys.stderr,
+        )
+        raise SystemExit(3) from exc
 
 
 def load_spec(path: Path) -> dict[str, Any]:
@@ -97,6 +110,7 @@ def references_markdown(data: dict[str, Any]) -> str:
 
 
 def main() -> None:
+    load_optional_dependencies()
     parser = argparse.ArgumentParser(description="Build support outputs from Slide Spec")
     parser.add_argument("spec", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)

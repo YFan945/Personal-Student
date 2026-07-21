@@ -32,10 +32,10 @@ def _validate_scenario_roles(meta: dict[str, Any], slides: list[Any]) -> list[di
     # Core narrative roles must not appear after the conclusion/closing unless this is Q&A.
     final_indices = [index for index, slide in enumerate(slides) if isinstance(slide, dict) and slide.get("role") in {"conclusion", "closing"}]
     if final_indices:
-        last_final = min(final_indices)
+        first_final = min(final_indices)
         late_core = [
             str(slide.get("role"))
-            for slide in slides[last_final + 1:]
+            for slide in slides[first_final + 1:]
             if isinstance(slide, dict) and slide.get("role") in {"background", "problem", "method", "evidence", "result", "solution", "value"}
         ]
         if late_core:
