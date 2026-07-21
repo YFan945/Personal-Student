@@ -5,7 +5,7 @@
 > This branch is built specifically for **Claude Code**. Its installation,
 > dependencies, and runtime behavior are not intended for Codex. If you use
 > **OpenAI Codex**, see the
-> [`main` branch](https://github.com/YFan945/student-presentation-suite/tree/main)
+> [`main` branch](https://github.com/YFan945/Personal-Student/tree/main)
 > instead.
 
 `student-presentation-suite` supports student-owned university presentations,
@@ -77,7 +77,7 @@ Run in PowerShell:
 
 ```powershell
 git clone --branch claude-code --single-branch `
-  https://github.com/YFan945/student-presentation-suite.git `
+  https://github.com/YFan945/Personal-Student.git `
   "$env:USERPROFILE\.agents\claude-plugins"
 
 Set-Location "$env:USERPROFILE\.agents\claude-plugins"
@@ -318,7 +318,7 @@ They are under the project directory from which Claude Code was started:
 ### Can Codex Use This Branch?
 
 No. This branch supports Claude Code only. Use the
-[`main` branch](https://github.com/YFan945/student-presentation-suite/tree/main)
+[`main` branch](https://github.com/YFan945/Personal-Student/tree/main)
 for Codex.
 
 ## Development And Releases

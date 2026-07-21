@@ -4,7 +4,7 @@
 
 > 本分支是专门适配 **Claude Code** 的插件版本，安装、依赖和运行方式均以
 > Claude Code 为准。若你使用 **OpenAI Codex**，请查看
-> [`main` 分支](https://github.com/YFan945/student-presentation-suite/tree/main)，
+> [`main` 分支](https://github.com/YFan945/Personal-Student/tree/main)，
 > 不要在 Codex 中安装本分支。
 
 `student-presentation-suite` 用于大学课程汇报、论文答辩、小组展示等学生学术
@@ -74,7 +74,7 @@ npm --version
 
 ```powershell
 git clone --branch claude-code --single-branch `
-  https://github.com/YFan945/student-presentation-suite.git `
+  https://github.com/YFan945/Personal-Student.git `
   "$env:USERPROFILE\.agents\claude-plugins"
 
 Set-Location "$env:USERPROFILE\.agents\claude-plugins"
@@ -296,7 +296,7 @@ python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
 ### Codex 能否使用本分支
 
 不能。本分支只适配 Claude Code。Codex 版本请使用
-[`main` 分支](https://github.com/YFan945/student-presentation-suite/tree/main)。
+[`main` 分支](https://github.com/YFan945/Personal-Student/tree/main)。
 
 ## 开发与发布
 

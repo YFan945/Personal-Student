@@ -4,7 +4,7 @@
 
 This repository is the Claude Code-only marketplace for
 `student-presentation-suite`. The publishable source of truth is the
-`claude-code` branch of `YFan945/student-presentation-suite`.
+`claude-code` branch of `YFan945/Personal-Student`.
 
 Never publish this marketplace from or to `main`. The `main` branch is a
 separate Codex implementation line with different manifests and runtime
@@ -129,10 +129,12 @@ node, pptxgenjs, markitdown, Pillow, and document-skills are required.
    to synchronize all version fields.
 4. Update documentation and `CHANGELOG.md`.
 5. Run the full validation suite.
-6. Commit the release changes and push a temporary branch.
-7. Open a pull request targeting `claude-code`; the branch is protected and
-   requires all status checks.
-8. Merge only after the required checks pass.
-9. Verify the remote `claude-code` SHA and release tag.
+6. Commit the release changes and **push directly to `claude-code`**.
+7. Delete any temporary or release branches; keep only `main` and `claude-code`.
+8. Verify the remote `claude-code` SHA and create the release tag.
+
+Only the repository owner may push directly to `claude-code`. All other contributors
+must open a pull request from a fork or topic branch and pass the required status
+checks before merging.
 
 Do not merge or push these Claude Code plugin changes to `main`.

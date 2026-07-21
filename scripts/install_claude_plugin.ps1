@@ -7,7 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Repository = "https://github.com/YFan945/student-presentation-suite.git"
+$Repository = "https://github.com/YFan945/Personal-Student.git"
 $Branch = "claude-code"
 $Marketplace = "claude-personal"
 $Plugin = "student-presentation-suite"
