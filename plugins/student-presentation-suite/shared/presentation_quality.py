@@ -8,6 +8,8 @@ from collections import Counter
 from difflib import SequenceMatcher
 from typing import Any
 
+from shared.slide_spec_validation import _validate_scenario_roles
+
 
 GENERIC_PATTERNS = (
     "在当今社会快速发展的背景下",
@@ -100,9 +102,25 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
     findings: list[dict[str, str]] = []
     slide_findings: dict[int, list[dict[str, str]]] = {}
 
-    max_words = int(meta.get("max_words_per_slide") or 40)
-    max_chars = int(meta.get("max_chinese_chars_per_slide") or 80)
+    raw_words = meta.get("max_words_per_slide")
+    max_words = int(raw_words) if raw_words is not None else 40
+    raw_chars = meta.get("max_chinese_chars_per_slide")
+    max_chars = int(raw_chars) if raw_chars is not None else 80
     include_notes = bool(meta.get("include_speaker_notes", True))
+
+    # 场景故事角色完整性检查
+    role_errors = _validate_scenario_roles(meta, slides)
+    for err in role_errors:
+        findings.append(
+            finding(
+                "Major" if "requires" in err["message"] else "Minor",
+                err["path"],
+                "missing-story-role",
+                err["message"],
+                "Audience may miss required narrative structure for this scenario type.",
+                "Ensure every required story role group is represented across slides.",
+            )
+        )
 
     previous_roles: list[tuple[int, str]] = []
     seen_texts: list[tuple[int, str]] = []

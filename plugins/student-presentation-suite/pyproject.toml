@@ -1,0 +1,28 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "ARG", "RET"]
+ignore = [
+    "B904",   # raise-without-from-inside-except - 当前代码风格允许简单 re-raise
+    "SIM115", # open-file-context-handler - 测试中有大量临时文件操作
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "ARG001",   # 测试夹具参数可不使用
+    "S101",     # 测试中使用 assertTrue/assertFalse 是 unittest 惯例
+    "SIM117",   # 测试中多个 with 语句可保持可读性
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_unused_ignores = true
+enable_error_code = ["ignore-without-code"]
+ignore_missing_imports = true

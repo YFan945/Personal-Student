@@ -14,11 +14,15 @@ dependencies.
 
 - `.claude-plugin/marketplace.json`: marketplace manifest and published plugin version.
 - `.github/workflows/validate.yml`: Windows/Linux tests and strict Claude validation.
+- `.github/dependabot.yml`: automated dependency updates for pip, npm, and GitHub Actions.
+- `.editorconfig`: cross-editor formatting baseline (indentation, line endings).
 - `plugins/student-presentation-suite/`: complete installable Claude Code plugin.
 - `scripts/install_claude_plugin.ps1`: install, migrate, update, and dependency setup.
 - `scripts/check_marketplace_release.py`: repository-level release validation.
 - `README.md` / `README-zh.md`: marketplace installation and contributor documentation.
 - `CHANGELOG.md`: newest-first version release history.
+- `CLAUDE.md`: project-specific conventions for Claude Code sessions.
+- `CONTRIBUTING.md`, `SECURITY.md`: community and security guidelines.
 - `PPT-GENERATION-QUALITY-AUDIT.md`: PPTX generation quality audit and ongoing remediation tracker.
 
 Inside the plugin package:
@@ -95,31 +99,53 @@ PPTX production depends on `document-skills@anthropic-agent-skills`.
   package-lock.json). Run `--dry-run` first to preview.
 - Update schema, bridge, documentation, examples, and tests together when
   changing Slide Spec fields or workflow contracts.
+- Run `ruff check` on Python code and `npx eslint` + `npx prettier --check` on
+  JavaScript code before committing.
 - Never overwrite unrelated user changes in a dirty worktree.
 
 ## Validation
 
-Run from the repository root:
+Install linting tools first:
+
+```powershell
+python -m pip install ruff
+npm --prefix plugins/student-presentation-suite install -D eslint prettier
+```
+
+Then run from the repository root:
 
 ```powershell
 python -m pip install -r plugins/student-presentation-suite/requirements.txt
 python -m pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt
 npm --prefix plugins/student-presentation-suite ci
 $env:PYTHONPATH=(Resolve-Path "plugins/student-presentation-suite").Path
+
+# Lint checks
+ruff check plugins/student-presentation-suite/shared/ plugins/student-presentation-suite/scripts/ plugins/student-presentation-suite/tests/
+npx --prefix plugins/student-presentation-suite eslint plugins/student-presentation-suite/scripts/*.js
+npx --prefix plugins/student-presentation-suite prettier --check plugins/student-presentation-suite/scripts/*.js
+
+# Unit and integration tests
 python -m unittest discover -s plugins/student-presentation-suite/tests
+
+# Runtime checks
 python plugins/student-presentation-suite/scripts/smoke_pptx.py
 python plugins/student-presentation-suite/scripts/check_plugin_release.py --json
 python scripts/check_marketplace_release.py --json
 python plugins/student-presentation-suite/scripts/check_claude_pptx_env.py --json --strict
 python scripts/check_installed_version.py --source-only --json
+
+# Claude manifest validation
 claude plugin validate --strict .\plugins\student-presentation-suite
 claude plugin validate --strict .
 git diff --check
 ```
 
-All checks must pass before publishing. The environment check treats
-LibreOffice and Poppler as recommended (missing → warning, not block);
-node, pptxgenjs, markitdown, Pillow, and document-skills are required.
+All checks must pass before publishing. The CI pipeline also runs
+`pip-audit` and `npm audit` for dependency vulnerability scanning.
+The environment check treats LibreOffice and Poppler as recommended
+(missing → warning, not block); node, pptxgenjs, markitdown, Pillow,
+and document-skills are required.
 
 ## Release Procedure
 

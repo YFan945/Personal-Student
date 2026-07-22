@@ -1,26 +1,19 @@
 from __future__ import annotations
 
-import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+
+from test_helpers import load_module
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "manage_versions.py"
 
 
-def load_module():
-    spec = importlib.util.spec_from_file_location("manage_versions", SCRIPT)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 class ManageVersionsTests(unittest.TestCase):
     def test_snapshot_and_restore_candidate(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "outputs"
             output.mkdir()

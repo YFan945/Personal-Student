@@ -1,23 +1,16 @@
 from __future__ import annotations
 
-import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
 
 import yaml
 
+from test_helpers import load_module
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "create_revision_manifest.py"
-
-
-def load_module():
-    spec = importlib.util.spec_from_file_location("create_revision_manifest", SCRIPT)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 class RevisionManifestTests(unittest.TestCase):
@@ -45,7 +38,7 @@ class RevisionManifestTests(unittest.TestCase):
         )
 
     def test_locked_slide_change_is_violation(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             old = Path(tmp) / "r1.yaml"
             new = Path(tmp) / "r2.yaml"
@@ -56,7 +49,7 @@ class RevisionManifestTests(unittest.TestCase):
         self.assertEqual([1], manifest["changed_slides"])
 
     def test_unlocked_slide_change_is_valid(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             old = Path(tmp) / "r1.yaml"
             new = Path(tmp) / "r2.yaml"
@@ -66,7 +59,7 @@ class RevisionManifestTests(unittest.TestCase):
         self.assertTrue(manifest["valid"])
 
     def test_change_outside_target_scope_is_violation(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             old = Path(tmp) / "r1.yaml"
             new = Path(tmp) / "r2.yaml"

@@ -300,6 +300,18 @@ python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
 
 ## 开发与发布
 
+从 0.4.1 起项目新增专用工程工具链：
+
+- **Python 代码质量**：Ruff（启用 E, F, W, I, N, UP, B, SIM, ARG, RET 规则集）
+- **JavaScript 代码质量**：ESLint（标准规则）+ Prettier 格式化
+- **跨编辑器**：`.editorconfig` 确保缩进和行尾一致性
+- **类型安全**：共享 `TypedDict` 定义（[`shared/types.py`](plugins/student-presentation-suite/shared/types.py)）
+- **安全扫描**：CI 流水线包含 `pip-audit` 和 `npm audit`
+- **依赖管理**：Dependabot 已配置 pip、npm 和 GitHub Actions 自动更新
+- **集成测试**：spec → bridge 流水线的端到端冒烟测试
+- **测试工具提取**：共享 [`test_helpers.load_module()`](plugins/student-presentation-suite/tests/test_helpers.py) 消除 7 处重复模块加载器
+- **社区标准**：Issue/PR 模板、`CONTRIBUTING.md`、`SECURITY.md`
+
 本分支的源码、验证和发布约束见 [AGENTS.md](AGENTS.md) 和
 [CHANGELOG.md](CHANGELOG.md)。Claude Code 版本只发布到 `claude-code`，
 不得发布到 `main`。

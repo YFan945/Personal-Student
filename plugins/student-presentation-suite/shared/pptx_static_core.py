@@ -322,9 +322,15 @@ def text_colors(el: ET.Element) -> list[str]:
 
 
 def relative_luminance(color: str) -> float:
+    if not _is_valid_hex_color(color):
+        return 0.0
     channels = [int(color[index:index + 2], 16) / 255 for index in (0, 2, 4)]
     linear = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4 for value in channels]
     return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _is_valid_hex_color(color: str) -> bool:
+    return len(color) == 6 and all(c in "0123456789ABCDEFabcdef" for c in color)
 
 
 def contrast_ratio(first: str, second: str) -> float:
@@ -553,7 +559,9 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                         if resolution:
                             width_in = object_bounds["cx"] / 914400
                             height_in = object_bounds["cy"] / 914400
-                            effective_ppi = min(resolution[0] / max(width_in, 0.01), resolution[1] / max(height_in, 0.01))
+                            if width_in < 0.5 or height_in < 0.5:
+                                continue  # 跳过装饰性小形状的 PPI 检查
+                            effective_ppi = min(resolution[0] / width_in, resolution[1] / height_in)
                             if effective_ppi < 100:
                                 findings.append(
                                     {

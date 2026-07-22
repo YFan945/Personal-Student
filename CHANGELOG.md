@@ -4,9 +4,84 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
-## Unreleased
+## 0.4.2 — 2026-07-22
 
-## 0.4.1 — 2026-07-21
+### 安全修复
+
+- **路径穿越防护**（P0-3）：`runtime_paths.py` 的 `project_root()` 现在拒绝
+  包含 `..` 的环境变量值，防止恶意 `CLAUDE_PROJECT_DIR` 导致意外路径解析。
+- **`relative_luminance` 输入校验**（P0-2）：十六进制颜色字符串现在先校验长度
+  和字符集，非法值返回默认亮度 0.0 而非崩溃。
+- **`or 40` 回退 bug**（P0-1）：`presentation_quality.py` 中
+  `meta.get("max_words_per_slide") or 40` 已修复：显式设为 0 不再被错误回退。
+- **`effective_ppi` 除零保护**（P1-8）：跳过小于 0.5 英寸的装饰性形状的 PPI 检查。
+
+### 门禁硬化
+
+- **delivery `--strict` 测试覆盖**（P0-4）：新增 6 个失败路径测试覆盖静态扫描
+  错误、blocker 未清、QA manifest 缺失、PPTX 不可读、风格报告失败等场景。
+- **状态机 `qa→complete` 门禁测试**（P0-5）：新增 hash 不匹配、blocker 未清、
+  无视觉检查记录等 4 个失败路径测试。
+
+### 工程基础设施
+
+- **Python 代码质量**（P1-1）：新增 `pyproject.toml`，配置 Ruff（E, F, W, I,
+  N, UP, B, SIM, ARG, RET 规则集）+ mypy 渐进式引入。
+- **JavaScript 代码质量**（P1-1）：新增 `.eslintrc.json`（Node.js 标准规则）
+  和 `.prettierrc`（100 字符宽、单引号）。
+- **跨编辑器格式**（P2-3）：新增 `.editorconfig`，统一缩进 4 空格、UTF-8、
+  LF 行尾。
+- **依赖管理**（P1-7）：`package-lock.json` 已纳入版本追踪；Dependabot 配置
+  覆盖 pip、npm 和 GitHub Actions。
+- **CI 增强**：新增 `ruff check`、`eslint`、`prettier --check` 步骤；新增
+  `security-scan` job 运行 `pip-audit` + `npm audit`。
+
+### 类型安全
+
+- **TypedDict 类型定义**（P1-2）：新增 `shared/types.py`，为 Presentation Brief、
+  Slide Spec、Design Tokens、QA Manifest 和 Delivery Report 提供结构化
+  TypedDict 类型，逐步替代裸 `dict[str, Any]`。
+
+### 测试优化
+
+- **测试工具提取**（P1-5）：新增 `tests/test_helpers.py`，统一 `load_module()`
+  函数。7 个测试文件（`test_workflow_guard`、`test_pptx_delivery_check`、
+  `test_bump_version`、`test_manage_versions`、`test_revision_manifest`、
+  `test_support_outputs`、`test_version_consistency`）全部迁移使用共享加载器。
+- **集成测试**（P2-6）：新增 `tests/test_end_to_end.py`，包含 5 个冒烟测试
+  验证关键脚本 CLI 入口点正常启动。
+
+### 代码质量修复
+
+- **`pptx-helpers.js` 修复**（P1-3）：
+  - 惰性导入改为顶层 `require("pptxgenjs")` — 原注释称"避免循环依赖"，
+    但顶层 require 不会导致循环依赖。
+  - `estimateTextFit` 增加零尺寸盒子防护，`boxW ≤ 0 || boxH ≤ 0` 时
+    返回 `{lines: 0, fillRatio: 0, overflow: false}`。
+  - `applyTokens` 接受可选 `opts.slideW / opts.slideH` 参数，不再硬编码
+    16:9 尺寸。
+- **`_import_helpers.py` 重构**（P1-6）：`load_inspect_pptx` 的 `sys.path`
+  操作封装为 `_plugin_root_on_path()` context manager，`remove()` 失败时
+  安全 pass。
+- **场景角色验证集成**（P1-4）：`presentation_quality.analyze_spec()` 现调用
+  `slide_spec_validation._validate_scenario_roles()`，在质量分析中产出
+  场景必需故事角色的缺失 findings。
+- **`shape_bounds` 调用验证**：确认所有调用的 None 检查已正确实现。
+
+### 社区与文档
+
+- **社区标准**（P2-1）：新增 `CONTRIBUTING.md`、`SECURITY.md`、Issue 模板
+  （`bug_report.md`）、PR 模板。
+- **`.env.example`**（P2-4）：新增环境变量文档清单。
+- **`README.md` / `README-zh.md`**：在开发与发布章节新增工程工具链描述。
+- **`AGENTS.md`**：更新仓库布局、编辑规则和验证流程，加入 lint 检查步骤。
+- **`CLAUDE.md`**：新增项目级 CLAUDE.md，记录结构、命令和约定。
+- **`CHANGELOG.md`**：本版本日志。
+
+### 测试覆盖
+
+- 测试总数：121 → **136**（+15 个新测试）
+- 全量测试通过：✅
 
 | 字段 | 内容 |
 | ---- | ---- |

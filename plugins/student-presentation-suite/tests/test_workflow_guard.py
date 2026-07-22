@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 import hashlib
 import json
 import sys
@@ -10,24 +9,18 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
+from test_helpers import load_module
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "workflow_guard.py"
-
-
-def load_module():
-    spec = importlib.util.spec_from_file_location("workflow_guard", SCRIPT)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 class HookDecisionTests(unittest.TestCase):
     """PreToolUse hook 决策逻辑测试"""
 
     def test_blocks_production_without_confirmation(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.dict("os.environ", {}, clear=True):
                 decision = module.hook_decision(
@@ -46,7 +39,7 @@ class HookDecisionTests(unittest.TestCase):
         )
 
     def test_allows_after_confirmation(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             state_path = Path(tmp) / "outputs" / ".student-presentation-state.json"
             state_path.parent.mkdir()
@@ -73,7 +66,7 @@ class HookDecisionTests(unittest.TestCase):
 
     def test_allows_in_producing_state(self) -> None:
         """producing 状态应允许生产命令"""
-        module = load_module()
+        module = load_module(SCRIPT)
         for state in ("planned", "producing", "qa"):
             with self.subTest(state=state):
                 with tempfile.TemporaryDirectory() as tmp:
@@ -104,7 +97,7 @@ class HookDecisionTests(unittest.TestCase):
 
     def test_blocks_in_complete_state(self) -> None:
         """complete 状态不应再允许生产命令"""
-        module = load_module()
+        module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             state_path = Path(tmp) / "outputs" / ".student-presentation-state.json"
             state_path.parent.mkdir()
@@ -128,7 +121,7 @@ class HookDecisionTests(unittest.TestCase):
         )
 
     def test_missing_summary_hash_blocks_production(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             state_path = Path(tmp) / "outputs" / ".student-presentation-state.json"
             state_path.parent.mkdir()
@@ -141,7 +134,7 @@ class HookDecisionTests(unittest.TestCase):
         self.assertIsNotNone(decision)
 
     def test_ignores_unrelated_bash(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         for cmd in ("git status", "npm install", "ls -la", "echo hello"):
             with self.subTest(cmd=cmd):
                 self.assertIsNone(
@@ -151,7 +144,7 @@ class HookDecisionTests(unittest.TestCase):
                 )
 
     def test_ignores_non_bash_tool(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         self.assertIsNone(
             module.hook_decision(
                 {
@@ -164,7 +157,7 @@ class HookDecisionTests(unittest.TestCase):
         )
 
     def test_blocked_state_does_not_allow_more_production(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             state_path = Path(tmp) / "outputs" / ".student-presentation-state.json"
             state_path.parent.mkdir()
@@ -188,7 +181,7 @@ class HookDecisionTests(unittest.TestCase):
         )
 
     def test_incomplete_state_blocks_production(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             state_path = Path(tmp) / "outputs" / ".student-presentation-state.json"
             state_path.parent.mkdir()
@@ -213,7 +206,7 @@ class HookDecisionTests(unittest.TestCase):
 
     def test_no_false_positive_on_echo_comment(self) -> None:
         """echo/注释中包含脚本名不应被误拦截"""
-        module = load_module()
+        module = load_module(SCRIPT)
         safe_commands = [
             "echo 'learned about run_with_pptxgenjs.js today'",
             "# TODO: use slide_spec_to_pptx_brief.py later",
@@ -230,7 +223,7 @@ class HookDecisionTests(unittest.TestCase):
 
     def test_claude_plugin_root_pattern_matches(self) -> None:
         """${CLAUDE_PLUGIN_ROOT} 前缀的脚本调用应被正确识别"""
-        module = load_module()
+        module = load_module(SCRIPT)
         commands = [
             'python "${CLAUDE_PLUGIN_ROOT}/scripts/slide_spec_to_pptx_brief.py" spec.yaml',
             'node "${CLAUDE_PLUGIN_ROOT}/scripts/run_with_pptxgenjs.js" deck.js',
@@ -253,7 +246,7 @@ class HookDecisionTests(unittest.TestCase):
                 )
 
     def test_empty_command_ignored(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         self.assertIsNone(
             module.hook_decision(
                 {"tool_name": "Bash", "tool_input": {"command": ""}}
@@ -266,7 +259,7 @@ class StateTransitionTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.module = load_module()
+        cls.module = load_module(SCRIPT)
 
     def test_all_valid_forward_transitions(self) -> None:
         module = self.module
@@ -338,13 +331,70 @@ class StateTransitionTests(unittest.TestCase):
             manifest.write_text("{}", encoding="utf-8")
             self.assertTrue(module.validate_completion_manifest(manifest, pptx))
 
+    def test_complete_rejects_missing_manifest(self) -> None:
+        module = self.module
+        self.assertTrue(module.validate_completion_manifest(None, None))
+
+    def test_complete_rejects_hash_mismatch(self) -> None:
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            with zipfile.ZipFile(pptx, "w") as archive:
+                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
+            other = root / "other.pptx"
+            with zipfile.ZipFile(other, "w") as archive:
+                archive.writestr("ppt/slides/slide1.xml", "<slide><!-- different --></slide>")
+            manifest = root / "qa.json"
+            manifest.write_text(json.dumps({
+                "pptx_sha256": hashlib.sha256(other.read_bytes()).hexdigest(),
+                "slide_count": 1,
+                "rendered_page_count": 1,
+                "visual_inspection": {"completed": True, "remaining_blockers": 0},
+            }), encoding="utf-8")
+            errors = module.validate_completion_manifest(manifest, pptx)
+            self.assertTrue(any("pptx_sha256" in e for e in errors))
+
+    def test_complete_rejects_remaining_blockers(self) -> None:
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            with zipfile.ZipFile(pptx, "w") as archive:
+                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
+            manifest = root / "qa.json"
+            manifest.write_text(json.dumps({
+                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                "slide_count": 1,
+                "rendered_page_count": 1,
+                "visual_inspection": {"completed": True, "remaining_blockers": 2},
+            }), encoding="utf-8")
+            errors = module.validate_completion_manifest(manifest, pptx)
+            self.assertTrue(any("blocker" in e.lower() for e in errors))
+
+    def test_complete_rejects_no_visual_inspection(self) -> None:
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            with zipfile.ZipFile(pptx, "w") as archive:
+                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
+            manifest = root / "qa.json"
+            manifest.write_text(json.dumps({
+                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                "slide_count": 1,
+                "rendered_page_count": 1,
+            }), encoding="utf-8")
+            errors = module.validate_completion_manifest(manifest, pptx)
+            self.assertTrue(any("视觉检查" in e for e in errors))
+
 
 class FastPreScanTests(unittest.TestCase):
     """快速预扫描测试"""
 
     def test_skip_json_parsing_for_unrelated_input(self) -> None:
         """非生产命令应跳过 JSON 解析"""
-        module = load_module()
+        module = load_module(SCRIPT)
         with mock.patch.object(sys.stdin.buffer, "read", return_value=b""):
             result = module._check_and_parse_stdin()
         # 无 stdin 输入时应返回 None
@@ -355,7 +405,7 @@ class ProjectRootTests(unittest.TestCase):
     """project_root 一致性测试"""
 
     def test_uses_claude_project_dir(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         with mock.patch.dict(
             "os.environ", {"CLAUDE_PROJECT_DIR": "/fake/project"}, clear=True
         ):
@@ -363,7 +413,7 @@ class ProjectRootTests(unittest.TestCase):
             self.assertEqual(root, Path("/fake/project").resolve())
 
     def test_falls_back_to_cwd(self) -> None:
-        module = load_module()
+        module = load_module(SCRIPT)
         with mock.patch.dict("os.environ", {}, clear=True):
             root = module.project_root()
             self.assertEqual(root, Path.cwd().resolve())
@@ -374,7 +424,7 @@ class ProductionPatternTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.module = load_module()
+        cls.module = load_module(SCRIPT)
 
     def test_matches_production_commands(self) -> None:
         commands = [

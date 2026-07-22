@@ -323,6 +323,18 @@ for Codex.
 
 ## Development And Releases
 
+Starting with 0.4.1 the project also includes a dedicated engineering toolchain:
+
+- **Python linting**: Ruff with selected rule sets (E, F, W, I, N, UP, B, SIM, ARG, RET)
+- **JavaScript linting**: ESLint with standard rules + Prettier formatting
+- **Cross-editor**: `.editorconfig` for consistent indentation and line endings
+- **Type safety**: Shared `TypedDict` definitions in [`shared/types.py`](plugins/student-presentation-suite/shared/types.py)
+- **Security scanning**: `pip-audit` and `npm audit` in CI pipeline
+- **Dependency management**: Dependabot configured for pip, npm, and GitHub Actions
+- **Integration tests**: End-to-end smoke tests for the spec → bridge pipeline
+- **Test utility extraction**: Shared [`test_helpers.load_module()`](plugins/student-presentation-suite/tests/test_helpers.py) eliminates 7 duplicate module loaders
+- **Community standards**: Issue/PR templates, `CONTRIBUTING.md`, `SECURITY.md`
+
 See [AGENTS.md](AGENTS.md) and [CHANGELOG.md](CHANGELOG.md) for source
 validation and release rules. Claude Code changes are published only from
 `claude-code`, never from `main`.

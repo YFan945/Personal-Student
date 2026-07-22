@@ -16,14 +16,8 @@ const CM_PER_INCH = 2.54;
 const SLIDE_W_IN = 10;
 const SLIDE_H_IN = 5.625;
 
-// 延迟加载 pptxgenjs（避免循环依赖，由调用方 require）
-let _pptxgen = null;
-function _getPptxgen() {
-  if (!_pptxgen) {
-    _pptxgen = require("pptxgenjs");
-  }
-  return _pptxgen;
-}
+// pptxgenjs 实例工厂 — 顶层 require 不会导致循环依赖
+const _pptxgen = require("pptxgenjs");
 
 // ── Token 辅助 ────────────────────────────────────────────
 
@@ -128,6 +122,10 @@ function cornerRadius(tokens) {
  * @returns {{ lines: number, fillRatio: number, overflow: boolean }}
  */
 function estimateTextFit(text, boxW, boxH, fontSize, isCJK) {
+  // 零尺寸盒子无法计算填充率
+  if (boxW <= 0 || boxH <= 0) {
+    return { lines: 0, fillRatio: 0, overflow: false };
+  }
   const boxWCm = boxW * CM_PER_INCH;
   const boxHCm = boxH * CM_PER_INCH;
   const charWidthCm = fontSize * (isCJK ? 0.035 : 0.021);
@@ -238,7 +236,7 @@ function addBody(slide, text, area, tokens, lang, opts) {
  */
 function addAccentCard(slide, text, box, tokens) {
   const radius = cornerRadius(tokens);
-  const shape = slide.addShape(_getPptxgen().ShapeType.roundRect, {
+  const shape = slide.addShape(_pptxgen.ShapeType.roundRect, {
     x: box.x, y: box.y, w: box.w, h: box.h,
     fill: { color: color(tokens, "surface") },
     line: { color: color(tokens, "primary_accent"), width: (tokens.lines && tokens.lines.standard_pt) || 1.25 },
@@ -267,7 +265,7 @@ function addAccentCard(slide, text, box, tokens) {
  */
 function addDivider(slide, x, y, w, tokens, weight) {
   const linePt = (tokens.lines && tokens.lines[weight + "_pt"]) || (tokens.lines && tokens.lines.standard_pt) || 1.25;
-  return slide.addShape(_getPptxgen().ShapeType.line, {
+  return slide.addShape(_pptxgen.ShapeType.line, {
     x, y, w, h: 0,
     line: { color: color(tokens, "secondary_text"), width: linePt },
   });
@@ -280,13 +278,16 @@ function addDivider(slide, x, y, w, tokens, weight) {
  * @param {object} pptx - new pptxgen() 实例
  * @param {object} tokens
  * @param {string} lang
+ * @param {{ slideW?: number, slideH?: number }} [opts] - 可选幻灯片尺寸覆盖
  */
-function applyTokens(pptx, tokens, lang) {
+function applyTokens(pptx, tokens, lang, opts) {
   const sizes = fontSizeScale(tokens, lang);
   const fonts = fontFamily(tokens);
+  const slideW = (opts && opts.slideW) || SLIDE_W_IN;
+  const slideH = (opts && opts.slideH) || SLIDE_H_IN;
 
-  // 设置 16:9 幻灯片尺寸
-  pptx.defineLayout({ name: "STUDENT_WIDE", width: SLIDE_W_IN, height: SLIDE_H_IN });
+  // 设置幻灯片尺寸（默认 16:9）
+  pptx.defineLayout({ name: "STUDENT_WIDE", width: slideW, height: slideH });
   pptx.layout = "STUDENT_WIDE";
 
   // 默认文字样式

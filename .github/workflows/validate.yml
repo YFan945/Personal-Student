@@ -26,7 +26,9 @@ jobs:
         run: |
           python -m pip install -r plugins/student-presentation-suite/requirements.txt
           python -m pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt
+          python -m pip install ruff
           npm --prefix plugins/student-presentation-suite ci
+          npm --prefix plugins/student-presentation-suite install -D eslint prettier
       - name: Validate schema and tests
         shell: pwsh
         env:
@@ -37,6 +39,15 @@ jobs:
           python -m unittest discover -s plugins/student-presentation-suite/tests
           node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js --probe
           python plugins/student-presentation-suite/scripts/smoke_pptx.py
+      - name: Lint Python (ruff)
+        shell: pwsh
+        run: |
+          ruff check plugins/student-presentation-suite/shared/ plugins/student-presentation-suite/scripts/ plugins/student-presentation-suite/tests/ --ignore B904,SIM115
+      - name: Lint JavaScript (eslint + prettier)
+        shell: pwsh
+        run: |
+          npx --prefix plugins/student-presentation-suite eslint plugins/student-presentation-suite/scripts/*.js
+          npx --prefix plugins/student-presentation-suite prettier --check plugins/student-presentation-suite/scripts/*.js
       - name: Release checks
         shell: pwsh
         env:
@@ -85,3 +96,25 @@ jobs:
         env:
           PYTHONPATH: "${{ github.workspace }}/plugins/student-presentation-suite"
         run: python plugins/student-presentation-suite/scripts/scenario_render_matrix.py --require-render
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: |
+          python -m pip install -r plugins/student-presentation-suite/requirements.txt
+          python -m pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt
+          npm --prefix plugins/student-presentation-suite ci
+      - name: Pip audit
+        run: |
+          python -m pip install pip-audit
+          pip-audit -r plugins/student-presentation-suite/requirements.txt -r plugins/student-presentation-suite/requirements-claude-pptx.txt || true
+      - name: Npm audit
+        run: npm --prefix plugins/student-presentation-suite audit || true
