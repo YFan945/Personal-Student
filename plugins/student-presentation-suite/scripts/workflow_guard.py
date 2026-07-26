@@ -32,7 +32,6 @@ _PRODUCTION_PATTERNS = (
         r"(?:python(?:3(?:\.\d+)?)?|py(?:thon)?(?:\.exe)?|node(?:js)?(?:\.exe)?)"
         r"\b\s+.*(?:"
         r"slide_spec_to_pptx_brief\.py"
-        r"|check_claude_pptx_env\.py"
         r"|run_with_pptxgenjs\.js"
         r"|pptx_tool\.py\s+(?!inspect\b)[a-z-]+"
         r"|build_support_outputs\.py"
@@ -47,7 +46,6 @@ _PRODUCTION_PATTERNS = (
 # 快速子串预扫描清单（用于跳过 JSON 解析）
 _FAST_MARKERS = (
     "slide_spec_to_pptx_brief.py",
-    "check_claude_pptx_env.py",
     "run_with_pptxgenjs.js",
     "pptx_tool.py",
     "build_support_outputs.py",
