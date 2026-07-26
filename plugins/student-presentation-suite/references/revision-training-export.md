@@ -64,7 +64,6 @@ Supported local deliverables:
 - quality report;
 - revision manifest.
 
-DOCX notes are optional only when the installed `document-skills` package
-exposes a compatible document workflow. Web editing, cloud synchronization, and
-multi-user collaboration require an external service and are not claimed by
-this local plugin.
+DOCX notes are not produced by the suite-owned PPTX runtime. Web editing, cloud
+synchronization, and multi-user collaboration require an external service and
+are not claimed by this local plugin.

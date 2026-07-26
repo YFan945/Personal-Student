@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -35,6 +36,8 @@ def main() -> None:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
         raise SystemExit(2) from exc
     result = analyze_spec(data if isinstance(data, dict) else {})
+    result["slide_spec"] = str(args.spec.resolve())
+    result["slide_spec_sha256"] = hashlib.sha256(args.spec.read_bytes()).hexdigest()
     rendered = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

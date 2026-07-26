@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import collections
+import hashlib
 import zipfile
 from pathlib import Path
-from xml.etree import ElementTree as ET
 from typing import Any
+
+from defusedxml import ElementTree as ET
 
 from shared.design_tokens import resolve_design_tokens
 from shared.pptx_static_core import NS, fill_colors, font_families, slide_number
@@ -78,6 +80,8 @@ def inspect_style_adherence(pptx: Path, visual_style: str) -> dict[str, Any]:
         errors.append("Connector widths outside the configured line system: " + ", ".join(map(str, nonconforming_connectors)))
     return {
         "ok": not errors,
+        "pptx": str(pptx.resolve()),
+        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
         "style": tokens.get("style_name"),
         "tokens": tokens,
         "slide_count": len(slides),

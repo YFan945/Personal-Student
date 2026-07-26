@@ -6,13 +6,11 @@
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
@@ -56,7 +54,7 @@ class SmokeTests(unittest.TestCase):
                 "    layout: title-content\n    content: { claim: 'test' }\n"
                 "  - id: 2\n    title: Data\n    kind: content\n"
                 "    layout: title-content\n    content: { claim: 'data' }\n"
-                "    roles: [evidence]\n",
+                "    role: evidence\n",
                 encoding="utf-8",
             )
             proc = self._run(str(SCRIPTS / "analyze_presentation_spec.py"), str(spec))

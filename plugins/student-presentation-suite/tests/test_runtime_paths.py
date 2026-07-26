@@ -10,12 +10,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from shared.runtime_paths import document_skills_compatibility, output_root
+from shared.runtime_paths import get_pptx_runtime_root, output_root
 
 
 def load_env_checker():
@@ -46,36 +45,11 @@ class RuntimePathTests(unittest.TestCase):
             self.assertEqual(Path(tmp).resolve() / "outputs", result)
             self.assertNotEqual(ROOT / "outputs", result)
 
-    def test_document_skill_compatibility_detects_guides(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            config = Path(tmp)
-            plugin = config / "cache/document-skills"
-            skill = plugin / "skills/pptx"
-            skill.mkdir(parents=True)
-            for name in ("SKILL.md", "pptxgenjs.md", "editing.md"):
-                (skill / name).write_text(name, encoding="utf-8")
-            installed = config / "plugins/installed_plugins.json"
-            installed.parent.mkdir(parents=True)
-            installed.write_text(
-                json.dumps(
-                    {
-                        "plugins": {
-                            "document-skills@anthropic-agent-skills": [
-                                {"installPath": str(plugin)}
-                            ]
-                        }
-                    }
-                ),
-                encoding="utf-8",
-            )
-            result = document_skills_compatibility({"CLAUDE_CONFIG_DIR": str(config)})
-            self.assertTrue(result["ok"])
-
-    def test_document_skill_missing_is_incompatible(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            result = document_skills_compatibility({"CLAUDE_CONFIG_DIR": tmp})
-            self.assertFalse(result["ok"])
-            self.assertIn("pptxgenjs.md", result["missing"])
+    def test_get_pptx_runtime_root_returns_suite_owned_path(self) -> None:
+        root = get_pptx_runtime_root()
+        self.assertTrue(root.is_dir())
+        self.assertTrue((root / "__init__.py").is_file())
+        self.assertTrue((ROOT / "scripts" / "pptx_tool.py").is_file())
 
     def test_pptxgenjs_resolution_order(self) -> None:
         module = load_env_checker()

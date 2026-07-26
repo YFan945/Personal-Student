@@ -53,6 +53,13 @@ slides:
     speaker_notes: "Open with a blank-editor scenario that students recognize."
     key_line: "Familiar code is not the same as retrievable knowledge."
     transition: "We tested whether short retrieval practice changes that gap."
+    visual:
+      type: comparison
+      purpose: "Contrast recognition with blank-page recall"
+      layout_family: comparison
+      details:
+        items: ["Recognition", "Recall"]
+        dimensions: ["perceived ease", "independent production"]
     timing_sec: 40
     owner: A
   - id: 2
@@ -66,6 +73,13 @@ slides:
     slide_copy: ["Same material", "Same time", "Different action"]
     speaker_notes: "Explain the comparison without implying random assignment."
     transition: "The next page defines how we measured change."
+    visual:
+      type: comparison
+      purpose: "Compare the two review activities under controlled conditions"
+      layout_family: comparison
+      details:
+        items: ["Passive review", "Retrieval practice"]
+        dimensions: ["material", "time", "action"]
     timing_sec: 50
     owner: A
   - id: 3
@@ -79,6 +93,12 @@ slides:
     slide_copy: ["Pre-quiz", "Review activity", "Post-quiz"]
     speaker_notes: "State the scoring method and what it cannot measure."
     transition: "With the method clear, we can interpret the result."
+    visual:
+      type: process
+      purpose: "Show the measurement sequence"
+      layout_family: process-path
+      details:
+        steps: ["Pre-quiz", "Review activity", "Post-quiz"]
     timing_sec: 45
     owner: B
   - id: 4
@@ -93,6 +113,20 @@ slides:
     speaker_notes: "Describe the comparison and avoid claiming universal causality."
     evidence_refs: [quiz-results]
     transition: "The result is useful, but its scope is limited."
+    visual:
+      type: chart
+      purpose: "Show the difference in quiz improvement"
+      layout_family: dashboard
+      details:
+        measure: "quiz score change"
+        unit: "points"
+        scope: "one introductory programming class"
+        source: "quiz-results"
+        takeaway: "retrieval practice improved more in this class"
+        series:
+          - name: "Score change"
+            labels: ["Rereading", "Retrieval practice"]
+            values: [4.1, 9.3]
     timing_sec: 55
     owner: B
   - id: 5
@@ -106,6 +140,15 @@ slides:
     slide_copy: ["One class", "Short period", "No retention follow-up"]
     speaker_notes: "Use the limitation to frame the next experiment."
     transition: "Within that boundary, one practical recommendation remains."
+    visual:
+      type: matrix
+      purpose: "Place limitations by impact and confidence"
+      layout_family: matrix
+      details:
+        items:
+          - {label: "one class", x: 0.8, y: 0.8}
+          - {label: "short duration", x: 0.55, y: 0.65}
+          - {label: "no retention follow-up", x: 0.7, y: 0.9}
     timing_sec: 50
     owner: A
     locked: true

@@ -5,7 +5,6 @@ import unittest
 from shared.design_tokens import resolve_design_tokens
 from shared.pptx_static_core import contrast_ratio
 
-
 STYLES = (
     "Academic Rigorous", "Berry Cream", "Charcoal Editorial", "Cherry Bold",
     "Coral Energy", "Creative Student", "Data Driven", "Forest Moss",

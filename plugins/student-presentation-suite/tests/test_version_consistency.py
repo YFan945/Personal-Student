@@ -6,7 +6,6 @@ from unittest import mock
 
 from test_helpers import load_module
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "scripts" / "check_installed_version.py"
 

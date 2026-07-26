@@ -4,13 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
-
 
 _SEMVER_RE = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
@@ -123,10 +123,8 @@ def bump(target: str, dry_run: bool = False) -> int:
 
     def _revert_package() -> None:
         """npm 失败时回滚 package.json，避免半升级状态。"""
-        try:
+        with contextlib.suppress(OSError):
             write_json(package_path, package_old)
-        except OSError:
-            pass
 
     print("  正在同步 package-lock.json ...")
     try:

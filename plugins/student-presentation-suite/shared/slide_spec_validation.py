@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 SCENARIO_REQUIRED_ROLE_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
     "coursework": (("background", "problem"), ("method",), ("evidence", "result"), ("conclusion", "closing")),
     "defense": (("problem",), ("method",), ("result", "evidence"), ("solution", "value"), ("limitation",), ("qa",)),
@@ -51,13 +50,27 @@ def _validate_visual_semantics(meta: dict[str, Any], slides: list[Any]) -> list[
             continue
         visual = slide.get("visual")
         kind = slide.get("kind", "content")
-        if meta.get("visual_text_ratio") == "visual-led" and kind not in exempt_kinds and not isinstance(visual, dict):
-            errors.append({"path": f".slides.{index}.visual", "message": "visual-led mode requires a visual on every content slide"})
+        strict_visual = (
+            meta.get("quality_level") == "high-score"
+            or meta.get("visual_text_ratio") in {"balanced", "visual-led"}
+        )
+        if strict_visual and kind not in exempt_kinds and not isinstance(visual, dict):
+            mode = (
+                "visual-led mode"
+                if meta.get("visual_text_ratio") == "visual-led"
+                else "quality mode"
+            )
+            errors.append({"path": f".slides.{index}.visual", "message": f"{mode} requires a visual on every content slide; the visual must be meaningful"})
         if not isinstance(visual, dict):
             continue
         visual_type = str(visual.get("type", "")).casefold()
+        if strict_visual and kind not in exempt_kinds and visual_type in {"none", "text", "text-only"}:
+            errors.append({"path": f".slides.{index}.visual.type", "message": "quality mode does not allow text-only content slides"})
         details = visual.get("details")
-        if visual_type not in {"timeline", "comparison", "process", "chart"}:
+        if visual_type not in {
+            "timeline", "comparison", "process", "chart", "architecture",
+            "matrix", "cycle", "swimlane", "annotated-image",
+        }:
             continue
         if not isinstance(details, dict):
             errors.append({"path": f".slides.{index}.visual.details", "message": f"visual type {visual_type} requires structured details"})
@@ -78,6 +91,41 @@ def _validate_visual_semantics(meta: dict[str, Any], slides: list[Any]) -> list[
             missing = [field for field in required if not details.get(field)]
             if missing:
                 errors.append({"path": f".slides.{index}.visual.details", "message": "chart requires: " + ", ".join(missing)})
+            series = details.get("series")
+            if not isinstance(series, list) or not series:
+                errors.append({"path": f".slides.{index}.visual.details.series", "message": "chart requires at least one data series"})
+            else:
+                for series_index, item in enumerate(series):
+                    target = f".slides.{index}.visual.details.series.{series_index}"
+                    if not isinstance(item, dict) or not item.get("name"):
+                        errors.append({"path": target, "message": "chart series requires a name"})
+                        continue
+                    labels = item.get("labels")
+                    values = item.get("values")
+                    if not isinstance(labels, list) or len(labels) < 2:
+                        errors.append({"path": f"{target}.labels", "message": "chart series requires at least 2 labels"})
+                    if not isinstance(values, list) or len(values) < 2:
+                        errors.append({"path": f"{target}.values", "message": "chart series requires at least 2 numeric values"})
+                    elif any(value is not None and not isinstance(value, (int, float)) for value in values):
+                        errors.append({"path": f"{target}.values", "message": "chart values must be numeric or null"})
+                    if isinstance(labels, list) and isinstance(values, list) and len(labels) != len(values):
+                        errors.append({"path": target, "message": "chart labels and values must have equal length"})
+        if visual_type in {"architecture", "swimlane"} and (
+            not isinstance(details.get("nodes"), list) or len(details["nodes"]) < 2
+        ):
+            errors.append({"path": f".slides.{index}.visual.details.nodes", "message": f"{visual_type} requires at least 2 nodes"})
+        if visual_type == "matrix" and (
+            not isinstance(details.get("items"), list) or len(details["items"]) < 2
+        ):
+            errors.append({"path": f".slides.{index}.visual.details.items", "message": "matrix requires at least 2 items"})
+        elif visual_type == "matrix" and len(details["items"]) > 4:
+            errors.append({"path": f".slides.{index}.visual.details.items", "message": "matrix supports at most 4 clearly labeled items"})
+        if visual_type == "cycle" and (
+            not isinstance(details.get("steps"), list) or len(details["steps"]) < 3
+        ):
+            errors.append({"path": f".slides.{index}.visual.details.steps", "message": "cycle requires at least 3 steps"})
+        if visual_type in {"image", "photo", "illustration", "annotated-image"} and not visual.get("asset"):
+            errors.append({"path": f".slides.{index}.visual.asset", "message": f"{visual_type} requires an asset path"})
     return errors
 
 

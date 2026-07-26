@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import json
 import importlib.util
+import json
 import unittest
 from pathlib import Path
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parents[1]
@@ -44,10 +43,9 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertEqual(manifest["version"], entry["version"],
                          "manifest 和 marketplace 版本应一致")
         self.assertEqual(manifest["name"], entry["name"])
-        self.assertTrue(
-            any("document-skills@anthropic-agent-skills" in dep
-                for dep in manifest["dependencies"]),
-            "manifest 必须依赖 document-skills@anthropic-agent-skills",
+        self.assertEqual(
+            [], manifest["dependencies"],
+            "manifest 依赖列表应为空（pptx skill 已内嵌）",
         )
         for field in ("homepage", "repository", "license", "keywords"):
             self.assertTrue(manifest[field])
@@ -86,15 +84,33 @@ class SkillBehaviorContractTests(unittest.TestCase):
     def test_runtime_and_output_contracts_are_portable(self) -> None:
         planning = self.read("skills/student-presentation/SKILL.md")
         ppt = self.read("skills/student-presentation-ppt/SKILL.md")
+        production = self.read("skills/student-presentation-ppt/references/pptx-production.md")
         review = self.read("skills/student-presentation-review/SKILL.md")
         self.assertIn("${CLAUDE_PLUGIN_ROOT}", ppt)
         self.assertIn("${CLAUDE_PROJECT_DIR}", ppt)
-        self.assertIn("run_with_pptxgenjs.js", ppt)
+        self.assertIn("run_with_pptxgenjs.js", production)
+        self.assertIn("pptx_tool.py", ppt)
         self.assertIn("blocked", ppt)
         self.assertIn("incomplete", ppt)
         self.assertIn("不得写入 `${CLAUDE_PLUGIN_ROOT}`", planning)
         self.assertIn("${CLAUDE_PLUGIN_ROOT}", review)
         self.assertIn("${CLAUDE_PROJECT_DIR}", review)
+
+    def test_create_flow_is_first_pass_and_reuses_static_evidence(self) -> None:
+        production = self.read(
+            "skills/student-presentation-ppt/references/pptx-production.md"
+        )
+        qa = self.read("skills/student-presentation-ppt/references/pptx-qa.md")
+        for helper in (
+            "H.gridLayout",
+            "H.addTitle",
+            "H.addTextBox",
+            "H.addFooter",
+        ):
+            self.assertIn(helper, production)
+        self.assertIn("禁止重复", production)
+        self.assertIn("未修改 PPTX 时不要再次运行 `static-check`", qa)
+        self.assertIn("首个 candidate 全部通过时结束视觉检查", qa)
 
     def test_cross_skill_handoff_is_deterministic(self) -> None:
         shared = self.read("references/shared-standards.md")
@@ -131,10 +147,11 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("Never ask for a confirmed item again", intake)
         self.assertIn("Do not run environment checks", intake)
         self.assertIn("Delegation does NOT itself move the state", intake)
-        self.assertIn("确认完整 Production Summary", ppt)
-        self.assertIn("PreToolUse", ppt)
-        self.assertIn("workflow_guard.py confirm", ppt)
-        self.assertIn("Do not use this reference to bypass intake", production)
+        self.assertIn("完整 Production Summary", ppt)
+        hooks = self.read("hooks/hooks.json")
+        self.assertIn("PreToolUse", hooks)
+        self.assertIn("confirm --summary-file", ppt)
+        self.assertIn("生产前必须具备", production)
 
     def test_workflow_states_are_consistent(self) -> None:
         intake = self.read("references/presentation-intake.md")
@@ -221,13 +238,18 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("plugin marketplace remove personal", script)
         self.assertIn("Remove-PluginCache -MarketplaceName \"personal\"", script)
         self.assertNotIn("Remove-Item -LiteralPath $InstallRoot", script)
+        self.assertNotIn("anthropic-agent-skills", script)
+        manifest = json.loads(self.read(".claude-plugin/plugin.json"))
+        self.assertEqual([], manifest["dependencies"])
 
     def test_review_edit_handoff_requires_separate_outputs(self) -> None:
         review = self.read("skills/student-presentation-review/SKILL.md")
         ppt = self.read("skills/student-presentation-ppt/SKILL.md")
+        editing = self.read("skills/student-presentation-ppt/references/pptx-editing.md")
         self.assertIn("先诊断", review)
         self.assertIn("独立改进版", review)
-        self.assertIn("不得覆盖源文件", ppt)
+        self.assertIn("禁止覆盖 source deck", ppt)
+        self.assertIn("source 始终只读", editing)
 
     def test_v04_control_quality_and_revision_contracts_exist(self) -> None:
         brief_schema = json.loads(self.read("references/presentation-brief.schema.json"))
@@ -269,12 +291,13 @@ class SkillBehaviorContractTests(unittest.TestCase):
 
     def test_skills_route_through_layered_quality_workflow(self) -> None:
         planning = self.read("skills/student-presentation/SKILL.md")
-        ppt = self.read("skills/student-presentation-ppt/SKILL.md")
+        production = self.read("skills/student-presentation-ppt/references/pptx-production.md")
+        revision = self.read("references/revision-training-export.md")
         review = self.read("skills/student-presentation-review/SKILL.md")
         self.assertIn("目录→每页主张", planning)
         self.assertIn("analyze_presentation_spec.py", planning)
-        self.assertIn("build_support_outputs.py", ppt)
-        self.assertIn("create_revision_manifest.py --strict", ppt)
+        self.assertIn("support outputs", production)
+        self.assertIn("create_revision_manifest.py", revision)
         self.assertIn("可能的问题", review)
 
 

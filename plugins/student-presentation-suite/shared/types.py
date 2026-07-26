@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import Any, NotRequired, TypedDict
 
-
 # ---------------------------------------------------------------------------
 # Presentation Brief
 # ---------------------------------------------------------------------------
@@ -148,6 +147,11 @@ class QaManifest(TypedDict):
     slide_count: int
     rendered_page_count: int
     scenario_contract_passed: NotRequired[bool]
+    slide_spec_sha256: NotRequired[str]
+    slide_spec_report: NotRequired[str]
+    slide_spec_report_sha256: NotRequired[str]
+    visual_plan: NotRequired[str]
+    visual_plan_sha256: NotRequired[str]
     preview_files: NotRequired[list[str]]
     preview_sha256: NotRequired[list[str]]
     visual_inspection: NotRequired[dict[str, Any]]

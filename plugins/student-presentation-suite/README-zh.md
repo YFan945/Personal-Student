@@ -17,9 +17,13 @@ Slide Spec。该 skill 不创建也不会声称创建 PPTX。
 
 ### `student-presentation-ppt`
 
-用于新建可编辑 PPTX，或为已有 deck 生成独立改进版。底层生成和编辑由
-`document-skills@anthropic-agent-skills` 提供；本插件负责学生场景工作流、
-确认后的需求、风格控制、输出契约和 QA 门禁。
+用于新建可编辑 PPTX，或为已有 deck 生成独立改进版。底层包编辑、校验和渲染
+统一通过本套件维护的 `scripts/pptx_tool.py` 与 `shared/pptx_runtime/` 完成；
+不加载外部 `document-skills`，也不分发其复制代码。
+它会深复制页面的可变依赖，执行 Open XML SDK markup/schema validation 与本套件
+package/presentation 语义检查，并生成支持隐藏页和分页的 contact sheet。
+clean 具备事务回滚，inspect 返回版本化逐页 metadata；仅当 Linux sandbox 实际阻断
+AF_UNIX 时，render 才按需编译并加载内置 shim。
 
 ### `student-presentation-review`
 
@@ -82,7 +86,9 @@ Evidence Ledger 引用、锁定页面及 revision 元数据；旧版 Slide Spec 
 - `<topic>-presentation.pptx`
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` 或 contact sheet
-- `<topic>-qa-manifest.json`（与最终 PPTX 及渲染预览绑定）
+- `<topic>-presentation-static-report.json`（随 candidate 一次生成并复用）
+- `<topic>-visual-plan.json`（整套布局节奏和可编辑组件映射）
+- `<topic>-qa-manifest.json`（与 Slide Spec 证据、最终 PPTX 及渲染预览绑定）
 - `<topic>-style-adherence-report.json`（所选视觉风格 token 一致性）
 - `<topic>-delivery-report.json`（最终门禁证据）
 - 已有 deck 改进时的 `<topic>-change-summary.md`
@@ -99,23 +105,32 @@ PPTX skill 先读取 `visual-style-menu.md`，推荐最适合主题的风格，�
 风格是生成方向，不是固定模板。页面布局必须服务于内容功能，装饰不能代替
 证据、层级和可读性。
 
+写 `deck.js` 前，`compile_visual_plan.py` 会把每页映射到 11 类可编辑布局，并检查
+有意义视觉覆盖率、布局多样性和过度重复。`pptx-visuals.js` 用可编辑形状、连接线、
+标签和图片/图表结构实现这些布局。bridge 只编译并发布一次 visual plan，将
+`visual.details` 标准化为组件参数；图片默认等比包含并写入 alt text，图表使用投影可读字号。
+
 ## 质量门禁
 
 PPTX 交付要求：
 
 - 环境兼容性检查；
-- 输入 Slide Spec 时执行 schema 和语义验证；
+- 输入 Slide Spec 时执行 schema、语义验证和 visual plan 编译；
 - 生成可编辑 PPTX；
 - 提供讲稿；
 - 文本提取检查；
 - LibreOffice 渲染和 Poppler 页面图片；
-- 视觉检查及至少一轮修复再验证；
-- QA manifest 的 PPTX/preview hash 一致、覆盖全部页面且 blocker 数为零；
+- 一次完整视觉检查；首个 candidate 有 blocker 时才修复并重验；
+- static report 无 blocker，且 QA manifest 会重新验证原始 Slide Spec，并保证
+  Slide Spec/visual-plan/PPTX/preview/static-report hash 一致、
+  覆盖全部页面且 blocker 数为零；
+- package report 使用完整 suite validation profile，且 Open XML schema 校验已执行并通过；
+- 按需生成的 quality/style report 与原始 Slide Spec 或当前 PPTX hash 一致；
 - 使用标准视觉风格时，提供解析后的 design tokens 与 style-adherence report；
 - 严格 delivery check 通过；
 - 已有 deck 改进提供独立 change summary。
 
-`complete` 还额外要求执行 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest>`。CI 也会为 coursework、英语课堂汇报、答辩、竞赛、社团展示、研究展示、软件项目、数据调研和学校模板编辑等场景创建并渲染临时矩阵；不会把生成 deck 或预览提交到仓库。
+`complete` 还额外要求执行 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --package-report <package-report> --delivery-report <report>`。PptxGenJS wrapper 会在 candidate 落盘前阻断文字溢出、越界和非包含式重叠；生成阶段的 static/package reports 会被 QA 和 delivery 复用，不重复扫描或校验未修改的 deck。CI 也会为 coursework、英语课堂汇报、答辩、竞赛、社团展示、研究展示、软件项目、数据调研和学校模板编辑等场景创建并渲染临时矩阵；不会把生成 deck 或预览提交到仓库。
 
 ## Runtime
 
@@ -132,9 +147,12 @@ npm ci
 
 ```powershell
 python scripts/check_claude_pptx_env.py --json --strict
+python scripts/check_claude_pptx_env.py --mode edit_ooxml --json --strict
+python scripts/pptx_tool.py --help
 python scripts/validate_slide_spec.py path\to\spec.yaml --json
 python scripts/validate_presentation_brief.py path\to\brief.yaml --json
 python scripts/analyze_presentation_spec.py path\to\spec.yaml --strict --json
+python scripts/compile_visual_plan.py path\to\spec.yaml --output <project>\outputs\visual-plan.json --json
 python scripts/build_support_outputs.py path\to\spec.yaml --output-dir <project>\outputs --json
 python scripts/create_revision_manifest.py old.yaml new.yaml --strict
 python scripts/manage_versions.py snapshot --output-root <project>\outputs --revision-id r1 --file <deck>

@@ -19,8 +19,8 @@ Plugin install ID:
 student-presentation-suite@claude-personal
 ```
 
-The current PPT generation quality controls and known enforcement gaps are
-documented in [PPT-GENERATION-QUALITY-AUDIT.md](PPT-GENERATION-QUALITY-AUDIT.md).
+The embedded-runtime adaptation plan and acceptance criteria are documented in
+[PPTX-EMBEDDED-SKILL-ADAPTATION-PLAN.md](PPTX-EMBEDDED-SKILL-ADAPTATION-PLAN.md).
 
 ## Features
 
@@ -30,8 +30,13 @@ documented in [PPT-GENERATION-QUALITY-AUDIT.md](PPT-GENERATION-QUALITY-AUDIT.md)
 | Create, rebuild, or edit an editable PPT/PPTX | `student-presentation-ppt` | PPTX, speaker notes, and preview |
 | Review, score, or diagnose an existing deck | `student-presentation-review` | Read-only review by default |
 
-PPTX creation and editing depend on
-`document-skills@anthropic-agent-skills`, which the installer also installs.
+PPTX creation and editing use the suite-owned `pptx_tool.py` facade and
+`shared/pptx_runtime/` implementation. No external `document-skills` plugin,
+cache path, or copied upstream runtime is required or distributed.
+The runtime selectively deep-clones mutable slide dependencies, runs Open XML SDK markup/schema
+validation plus suite-owned OPC semantics, and produces hidden-slide-aware paginated contact sheets.
+Orphan cleanup is transactional, slide inspection exposes versioned per-page metadata, and Linux
+rendering can build a suite-owned AF_UNIX compatibility shim only when sandbox detection requires it.
 
 ## Structured Workflow And Controls
 
@@ -57,7 +62,8 @@ Install these tools first:
 - Git
 - Python 3.10+
 - Node.js and npm
-- LibreOffice and Poppler (recommended, for rendered QA and PDF export; PPTX generation works without them)
+- .NET 8 SDK (required for Open XML validation)
+- LibreOffice and Poppler (required for rendered QA and `complete` delivery; candidate PPTX generation can run without them)
 
 Check the basic commands:
 
@@ -88,13 +94,19 @@ Set-ExecutionPolicy -Scope Process Bypass
 `-Migrate` removes the obsolete `student-presentation-suite@personal`
 registration and cache, then:
 
-1. installs the Python and Node.js dependencies;
+1. verifies .NET 8 and installs Python and Node.js dependencies;
 2. registers the local `claude-personal` marketplace;
-3. installs `document-skills@anthropic-agent-skills`;
-4. installs and enables `student-presentation-suite@claude-personal`;
-5. runs the strict environment check and displays plugin status.
+3. installs and enables `student-presentation-suite@claude-personal`;
+4. runs the strict environment check and displays plugin status.
 
 Restart Claude Code after installation.
+
+The installer never downloads a .NET SDK implicitly. If .NET 8 is absent, either install it
+yourself or explicitly opt in to the pinned 8.0.423 user-local download (about 285 MB):
+
+```powershell
+.\scripts\install_claude_plugin.ps1 -Migrate -InstallDotNetSdk
+```
 
 ### Existing Checkout
 
@@ -117,14 +129,14 @@ To re-register the plugin without reinstalling dependencies:
 claude plugin marketplace list
 claude plugin list
 claude plugin details student-presentation-suite@claude-personal
-python .\plugins\student-presentation-suite\scripts\check_claude_pptx_env.py --json --strict
+python .\plugins\student-presentation-suite\scripts\check_claude_pptx_env.py --mode create --json --strict
+python .\plugins\student-presentation-suite\scripts\pptx_tool.py --help
 ```
 
 The results should include:
 
 - marketplace: `claude-personal`
 - plugin: `student-presentation-suite@claude-personal`
-- upstream dependency: `document-skills@anthropic-agent-skills`
 
 If Claude Code does not discover the plugin immediately after installation or
 update, exit Claude Code completely and start it again.
@@ -232,6 +244,7 @@ Depending on the request, `outputs/` may contain:
 <topic>-presentation.pptx
 <topic>-speaker-notes.md
 <topic>-preview.png
+<topic>-presentation-static-report.json
 <topic>-qa-manifest.json
 <topic>-style-adherence-report.json
 <topic>-delivery-report.json
@@ -240,13 +253,25 @@ Depending on the request, `outputs/` may contain:
 <topic>-teleprompter.html
 <topic>-training-cards.md
 <topic>-quality-report.json
+<topic>-visual-plan.json
 <topic>-revision-manifest.json
 ```
 
 The final response reports each absolute file path, slide count, rendered QA
 result, and the status: `complete`, `incomplete`, or `blocked`. A `complete`
-delivery now requires a QA manifest bound to the current PPTX and rendered
-preview hashes; it records full-page inspection and zero remaining blockers.
+delivery now requires a blocker-free static report, a validated visual plan,
+a QA manifest that revalidates and binds the source Slide Spec to the current
+PPTX and rendered previews, full Open XML schema evidence, and a passing strict
+delivery report. Requested quality and style reports are hash-bound to the
+source spec or current PPTX instead of being accepted by filename alone.
+The PptxGenJS wrapper rejects overflow, out-of-bounds, and non-contained overlap
+risks before publishing a candidate. QA and delivery reuse that generation-time
+static report instead of rescanning an unchanged deck.
+Before `deck.js` is written, the visual-plan compiler enforces meaningful visual
+coverage, layout-family diversity, and a two-slide repetition limit in strict
+quality modes. Eleven editable layout families provide process, timeline,
+comparison, dashboard, architecture, matrix, image-led, quote, and summary
+structures without post-generation patch loops.
 Standard visual styles also resolve to tokenized palette, spacing, typography,
 and line constraints, with a style-adherence report available for delivery QA.
 The release workflow also renders a temporary scenario matrix on Linux for
@@ -287,7 +312,7 @@ python .\plugins\student-presentation-suite\scripts\check_claude_pptx_env.py --j
 python .\scripts\check_installed_version.py --json
 ```
 
-Install the missing Python, Node.js, or `document-skills` dependency reported by
+Install the missing Python or Node.js dependency reported by
 the check. LibreOffice and Poppler are recommended but not required — missing
 them skips rendered QA and PDF export but does not block PPTX generation.
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -13,9 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from shared.slide_spec_validation import semantic_errors
-from shared.runtime_paths import output_root
 from shared.design_tokens import resolve_design_tokens
+from shared.runtime_paths import output_root
+from shared.slide_spec_validation import semantic_errors
+from shared.visual_plan import compile_visual_plan
 
 
 def load_optional_dependencies():
@@ -34,7 +36,7 @@ def load_optional_dependencies():
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Validate Slide Spec YAML/JSON and emit a Claude document-skills/pptx production brief"
+        description="Validate Slide Spec YAML/JSON and emit a Student Presentation PPTX production brief"
     )
     parser.add_argument("spec", type=Path, help="Slide Spec YAML or JSON file")
     parser.add_argument(
@@ -130,10 +132,11 @@ def _estimate_slide_text_fit(
         chars = 0
         if isinstance(content, dict):
             bullets = content.get("bullets", content.get("text", []))
-            if isinstance(bullets, list):
-                chars = sum(len(str(b)) for b in bullets)
-            else:
-                chars = len(str(content))
+            chars = (
+                sum(len(str(bullet)) for bullet in bullets)
+                if isinstance(bullets, list)
+                else len(str(content))
+            )
         elif isinstance(content, str):
             chars = len(content)
         if not chars and slide_copy:
@@ -166,6 +169,7 @@ def build_brief(
     data: dict[str, Any],
     source: Path,
     deliverable_dir: Path | None = None,
+    visual_plan: dict[str, Any] | None = None,
 ) -> str:
     meta = data.get("meta") or {}
     slides = data["slides"]
@@ -176,6 +180,7 @@ def build_brief(
     preview_path = resolved_output_dir / f"{output_prefix}-preview.png"
     change_summary_path = resolved_output_dir / f"{output_prefix}-change-summary.md"
     quality_report_path = resolved_output_dir / f"{output_prefix}-quality-report.json"
+    visual_plan_path = resolved_output_dir / f"{output_prefix}-visual-plan.json"
     teleprompter_path = resolved_output_dir / f"{output_prefix}-teleprompter.html"
     revision_manifest_path = resolved_output_dir / f"{output_prefix}-revision-manifest.json"
     delivery_report_path = resolved_output_dir / f"{output_prefix}-delivery-report.json"
@@ -191,83 +196,35 @@ def build_brief(
         or data.get("change_summary_required")
         or data.get("revision_operation")
     )
+    if data.get("edit_intent") == "rebuild-clean-copy":
+        production_mode = "rebuild_from_source"
+    elif is_improvement:
+        production_mode = "edit_ooxml"
+    else:
+        production_mode = "create"
     design_tokens = resolve_design_tokens(meta.get("visual_style"))
+    visual_plan = visual_plan or compile_visual_plan(data)
 
     lines = [
         "# Claude PPTX Production Brief",
         "",
-        "Use the `pptx` skill from the `document-skills` plugin to create the editable PPTX.",
+        "Use the suite-owned PPTX runtime to create or edit the editable PPTX.",
         "This brief is generated from a validated Student Presentation Slide Spec.",
         "",
-        "## Required Skill Route",
-        "- Dependency plugin: `document-skills`",
-        "- Target skill: `pptx`",
-        "- New deck from scratch: follow `pptxgenjs.md`",
-        "- Existing template/editing: follow `editing.md`",
-        "- Keep all student-presentation constraints in this brief while using the pptx skill for PPTX generation.",
+        "## Production Mode",
+        f"- Mode: `{production_mode}`",
+        "- Workflow: `references/pptx-production.md`",
+        "- Runtime commands: `references/pptx-runtime.md`",
+        "- Create safety: `references/pptxgenjs-safety.md`",
+        "- Existing-deck editing: `references/pptx-editing.md`",
+        "- QA and completion: `references/pptx-qa.md`",
         "",
-        "## Production Toolkit (MANDATORY)",
+        "## Runtime Contract",
         "",
-        "The generated `deck.js` **must** start with these two requires:",
-        "",
-        "```js",
-        "const pptxgen = require(\"pptxgenjs\");",
-        "const H = require(\"pptx-helpers\");",
-        "```",
-        "",
-        f"`pptx-helpers.js` lives in `${{CLAUDE_PLUGIN_ROOT}}/scripts/` and is auto-resolved",
-        "by `run_with_pptxgenjs.js` via NODE_PATH. All layout calculations below use the",
-        "helper API to avoid ad-hoc positioning. Do NOT calculate x/y/w/h from scratch —",
-        "use H.safeArea(), H.addTitle(), H.addBody(), H.spacing(), and H.color().",
-        "",
-        "### Helper API Quick Reference",
-        "",
-        "```js",
-        "// --- Token access ---",
-        "H.color(TOKENS, \"primary_accent\")   // → \"#2563EB\" (with #)",
-        "H.fontSizeScale(TOKENS, lang)        // → { title: 24, body: 22 }",
-        "H.fontFamily(TOKENS)                 // → { title: \"...\", body: \"...\" }",
-        "",
-        "// --- Geometry ---",
-        "H.safeArea(10, 5.625, TOKENS)        // → { x, y, w, h } in inches",
-        "H.safeArea(10, 5.625, TOKENS, { reserveTitle: false })",
-        "H.spacing(TOKENS, step)              // step 1-6 → inches",
-        "H.cornerRadius(TOKENS)               // → inches",
-        "",
-        "// --- Text fitting ---",
-        "H.estimateTextFit(text, boxW, boxH, fontSize, isCJK)",
-        "// → { lines, fillRatio, overflow }",
-        "",
-        "// --- Box creation (returns pptxgen text object) ---",
-        "H.addTitle(slide, text, area, TOKENS, lang)",
-        "H.addBody(slide, text, area, TOKENS, lang, { bullet: true })",
-        "H.addAccentCard(slide, text, box, TOKENS)",
-        "H.addDivider(slide, x, y, w, TOKENS, \"standard\")",
-        "",
-        "// --- Global ---",
-        "H.applyTokens(pptx, TOKENS, lang)",
-        "```",
-        "",
-        "## Resolved Production Constants (copy-paste into deck.js)",
-        "",
-        "Paste the following block at the top of deck.js, after the require lines.",
-        "TOKENS is the single source of truth for all visual parameters.",
-        "",
-        "```js",
-        f"const TOKENS = {json.dumps(design_tokens, ensure_ascii=False)};",
-        f"const LANG = \"{meta.get('language', 'chinese')}\";",
-        "",
-        "const pptx = new pptxgen();",
-        "H.applyTokens(pptx, TOKENS, LANG);",
-        "",
-        "// Pre-calculated layout zones",
-        "const SLIDE_W = H.SLIDE_W_IN;  // 10",
-        "const SLIDE_H = H.SLIDE_H_IN;  // 5.625",
-        "const AREA = H.safeArea(SLIDE_W, SLIDE_H, TOKENS);",
-        f"const AREA_NO_TITLE = H.safeArea(SLIDE_W, SLIDE_H, TOKENS, {{ reserveTitle: false }});",
-        "const CARD_W = (AREA.w - H.spacing(TOKENS, 3)) / 2;  // 半宽卡片",
-        "const CARD_H = AREA.h * 0.42;",
-        "```",
+        "Create/rebuild mode uses `run_with_pptxgenjs.js` with `pptx-helpers.js`; follow",
+        "`pptxgenjs-safety.md` for the helper API and code rules. Edit mode uses only",
+        "`pptx_tool.py` and must preserve the source package. Do not duplicate runtime",
+        "implementation or helper documentation inside this data brief.",
         "",
         "## Output Contract",
         f"- Project output directory: `{resolved_output_dir}`",
@@ -275,7 +232,19 @@ def build_brief(
         f"- Notes: `{notes_path}`",
         f"- Preview/contact sheet: `{preview_path}` or a contact sheet in the same directory",
         f"- Delivery report: `{delivery_report_path}`",
+        f"- Visual plan: `{visual_plan_path}`",
     ]
+    if production_mode == "edit_ooxml":
+        toolkit_start = lines.index("## Runtime Contract")
+        output_contract = lines.index("## Output Contract")
+        lines[toolkit_start:output_contract] = [
+            "## Editing Runtime",
+            "",
+            "Use `pptx_tool.py` for inspect, thumbnail, unpack, structural edits, clean, pack, and validate.",
+            "Do not generate `deck.js`, rebuild the deck with pptxgenjs, or overwrite the source package.",
+            "Preserve theme, masters, layouts, notes, relationships, embedded media, and unrelated slides.",
+            "",
+        ]
     export_formats = meta.get("export_formats") or meta.get("deliverables") or []
     if "pdf" in export_formats:
         lines.append(f"- PDF: `{resolved_output_dir / f'{output_prefix}-presentation.pdf'}`")
@@ -328,6 +297,18 @@ def build_brief(
     lines.extend(
         [
             "",
+            "## Compiled Visual Plan",
+            "This plan is a production gate, not a suggestion. Use `pptx-visuals.js` and the named",
+            "editable component for each slide. Do not replace it with a generic title-and-bullets page.",
+            f"- Artifact: `{visual_plan_path}`",
+            f"- Meaningful visual coverage: {visual_plan['metrics']['meaningful_visual_coverage']:.0%}",
+            f"- Layout family count: {visual_plan['metrics']['layout_family_count']}",
+            f"- Maximum consecutive same family: {visual_plan['metrics']['max_consecutive_same_family']}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
             "## Resolved Design Tokens",
             "These are production constraints, not optional style suggestions. Keep the same palette roles, "
             "type scale, spacing system, and line semantics throughout the deck.",
@@ -345,7 +326,7 @@ def build_brief(
                 "## Existing Deck Improvement Contract",
                 f"- Source deck/artifact: {data.get('source_deck') or 'not specified'}",
                 f"- Edit intent: {data.get('edit_intent') or 'review-fix'}",
-                "- Use `editing.md` from the `pptx` skill unless rebuilding from scratch is explicitly safer.",
+                f"- Production mode: `{production_mode}`. Follow `references/pptx-editing.md` unless the explicit mode is `rebuild_from_source`.",
                 "- Do not overwrite the source deck; write a separate improved PPTX.",
                 "- Preserve:",
                 text_block(preserve or ["template/logo/footer/source citations unless the spec says otherwise"], "  "),
@@ -415,82 +396,33 @@ def build_brief(
             ]
         )
 
-    lines.extend(
-        [
-            "",
-            "## Slide Plan",
-            "",
-            "For each slide, build it using the H helpers. Example patterns:",
-            "",
-            "**Content slide (title + body):**",
-            "```js",
-            "const slide = pptx.addSlide();",
-            "slide.background = { fill: H.color(TOKENS, \"canvas\") };",
-            "H.addTitle(slide, \"Claim-style Title\", AREA, TOKENS, LANG);",
-            "H.addBody(slide, [\"point 1\", \"point 2\", \"point 3\"], AREA, TOKENS, LANG, { bullet: true });",
-            "```",
-            "",
-            "**Cover slide (full-area):**",
-            "```js",
-            "const cover = pptx.addSlide();",
-            "cover.background = { fill: H.color(TOKENS, \"primary_accent\") };",
-            "cover.addText(\"Presentation Title\", {",
-            "  x: AREA.x, y: AREA.y + AREA.h * 0.3, w: AREA.w, h: AREA.h * 0.3,",
-            "  fontSize: H.fontSizeScale(TOKENS, LANG).title + 8,",
-            "  fontFace: H.fontFamily(TOKENS).title,",
-            "  color: H.color(TOKENS, \"surface\"), bold: true, align: \"center\"",
-            "});",
-            "```",
-            "",
-            "**Two-column comparison:**",
-            "```js",
-            "const comp = pptx.addSlide();",
-            "comp.background = { fill: H.color(TOKENS, \"canvas\") };",
-            "H.addTitle(comp, \"Comparison Title\", AREA, TOKENS, LANG);",
-            "const left = { x: AREA.x, y: AREA.y, w: CARD_W, h: AREA.h * 0.7 };",
-            "const right = { x: AREA.x + CARD_W + H.spacing(TOKENS, 3), y: AREA.y, w: CARD_W, h: AREA.h * 0.7 };",
-            "H.addAccentCard(comp, \"Option A\\n...\", left, TOKENS);",
-            "H.addAccentCard(comp, \"Option B\\n...\", right, TOKENS);",
-            "```",
-            "",
-            "---",
-        ]
+    plan_title = "## Slide Edit Plan" if production_mode == "edit_ooxml" else "## Slide Plan"
+    plan_instruction = (
+        "Map every target to the inspected source slide; record preserved and changed elements."
+        if production_mode == "edit_ooxml"
+        else "Implement each confirmed slide with the helper and safety contracts referenced above."
     )
+    lines.extend(["", plan_title, "", plan_instruction, "", "---"])
     for slide in slides:
         visual = slide.get("visual") or {}
         kind = slide.get("kind", "content")
         slide_copy = slide.get("slide_copy") or ""
         claim = slide.get("claim", "")
 
-        # 根据 slide kind 给出代码提示
-        code_hint = ""
-        if kind == "cover":
+        if production_mode == "edit_ooxml":
             code_hint = (
-                "**js pattern**: `pptx.addSlide()` → background fill=primary_accent → "
-                "addText(title, center, large font) → addText(subtitle, smaller)"
-            )
-        elif kind in ("section-divider",):
-            code_hint = (
-                "**js pattern**: `pptx.addSlide()` → background fill=surface → "
-                "addText(section number, primary_accent) → addText(title, left) → "
-                "H.addDivider(slide, AREA.x, midY, AREA.w, TOKENS, \"emphasis\")"
-            )
-        elif kind in ("qa", "closing", "references", "appendix"):
-            code_hint = (
-                "**js pattern**: `pptx.addSlide()` → background fill=canvas → "
-                "addText(title, primary_text) → addText(body, secondary_text). Minimal decoration."
+                "**edit action**: inspect the mapped source slide, change only confirmed targets, "
+                "and preserve unrelated OOXML parts and relationships"
             )
         elif slide_copy and len(slide_copy) > 80:
             code_hint = (
-                "**js pattern (denso)**: 内容过长，优先用 H.addBody 并确保 "
-                f"H.estimateTextFit 不溢出。如果 H.estimateTextFit 返回 overflow=true，"
-                "拆分幻灯片或精简内容，禁止缩小字号。"
+                "**production action**: text-fit risk; split or shorten content instead of "
+                "shrinking below the confirmed minimum font size"
             )
         else:
             code_hint = (
-                "**js pattern**: `pptx.addSlide()` → background fill=canvas → "
-                "H.addTitle(slide, claimTitle, AREA, TOKENS, LANG) → "
-                "H.addBody(slide, points, AREA, TOKENS, LANG, { bullet: true })"
+                "**production action**: implement this slide with the confirmed design tokens "
+                "and the referenced helper/safety contract"
             )
 
         lines.extend(
@@ -506,6 +438,9 @@ def build_brief(
                 "- Supporting points:",
                 text_block(slide.get("supporting_points") or ["not specified"], "  "),
                 f"- Visual: type={visual.get('type', 'none')}, purpose={visual.get('purpose', 'none')}",
+                f"- Layout family: {next((item['layout_family'] for item in visual_plan['slides'] if item['slide'] == slide['id']), 'not specified')}",
+                f"- Editable component: {next((item['component'] for item in visual_plan['slides'] if item['slide'] == slide['id']), 'not specified')}",
+                f"- Component payload: {json.dumps(next((item['component_payload'] for item in visual_plan['slides'] if item['slide'] == slide['id']), {}), ensure_ascii=False, separators=(',', ':'))}",
                 "- Content:",
                 text_block(slide["content"], "  "),
                 "- PPT copy:",
@@ -523,11 +458,16 @@ def build_brief(
         [
             "",
             "## Required QA",
+            f"- Reuse the validated visual plan already published at `{visual_plan_path}`; do not compile it again unless the Slide Spec changes.",
             f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/scripts/analyze_presentation_spec.py\" <spec> --output \"{quality_report_path}\" --strict --json` before final production.",
-            "- Run `python -m markitdown output.pptx` and inspect extracted text.",
-            "- Render with LibreOffice, then convert PDF pages to images with Poppler.",
-            "- Inspect rendered images or a contact sheet and complete at least one fix-and-verify loop.",
-            f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/skills/student-presentation-ppt/scripts/pptx_delivery_check.py\" --pptx <pptx> --notes <notes> --preview <preview> --qa-manifest <manifest> --output \"{delivery_report_path}\" --strict --json`.",
+            "- Reuse the validated Slide Spec/deck.js as content evidence for create mode; run `pptx_tool.py inspect --text-output` only for edits, template-derived decks, or suspicious content.",
+            "- Reuse the producing-stage package report when its PPTX hash still matches; otherwise run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" validate <pptx> --output <package-report.json> --json`. Source-derived decks add `--original <source>`.",
+            "- Reuse the generation wrapper's `<candidate-stem>-static-report.json`; do not rescan an unchanged PPTX.",
+            "- Run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" render <pptx> --output-dir <render-dir> --prefix <topic>`.",
+            "- Inspect every rendered page once. Repair and rerun only when the first candidate has a blocker.",
+            f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/scripts/pptx_tool.py\" qa-manifest --pptx <pptx> --preview <page.png> --slide-spec <spec> --slide-spec-report <slide-spec-report.json> --visual-plan \"{visual_plan_path}\" --output <manifest> ...`; it revalidates the source spec, derives the scenario contract result, and auto-discovers the generation static report.",
+            f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/skills/student-presentation-ppt/scripts/pptx_delivery_check.py\" --pptx <pptx> --notes <notes> --preview <preview> --package-report <package-report.json> --qa-manifest <manifest> --output \"{delivery_report_path}\" --strict --json`.",
+            f"- Transition to complete only with `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --package-report <package-report.json> --delivery-report \"{delivery_report_path}\"`.",
             f"- For existing deck improvements, verify `{change_summary_path}` lists kept content, changed slides, unresolved risks, and QA results.",
             f"- When versioning is enabled, store the versioned package under `{resolved_output_dir / 'versions'}` and write `{revision_manifest_path}`.",
             "- Final response must report file existence, slide count, static XML risks, visual QA status, and limitations.",
@@ -562,12 +502,36 @@ def main() -> None:
         raise SystemExit(1)
 
     deliverable_dir = output_root(args.output_dir)
-    brief = build_brief(data, args.spec, deliverable_dir)
+    visual_plan = compile_visual_plan(data)
+    if not visual_plan["ok"]:
+        result = {
+            "valid": False,
+            "error_count": len(visual_plan["errors"]),
+            "errors": visual_plan["errors"],
+        }
+        if args.json:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print("Visual plan is invalid:", file=sys.stderr)
+            for error in visual_plan["errors"]:
+                print(f"- {error['path']}: {error['message']}", file=sys.stderr)
+        raise SystemExit(1)
+    output_prefix = (data.get("meta") or {}).get("output_prefix") or args.spec.stem
+    visual_plan_path = deliverable_dir / f"{output_prefix}-visual-plan.json"
+    visual_plan["slide_spec"] = str(args.spec.resolve())
+    visual_plan["slide_spec_sha256"] = hashlib.sha256(args.spec.read_bytes()).hexdigest()
+    visual_plan_path.parent.mkdir(parents=True, exist_ok=True)
+    visual_plan_path.write_text(
+        json.dumps(visual_plan, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    brief = build_brief(data, args.spec, deliverable_dir, visual_plan)
     result = {
         "valid": True,
         "slide_count": len(data["slides"]),
         "output_dir": str(deliverable_dir),
         "output": str(args.output) if args.output else None,
+        "visual_plan": str(visual_plan_path),
         "brief": brief,
     }
     if args.output:

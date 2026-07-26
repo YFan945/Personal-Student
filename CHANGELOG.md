@@ -4,6 +4,64 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## Unreleased
+
+### PPTX 内嵌运行时适配
+
+- 移除直接引入的上游 `pptx_skill` 目录和 guide，改为本仓库维护的
+  `shared/pptx_runtime/` 与稳定入口 `scripts/pptx_tool.py`；不再依赖
+  `document-skills` 插件或本地缓存路径。
+- 将生产流程拆分为 `create`、`edit_ooxml`、`rebuild_from_source` 三种模式；
+  已有 deck 默认执行保留原件的 OOXML 修改，不再生成无关的 `deck.js` 指令。
+- 新增安全解包、显式 pack 输出、非覆盖式增页/删页/重排、孤立部件清理、
+  包级校验、LibreOffice/Poppler 渲染和最终 QA manifest 哈希绑定。
+- 复制已有页面时选择性深复制 notes/comments、chart、SmartArt 数据、embedded package
+  和 OLE 依赖，并重定向 notes 的反向 slide 关系；补充 shared master/theme、未声明
+  relationship ID、part root、notes 和重复 chart axis 检查。
+- 缩略图按实际 slide XML 顺序标注，支持隐藏页占位与多 contact sheet 分页，避免
+  LibreOffice 跳过隐藏页后发生标签错位。
+- clean 增加 package roots、slide 注册、悬空关系和 symlink 拒绝规则，并通过临时
+  trash + rollback 实现事务式孤立部件清理，避免中途失败留下半清理 package。
+- 引入 MIT 许可的 Open XML SDK 3.5.1 adapter，执行 markup/schema validation，并叠加
+  suite-owned OPC 语义检查；不再表述为内置完整 PML/DML/OPC XSD 文件集。
+- PptxGenJS 入口改为显式 `--output`、临时生成、非覆盖归一化和原子落盘，拒绝覆盖
+  已存在输出或输入文件；发布检查同时拒绝必需文件“仅存在但未被 Git 跟踪”。
+- QA manifest 现在必须读取并重新验证原始 Slide Spec；严格交付同时验证完整 Open XML
+  schema profile，并将 quality/style report 分别绑定到 Spec/PPTX SHA-256，阻断伪造或过期证据。
+- bridge 只编译一次并直接发布 visual plan，以紧凑摘要替代 prompt 中的整份重复 JSON；
+  visual plan 输出标准化 component payload，避免生成端手工展开 `visual.details`。
+- 图片组件改为等比包含并写入 alt text；图表数据契约要求完整 series，组件使用主题色和
+  至少 18pt 的轴、图例与数据标签。场景矩阵联合覆盖全部 11 种可编辑布局家族。
+- 图表校验增加 plot axis cardinality、series idx/order、crossAx reciprocity、extLst、
+  cache ptCount/index/number、formula range、series cardinality、externalData relationship、
+  embedded workbook 可读性和公式工作表存在性检查；ChartEx schema 由 Open XML SDK 覆盖。
+- classic chart 校验允许合法稀疏 cache，将 named/dynamic formula 与基数差异降为
+  info/warning，并增加真实 PptxGenJS `addChart` 正向样例。
+- inspect/thumbnail 输出 versioned 完整 slide metadata；Linux sandbox 阻断 AF_UNIX 时
+  可按需编译 suite-owned `LD_PRELOAD` shim；CI 强制模拟 EPERM 并执行 LibreOffice 渲染矩阵。
+- render 在 LibreOffice 跳过隐藏页时按原页序生成占位预览；master/theme 共享仅作为
+  info 风险报告，不再因 XML 子元素顺序抑制或升级风险。
+- .NET SDK 下载改为显式 `-InstallDotNetSdk` opt-in，并固定 8.0.423；CI 中 pip、npm、
+  NuGet 漏洞审计改为阻断式，Open XML 错误数和 ZIP 解压资源均设置上限。
+- 补强 `intake_pending` 命令门禁、严格交付的 package report、发布包旧 runtime
+  禁止项、跨目录 CLI 测试、真实 PPTX 编辑测试及路径穿越测试。
+- 固定 ESLint/Prettier 开发依赖，避免 CI 临时安装最新版导致配置不兼容。
+- 修复共享标题安全区把标题框强制扩进内容区的问题，新增边界内 `footerArea` 和硬性
+  `assertTextFits`；PptxGenJS wrapper 在 candidate 原子落盘前执行静态布局门禁。
+- 静态重叠检查忽略卡片包含标签等预期组合，同时继续阻断部分相交；QA manifest 强制
+  绑定零 blocker static report，`complete` 强制绑定通过的 package/delivery report。
+- 生成 helper 增加 `gridLayout`、受控通用文本框和页脚原语，把坐标、字号和 fit 约束
+  前移到首次生成；wrapper 自动保留 static report，QA/delivery 对未修改 PPTX 直接复用，
+  并取消首个 candidate 无问题时的强制修复循环。
+- 新增生成前 visual plan 编译门禁：严格模式要求内容页有意义视觉覆盖率不低于 70%、
+  同布局族不连续超过两页，并检查整套 deck 的布局族多样性；新增 11 个可编辑视觉布局
+  组件和原生可编辑 chart-with-takeaway，避免把流程、对比、数据和架构内容退化为纯文字卡片。
+- generated-package normalization 会移除 PptxGenJS 4.0.1 在二维 chart 中写入但未声明的
+  series-axis reference，确保原生可编辑图表通过 Open XML SDK schema validation。
+- QA manifest 改为绑定 Slide Spec validation report、visual plan、static report 和全部
+  preview 的 hash；移除可自报的 scenario contract 参数，并把 manifest 调整到 strict
+  delivery 之前。producing 阶段的 package report 在 PPTX 未变化时直接复用。
+
 ## 0.4.2 — 2026-07-22
 
 ### 安全修复
@@ -128,7 +186,7 @@ Codex 发行记录不在此维护。
 - 在 `check_plugin_release.py` 中增加 `hooks.json` 格式与命令指向校验；`bump_version.py` 增加 semver 校验与 Windows `npm` 调用兼容性。
 - 修复 `manage_versions.py` 同名文件覆盖问题，使用相对路径保留目录结构。
 - 同步 `README-zh.md` 的输出清单与质量门禁细节；为 `CHANGELOG.md` 0.4.0 补充元数据表；`AGENTS.md` 补录 `PPT-GENERATION-QUALITY-AUDIT.md`。
-- 安装脚本改用 HTTPS clone 并自动启用 `document-skills`；新增 `.gitattributes` 规范化行尾。
+- 安装脚本改用 HTTPS clone；新增 `.gitattributes` 规范化行尾。
 - 测试：`test_workflow_guard.py` 不再直接读真实 stdin；新增门禁用例；`test_bump_version.py` 验证 dry-run 不修改文件与非法 semver 拒绝。
 
 ## 0.4.0 — 2026-06-21
@@ -230,7 +288,7 @@ PPTX brief。仓库级和插件级文档也完成重写，形成可安装、可�
 ### 兼容性与边界
 
 - 仍只支持明确的学生/大学/课程/答辩场景。
-- 仍依赖 `document-skills@anthropic-agent-skills` 完成底层 PPTX 生产。
+- pptx skill 已内嵌，不再依赖 `document-skills@anthropic-agent-skills` 外部插件。
 - 不包含 `.codex-plugin`、`agents/openai.yaml`、`artifact-tool` 或 Codex
   runtime 依赖。
 - Claude Code 改动只发布到 `claude-code`，不发布到 `main`。
@@ -256,7 +314,7 @@ PPTX brief。仓库级和插件级文档也完成重写，形成可安装、可�
 - 建立 `claude-code` 专用 marketplace，统一安装 ID 为
   `student-presentation-suite@claude-personal`。
 - 新增安装与迁移脚本，自动处理旧 `personal` 注册、依赖安装、marketplace
-  注册、`document-skills` 安装和插件启用。
+  注册和插件启用。
 - 打通已有 deck 的 review → edit 结构化交接，要求独立改进版和 change
   summary，不覆盖源文件。
 - 将视觉风格拆分为菜单与 14 个独立、按需加载的生成控制规范。

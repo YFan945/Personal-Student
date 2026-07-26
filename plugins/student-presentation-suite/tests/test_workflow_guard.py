@@ -11,7 +11,6 @@ from unittest import mock
 
 from test_helpers import load_module
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "workflow_guard.py"
 
@@ -38,7 +37,7 @@ class HookDecisionTests(unittest.TestCase):
             decision["hookSpecificOutput"]["permissionDecision"],
         )
 
-    def test_allows_after_confirmation(self) -> None:
+    def test_generation_waits_for_producing_after_confirmation(self) -> None:
         module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             state_path = Path(tmp) / "outputs" / ".student-presentation-state.json"
@@ -62,12 +61,12 @@ class HookDecisionTests(unittest.TestCase):
                         },
                     }
                 )
-        self.assertIsNone(decision)
+        self.assertEqual("deny", decision["hookSpecificOutput"]["permissionDecision"])
 
     def test_allows_in_producing_state(self) -> None:
         """producing 状态应允许生产命令"""
         module = load_module(SCRIPT)
-        for state in ("planned", "producing", "qa"):
+        for state in ("producing",):
             with self.subTest(state=state):
                 with tempfile.TemporaryDirectory() as tmp:
                     state_path = (
@@ -325,9 +324,48 @@ class StateTransitionTests(unittest.TestCase):
                 "slide_count": 1,
                 "rendered_page_count": 1,
                 "scenario_contract_passed": True,
-                "visual_inspection": {"completed": True, "remaining_blockers": 0},
+                "visual_inspection": {
+                    "completed": True,
+                    "remaining_blockers": 0,
+                    "inspected_pages": [1],
+                    "repair_cycles": 0,
+                    "no_repair_needed_reason": "No visual defect was found.",
+                },
             }), encoding="utf-8")
-            self.assertEqual([], module.validate_completion_manifest(manifest, pptx))
+            delivery = root / "delivery.json"
+            package = root / "package.json"
+            package.write_text(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            delivery.write_text(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "status": "complete",
+                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                        "qa_manifest_sha256": hashlib.sha256(
+                            manifest.read_bytes()
+                        ).hexdigest(),
+                        "package_report_sha256": hashlib.sha256(
+                            package.read_bytes()
+                        ).hexdigest(),
+                        "static_blockers": 0,
+                        "package_validation_passed": True,
+                        "preview_page_coverage": "1/1",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                [],
+                module.validate_completion_manifest(manifest, pptx, delivery, package),
+            )
             manifest.write_text("{}", encoding="utf-8")
             self.assertTrue(module.validate_completion_manifest(manifest, pptx))
 
@@ -437,6 +475,10 @@ class ProductionPatternTests(unittest.TestCase):
             "python3.12 build_support_outputs.py --json",
             r"C:\Python312\python.exe slide_spec_to_pptx_brief.py spec.yaml",
             "uv run python slide_spec_to_pptx_brief.py spec.yaml",
+            "python pptx_tool.py thumbnail source.pptx --output-prefix out/template",
+            "python pptx_tool.py validate candidate.pptx --json",
+            "python pptx_tool.py delete-slide source.pptx slide2.xml --output edited.pptx",
+            "python pptx_tool.py reorder-slides source.pptx slide2.xml slide1.xml --output edited.pptx",
         ]
         for cmd in commands:
             with self.subTest(cmd=cmd):
@@ -464,6 +506,16 @@ class ProductionPatternTests(unittest.TestCase):
     def test_empty_command(self) -> None:
         self.assertFalse(self.module._contains_production_command(""))
         self.assertFalse(self.module._contains_production_command("   "))
+
+    def test_inspect_is_read_only_but_thumbnail_requires_confirmation(self) -> None:
+        inspect = "python pptx_tool.py inspect source.pptx"
+        thumbnail = "python pptx_tool.py thumbnail source.pptx --output-prefix out/template"
+        self.assertFalse(self.module._contains_production_command(inspect))
+        self.assertTrue(self.module._contains_production_command(thumbnail))
+        self.assertEqual(
+            {"intake_confirmed", "planned", "producing", "qa"},
+            self.module._required_states(thumbnail),
+        )
 
 
 if __name__ == "__main__":

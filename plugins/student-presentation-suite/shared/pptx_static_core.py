@@ -6,8 +6,8 @@ layout risks from PPTX XML, but rendered previews remain the source of truth.
 
 from __future__ import annotations
 
-import re
 import posixpath
+import re
 import zipfile
 from collections import Counter
 from pathlib import Path
@@ -136,8 +136,9 @@ def picture_resolution(zf: zipfile.ZipFile, slide_name: str, picture: ET.Element
     if not media or media not in zf.namelist():
         return None
     try:
-        from PIL import Image  # noqa: PLC0415
         from io import BytesIO  # noqa: PLC0415
+
+        from PIL import Image  # noqa: PLC0415
         with Image.open(BytesIO(zf.read(media))) as image:
             return image.size
     except (ImportError, OSError, ValueError):
@@ -449,6 +450,20 @@ def overlap_area(first: dict[str, int], second: dict[str, int]) -> int:
     right = min(first["x"] + first["cx"], second["x"] + second["cx"])
     bottom = min(first["y"] + first["cy"], second["y"] + second["cy"])
     return max(0, right - left) * max(0, bottom - top)
+
+
+def bounds_contains(
+    outer: dict[str, int],
+    inner: dict[str, int],
+    tolerance: int = ALIGNMENT_TOLERANCE_EMU,
+) -> bool:
+    """Treat a contained label/image as intentional composition, not object collision."""
+    return (
+        outer["x"] - tolerance <= inner["x"]
+        and outer["y"] - tolerance <= inner["y"]
+        and outer["x"] + outer["cx"] + tolerance >= inner["x"] + inner["cx"]
+        and outer["y"] + outer["cy"] + tolerance >= inner["y"] + inner["cy"]
+    )
 
 
 def is_background(bounds: dict[str, int], slide_width: int, slide_height: int) -> bool:
@@ -787,6 +802,10 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                     for second_kind, second_id, second_bounds in visible_objects[first_index + 1:]:
                         if second_kind == "connector":
                             continue
+                        if bounds_contains(first_bounds, second_bounds) or bounds_contains(
+                            second_bounds, first_bounds
+                        ):
+                            continue
                         area = overlap_area(first_bounds, second_bounds)
                         min_area = min(first_bounds["cx"] * first_bounds["cy"], second_bounds["cx"] * second_bounds["cy"])
                         if area >= MIN_UNINTENDED_OVERLAP_EMU ** 2 and area / max(min_area, 1) >= 0.15:
@@ -922,4 +941,83 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
             "distinct_layout_patterns": len(layout_pattern_counts),
         },
         "findings": findings,
+    }
+
+
+def summarize_static_risks(static_result: dict[str, object]) -> dict[str, object]:
+    """Classify findings consistently for generation and delivery gates."""
+    findings = static_result.get("findings", []) if isinstance(static_result, dict) else []
+    risk_counter: Counter[str] = Counter()
+    acceptable_minor_counter: Counter[str] = Counter()
+    blocker_like: list[dict[str, object]] = []
+    minor_markers = (
+        "footer",
+        "page",
+        "slide",
+        "source",
+        "caption",
+        "kicker",
+        "eyebrow",
+        "页码",
+        "来源",
+        "注释",
+    )
+    blocker_risks = {
+        "high-text-density-overflow-risk",
+        "text-vertical-overflow-risk",
+        "paragraph-heavy-slide-text",
+        "heading-font-size-below-24pt",
+        "shape-outside-slide",
+        "low-whitespace-risk",
+        "unexpected-object-overlap-risk",
+        "low-resolution-image-risk",
+        "image-aspect-distortion-risk",
+        "title-outside-title-zone",
+        "footer-zone-invasion",
+        "insufficient-gutter-risk",
+        "low-foreground-background-contrast",
+        "connector-crosses-object-risk",
+        "chart-missing-title-risk",
+        "chart-label-font-size-below-18pt",
+        "text-box-padding-below-16pt",
+        "alignment-tolerance-risk",
+    }
+    for item in findings if isinstance(findings, list) else []:
+        if not isinstance(item, dict):
+            continue
+        risks = item.get("risk", []) or []
+        text_preview = str(item.get("text_preview", ""))
+        lower_preview = text_preview.lower()
+        min_font = item.get("min_font_pt")
+        char_count = item.get("char_count") or 0
+        looks_minor = (
+            isinstance(char_count, (int, float))
+            and char_count <= 24
+            and isinstance(min_font, (int, float))
+            and min_font >= 10
+            and any(marker in lower_preview or marker in text_preview for marker in minor_markers)
+        )
+        for risk in risks if isinstance(risks, list) else []:
+            risk_counter[str(risk)] += 1
+            if looks_minor and risk in {
+                "font-size-below-20pt",
+                "chinese-font-size-below-22pt",
+                "small-text-box-risk",
+            }:
+                acceptable_minor_counter[str(risk)] += 1
+        if any(risk in blocker_risks for risk in risks) and not looks_minor:
+            blocker_like.append(
+                {
+                    "slide": item.get("slide"),
+                    "shape": item.get("shape"),
+                    "text_preview": text_preview[:80],
+                    "risk": risks,
+                    "min_font_pt": min_font,
+                }
+            )
+    return {
+        "risk_breakdown": dict(sorted(risk_counter.items())),
+        "acceptable_minor_risk_breakdown": dict(sorted(acceptable_minor_counter.items())),
+        "blocker_like_count": len(blocker_like),
+        "blocker_like_examples": blocker_like[:10],
     }

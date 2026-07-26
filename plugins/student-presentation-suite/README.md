@@ -7,7 +7,8 @@ university presentations. It separates content planning, editable PPTX
 production, and existing-deck review while sharing one intake, Slide Spec, and
 quality contract.
 
-Install ID: `student-presentation-suite@claude-personal`.
+This plugin is installed as part of the `claude-plugins` repository. See the
+[root README](../../README.md) for installation instructions.
 
 ## Skills
 
@@ -20,9 +21,13 @@ or claims to create a PPTX.
 ### `student-presentation-ppt`
 
 Use for a new editable PPTX or a separate improved copy of an existing deck.
-Low-level generation and editing come from
-`document-skills@anthropic-agent-skills`; this plugin supplies the student
-workflow, confirmed requirements, style controls, outputs, and QA gates.
+Low-level package editing, validation, and rendering use the suite-owned
+`scripts/pptx_tool.py` facade and `shared/pptx_runtime/`. The plugin does not
+load an external `document-skills` installation or distribute its copied code.
+It deep-clones mutable slide dependencies, runs Open XML SDK markup/schema validation plus
+suite-owned package/presentation semantics, and generates hidden-slide-aware paginated contact sheets.
+Cleanup is transactional, inspection returns versioned slide metadata, and Linux rendering builds
+the bundled AF_UNIX shim only when runtime detection proves the sandbox requires it.
 
 ### `student-presentation-review`
 
@@ -91,7 +96,9 @@ project's `outputs/` directory when the environment variable is unavailable:
 - `<topic>-presentation.pptx`
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` or contact sheet
-- `<topic>-qa-manifest.json` bound to the delivered PPTX and rendered previews
+- `<topic>-presentation-static-report.json` produced once with the candidate and reused
+- `<topic>-visual-plan.json` with deck-level layout rhythm and editable component mapping
+- `<topic>-qa-manifest.json` bound to Slide Spec evidence, the delivered PPTX, and rendered previews
 - `<topic>-style-adherence-report.json` for the selected visual style
 - `<topic>-delivery-report.json` with final gate evidence
 - `<topic>-change-summary.md` for existing-deck improvements
@@ -111,24 +118,38 @@ Styles are directions rather than fixed templates. Layout must follow the
 slide's function, and decorative visuals must not replace evidence or
 readability.
 
+Before `deck.js`, the bridge compiles and publishes one reusable visual plan,
+maps every slide to one of eleven editable layout families, normalizes
+`visual.details` into the component payload, and gates meaningful visual coverage,
+layout diversity, and excessive repetition. `pptx-visuals.js` implements those
+families with editable shapes, connectors, labels, contained images, accessible
+alt text, and projection-readable charts.
+
 ## Quality Gates
 
 PPTX delivery requires:
 
 - environment compatibility check;
-- Slide Spec validation when supplied;
+- Slide Spec validation and visual-plan compilation when supplied;
 - editable PPTX generation;
 - speaker notes;
 - text extraction sanity check;
 - LibreOffice rendering and Poppler page images;
-- visual inspection and at least one fix-and-verify loop;
-- a QA manifest with matching PPTX/preview hashes, full slide coverage, and zero blockers;
+- one full visual inspection; repair and rerun only when the first candidate has a blocker;
+- a blocker-free static report and QA manifest that revalidates the source Slide Spec and matches its Slide Spec/visual-plan/PPTX/preview/static-report hashes,
+  full slide coverage, and zero blockers;
+- a package report using the complete suite validation profile with successful Open XML schema validation;
+- requested quality/style reports bound to the source Slide Spec or current PPTX hash;
 - resolved design tokens and a style-adherence report when a standard visual style is selected;
 - strict delivery-check success;
 - separate change summary for an improved existing deck.
 
 Results use `complete`, `incomplete`, or `blocked`. `complete` additionally
-requires `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest>`.
+requires `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest>
+--package-report <package-report> --delivery-report <report>`. The PptxGenJS wrapper rejects
+overflow, out-of-bounds, and non-contained overlap risks before publishing a candidate.
+QA and delivery reuse its static and package reports instead of rescanning or
+revalidating an unchanged deck.
 Static XML findings alone are not proof of rendered clipping or readability.
 CI also creates and renders a temporary scenario matrix for coursework, English
 classroom, defense, competition, club showcase, research, software project,
@@ -150,9 +171,12 @@ Useful checks:
 
 ```powershell
 python scripts/check_claude_pptx_env.py --json --strict
+python scripts/check_claude_pptx_env.py --mode edit_ooxml --json --strict
+python scripts/pptx_tool.py --help
 python scripts/validate_slide_spec.py path\to\spec.yaml --json
 python scripts/validate_presentation_brief.py path\to\brief.yaml --json
 python scripts/analyze_presentation_spec.py path\to\spec.yaml --strict --json
+python scripts/compile_visual_plan.py path\to\spec.yaml --output <project>\outputs\visual-plan.json --json
 python scripts/build_support_outputs.py path\to\spec.yaml --output-dir <project>\outputs --json
 python scripts/create_revision_manifest.py old.yaml new.yaml --strict
 python scripts/manage_versions.py snapshot --output-root <project>\outputs --revision-id r1 --file <deck>
@@ -162,10 +186,41 @@ node scripts/run_with_pptxgenjs.js --probe
 python scripts/smoke_pptx.py
 ```
 
+## Environment Variables
+
+The plugin relies on two environment variables automatically set by Claude Code:
+
+| Variable | Set by | Purpose |
+|----------|--------|---------|
+| `${CLAUDE_PLUGIN_ROOT}` | Plugin system | Plugin installation directory; used for hook commands and script references |
+| `${CLAUDE_PROJECT_DIR}` | Runtime | Active project directory; used as the output root for deliverables |
+
+User deliverables are always written under `${CLAUDE_PROJECT_DIR}/outputs`.
+When `${CLAUDE_PROJECT_DIR}` is unavailable, the plugin falls back to the
+current working directory.
+
+A minimal `.env.example` is included for reference; these variables are
+injected at runtime and do not normally need manual configuration.
+
 ## Package Boundary
 
 This is a Claude Code package. It intentionally contains no `.codex-plugin`,
 `agents/openai.yaml`, `artifact-tool`, or Codex runtime declaration.
+
+### Open XML SDK Validation
+
+The suite includes a small .NET adapter at
+`shared/pptx_runtime/openxml_validator/` that wraps
+`DocumentFormat.OpenXml` 3.5.1 for PPTX markup/schema validation. Build with:
+
+```powershell
+dotnet restore shared/pptx_runtime/openxml_validator/OpenXmlValidator.csproj
+dotnet build shared/pptx_runtime/openxml_validator/OpenXmlValidator.csproj
+```
+
+This is a suite-owned implementation; no ECMA/ISO XSD files from the
+`document-skills` upstream are copied or distributed. See
+`references/pptx-runtime-provenance.md` for the full audit record.
 
 See the repository [README](../../README.md), [AGENTS.md](../../AGENTS.md), and
 [CHANGELOG.md](../../CHANGELOG.md) for installation, maintenance, and releases.

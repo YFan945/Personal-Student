@@ -17,8 +17,8 @@
 student-presentation-suite@claude-personal
 ```
 
-当前 PPT 生成质量保障能力、已知缺口和整改验收标准详见
-[PPT-GENERATION-QUALITY-AUDIT.md](PPT-GENERATION-QUALITY-AUDIT.md)。
+当前 PPTX 内嵌运行时适配步骤与验收标准详见
+[PPTX-EMBEDDED-SKILL-ADAPTATION-PLAN.md](PPTX-EMBEDDED-SKILL-ADAPTATION-PLAN.md)。
 
 ## 功能
 
@@ -28,8 +28,13 @@ student-presentation-suite@claude-personal
 | 创建、重做或修改可编辑 PPT/PPTX | `student-presentation-ppt` | PPTX、讲稿和预览图 |
 | 审查、评分或诊断已有 PPT | `student-presentation-review` | 默认只读的审查报告 |
 
-PPTX 创建和编辑依赖
-`document-skills@anthropic-agent-skills`。安装脚本会一并安装该依赖。
+PPTX 创建和编辑统一使用本套件维护的 `pptx_tool.py` 门面和
+`shared/pptx_runtime/` 实现。运行时不依赖 `document-skills` 插件或其缓存路径，
+发布包也不再分发直接引入的上游 runtime 文件。
+运行时会选择性深复制页面的可变依赖，并执行 Open XML SDK markup/schema validation
+与本套件 OPC 语义检查，同时生成支持隐藏页和分页的 contact sheet。
+孤立部件清理具备事务回滚，inspect 提供版本化逐页 metadata；Linux sandbox 确实阻断
+AF_UNIX 时才会按需编译本套件自有 shim，其他平台和正常 Linux 不加载。
 
 ## 结构化工作流与控制
 
@@ -54,7 +59,8 @@ PPTX 创建和编辑依赖
 - Git
 - Python 3.10+
 - Node.js 与 npm
-- LibreOffice 和 Poppler（推荐，用于渲染检查与 PDF 导出；缺失不影响 PPTX 生成）
+- .NET 8 SDK（Open XML validation 必需）
+- LibreOffice 和 Poppler（完成渲染 QA 和 `complete` 交付时必需；缺失时仍可生成候选 PPTX）
 
 可先检查基础命令：
 
@@ -84,13 +90,19 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 `-Migrate` 会清理旧的 `student-presentation-suite@personal` 注册和缓存，然后：
 
-1. 安装 Python 与 Node.js 依赖；
+1. 检查 .NET 8 并安装 Python 与 Node.js 依赖；
 2. 注册本地 marketplace `claude-personal`；
-3. 安装 `document-skills@anthropic-agent-skills`；
-4. 安装并启用 `student-presentation-suite@claude-personal`；
-5. 执行严格环境检查并显示插件状态。
+3. 安装并启用 `student-presentation-suite@claude-personal`；
+4. 执行严格环境检查并显示插件状态。
 
 安装完成后重启 Claude Code。
+
+安装脚本不会静默下载 .NET SDK。如果本机没有 .NET 8，可自行安装，或显式同意下载
+固定版本 8.0.423 到用户目录（约 285 MB）：
+
+```powershell
+.\scripts\install_claude_plugin.ps1 -Migrate -InstallDotNetSdk
+```
 
 ### 已经下载过仓库
 
@@ -113,14 +125,14 @@ git pull --ff-only origin claude-code
 claude plugin marketplace list
 claude plugin list
 claude plugin details student-presentation-suite@claude-personal
-python .\plugins\student-presentation-suite\scripts\check_claude_pptx_env.py --json --strict
+python .\plugins\student-presentation-suite\scripts\check_claude_pptx_env.py --mode create --json --strict
+python .\plugins\student-presentation-suite\scripts\pptx_tool.py --help
 ```
 
 应能看到：
 
 - marketplace：`claude-personal`
 - 插件：`student-presentation-suite@claude-personal`
-- 上游依赖：`document-skills@anthropic-agent-skills`
 
 若刚安装或更新后 Claude Code 没有识别插件，请先完全退出并重新启动 Claude
 Code。
@@ -218,6 +230,7 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 <topic>-presentation.pptx
 <topic>-speaker-notes.md
 <topic>-preview.png
+<topic>-presentation-static-report.json
 <topic>-qa-manifest.json
 <topic>-style-adherence-report.json
 <topic>-delivery-report.json
@@ -226,12 +239,20 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 <topic>-teleprompter.html
 <topic>-training-cards.md
 <topic>-quality-report.json
+<topic>-visual-plan.json
 <topic>-revision-manifest.json
 ```
 
 最终回复会说明文件绝对路径、页数、渲染检查结果，以及任务状态：
-`complete`、`incomplete` 或 `blocked`。进入 `complete` 必须提供与当前 PPTX 和
-渲染预览 hash 绑定的 QA manifest，其中记录全页检查和零遗留 blocker。
+`complete`、`incomplete` 或 `blocked`。进入 `complete` 必须提供零 blocker 的
+static report、通过的 visual plan、会重新验证原始 Slide Spec 并与当前 PPTX 和渲染预览
+hash 绑定的 QA manifest、完整 Open XML schema 证据，以及通过的严格 delivery report。
+按需生成的 quality/style report 也必须分别绑定原始 Spec 或当前 PPTX，不能只凭文件名通过。
+PptxGenJS wrapper 会在 candidate 落盘前阻断溢出、越界和非包含式重叠；
+QA 和 delivery 会复用生成阶段的 static report，不重复扫描未修改的 deck。
+写 `deck.js` 前，visual plan 编译器会在严格质量模式下检查有意义视觉覆盖率、布局族
+多样性和同布局最多连续两页。11 类可编辑布局组件直接提供流程、时间线、对比、指标、
+架构、矩阵、图像主导、引文和总结结构，避免生成后逐页修补。
 标准视觉风格还会解析为 palette、间距、字体和线条 token，并可生成风格一致性报告。
 发布工作流还会在 Linux 上临时渲染课程汇报、英语课堂、答辩、竞赛、社团展示、研究展示、软件项目、数据调查和学校模板编辑场景矩阵。
 
@@ -269,7 +290,7 @@ python .\plugins\student-presentation-suite\scripts\check_claude_pptx_env.py --j
 python .\scripts\check_installed_version.py --json
 ```
 
-根据输出安装缺失的 Python、Node.js 或 `document-skills` 依赖。LibreOffice 和
+根据输出安装缺失的 Python 或 Node.js 依赖。LibreOffice 和
 Poppler 缺失时仅影响渲染检查和 PDF 导出，不阻断 PPTX 生成。
 
 ### 工作流状态卡住

@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import json
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from test_helpers import load_module
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "bump_version.py"

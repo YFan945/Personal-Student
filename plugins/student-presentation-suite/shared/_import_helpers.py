@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import sys
-from contextlib import contextmanager
+from collections.abc import Generator
+from contextlib import contextmanager, suppress
 from pathlib import Path
-from typing import Generator
 
 
 @contextmanager
@@ -23,10 +23,8 @@ def _plugin_root_on_path(plugin_root: Path) -> Generator[None, None, None]:
         yield
     finally:
         if added:
-            try:
+            with suppress(ValueError):
                 sys.path.remove(root_str)
-            except ValueError:
-                pass
 
 
 def load_inspect_pptx(script_path: str | Path) -> type:

@@ -74,9 +74,10 @@ intake_pending → intake_confirmed → planned → producing → qa → complet
   incomplete       incomplete           incomplete incomplete incomplete
 ```
 
-## 已知问题跟踪
+## PPTX 运行时适配
 
-质量门禁已知不足记录在 `PPT-GENERATION-QUALITY-AUDIT.md`。
+适配步骤和验收项记录在 `PPTX-EMBEDDED-SKILL-ADAPTATION-PLAN.md`；运行时归属
+记录在 `plugins/student-presentation-suite/references/pptx-runtime-provenance.md`。
 
 ## 设计标记
 

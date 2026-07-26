@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import sys
 import tempfile
 import unittest
-import zipfile
-import sys
 import warnings
+import zipfile
 from io import BytesIO
 from pathlib import Path
 from unittest import mock
@@ -145,6 +145,20 @@ class PptxStaticCoreTests(unittest.TestCase):
             result = core.inspect_pptx(pptx)
         risks = [risk for finding in result["findings"] for risk in finding["risk"]]
         self.assertIn("unexpected-object-overlap-risk", risks)
+
+    def test_does_not_flag_label_contained_by_card_as_overlap(self) -> None:
+        contained_slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'
+          xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'><p:cSld><p:spTree>
+          <p:sp><p:spPr><a:xfrm><a:off x='1000000' y='1000000'/><a:ext cx='4000000' cy='2500000'/></a:xfrm></p:spPr></p:sp>
+          <p:sp><p:spPr><a:xfrm><a:off x='1400000' y='1400000'/><a:ext cx='3200000' cy='800000'/></a:xfrm></p:spPr>
+          <p:txBody><a:p><a:r><a:rPr sz='2400'/><a:t>Card label</a:t></a:r></a:p></p:txBody></p:sp>
+          </p:spTree></p:cSld></p:sld>"""
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "contained.pptx"
+            self.write_pptx(pptx, [contained_slide])
+            result = core.inspect_pptx(pptx)
+        risks = [risk for finding in result["findings"] for risk in finding["risk"]]
+        self.assertNotIn("unexpected-object-overlap-risk", risks)
 
     def test_flags_low_resolution_embedded_picture(self) -> None:
         image_buffer = BytesIO()

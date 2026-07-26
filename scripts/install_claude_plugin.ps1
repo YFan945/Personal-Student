@@ -3,7 +3,8 @@ param(
     [string]$InstallRoot = (Join-Path $env:USERPROFILE ".agents\claude-plugins"),
     [switch]$Migrate,
     [switch]$SkipDependencies,
-    [switch]$SkipMarketplaceClone
+    [switch]$SkipMarketplaceClone,
+    [switch]$InstallDotNetSdk
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +14,6 @@ $Marketplace = "claude-personal"
 $Plugin = "student-presentation-suite"
 $PluginId = "$Plugin@$Marketplace"
 $OldPluginId = "$Plugin@personal"
-$DocumentMarketplace = "anthropic-agent-skills"
 
 function Invoke-Checked {
     param([Parameter(Mandatory)][string]$Command, [string[]]$Arguments = @())
@@ -21,6 +21,53 @@ function Invoke-Checked {
     if ($LASTEXITCODE -ne 0) {
         throw "Command failed ($LASTEXITCODE): $Command $($Arguments -join ' ')"
     }
+}
+
+function Install-ManagedDotNetSdk {
+    $managedRoot = if ($env:LOCALAPPDATA) {
+        Join-Path $env:LOCALAPPDATA "student-presentation-suite\dotnet"
+    } else {
+        Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "student-presentation-suite/dotnet"
+    }
+    $managedDotNet = Join-Path $managedRoot $(if ($env:OS -eq "Windows_NT") { "dotnet.exe" } else { "dotnet" })
+    $candidates = @($managedDotNet)
+    $systemDotNet = Get-Command dotnet -ErrorAction SilentlyContinue
+    if ($systemDotNet) {
+        $candidates += $systemDotNet.Source
+    }
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            $sdks = (& $candidate --list-sdks 2>$null | Out-String)
+            if ($LASTEXITCODE -eq 0 -and $sdks -match "(?m)^([89]|[1-9][0-9]+)\.") {
+                $env:STUDENT_PRESENTATION_DOTNET_ROOT = Split-Path $candidate -Parent
+                return
+            }
+        }
+    }
+
+    if (-not $InstallDotNetSdk) {
+        throw (
+            ".NET 8 SDK is required for PPTX schema validation but was not found. " +
+            "Install it separately, or rerun this installer with -InstallDotNetSdk " +
+            "to explicitly download the pinned user-local SDK."
+        )
+    }
+    $architecture = switch ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) {
+        "Arm64" { "arm64" }
+        "X64" { "x64" }
+        default { throw "Unsupported .NET SDK architecture: $_" }
+    }
+    $installer = Join-Path ([IO.Path]::GetTempPath()) "dotnet-install-student-presentation-suite.ps1"
+    Invoke-WebRequest -UseBasicParsing "https://dot.net/v1/dotnet-install.ps1" -OutFile $installer
+    try {
+        & $installer -Version "8.0.423" -Architecture $architecture -InstallDir $managedRoot -NoPath
+        if ($LASTEXITCODE -ne 0) {
+            throw ".NET SDK installation failed with exit code $LASTEXITCODE"
+        }
+    } finally {
+        Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+    }
+    $env:STUDENT_PRESENTATION_DOTNET_ROOT = $managedRoot
 }
 
 function Remove-PluginCache {
@@ -85,36 +132,19 @@ if (-not (Test-Path -LiteralPath (Join-Path $pluginRoot ".claude-plugin\plugin.j
 }
 
 if (-not $SkipDependencies) {
+    Install-ManagedDotNetSdk
     Invoke-Checked python @("-m", "pip", "install", "-r", (Join-Path $pluginRoot "requirements.txt"))
     Invoke-Checked python @("-m", "pip", "install", "-r", (Join-Path $pluginRoot "requirements-claude-pptx.txt"))
     Invoke-Checked npm @("--prefix", $pluginRoot, "ci")
 }
 
 $marketplaces = (& claude plugin marketplace list | Out-String)
-if ($marketplaces -notmatch "(?m)^\s*>\s+$DocumentMarketplace\s*$") {
-    Invoke-Checked claude @(
-        "plugin", "marketplace", "add", "--scope", "user",
-        "https://github.com/anthropics/skills"
-    )
-    $marketplaces = (& claude plugin marketplace list | Out-String)
-}
 if ($marketplaces -match "(?m)^\s*>\s+$Marketplace\s*$") {
     Invoke-Checked claude @("plugin", "marketplace", "remove", $Marketplace)
 }
 Invoke-Checked claude @("plugin", "marketplace", "add", "--scope", "user", $InstallRoot)
 
 $plugins = (& claude plugin list | Out-String)
-if ($plugins -notmatch [regex]::Escape("document-skills@anthropic-agent-skills")) {
-    Invoke-Checked claude @("plugin", "install", "-s", "user", "document-skills@anthropic-agent-skills")
-}
-$savedPreference = $ErrorActionPreference
-$ErrorActionPreference = "Continue"
-$dsEnableOutput = (& claude plugin enable document-skills@anthropic-agent-skills 2>&1 | Out-String)
-$dsEnableExitCode = $LASTEXITCODE
-$ErrorActionPreference = $savedPreference
-if ($dsEnableExitCode -ne 0 -and $dsEnableOutput -notmatch "already enabled") {
-    throw "Failed to enable document-skills@anthropic-agent-skills: $dsEnableOutput"
-}
 if ($plugins -match [regex]::Escape($PluginId)) {
     Invoke-Checked claude @("plugin", "update", "-s", "user", $PluginId)
 } else {

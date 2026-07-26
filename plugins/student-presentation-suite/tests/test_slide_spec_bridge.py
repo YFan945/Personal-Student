@@ -6,7 +6,6 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "slide_spec_to_pptx_brief.py"
 
@@ -58,9 +57,9 @@ class SlideSpecBridgeTests(unittest.TestCase):
 
         brief = bridge.build_brief(data, Path("input.yaml"))
 
-        self.assertIn("document-skills", brief)
-        self.assertIn("Target skill: `pptx`", brief)
-        self.assertIn("pptxgenjs.md", brief)
+        self.assertIn("Mode: `create`", brief)
+        self.assertIn("pptxgenjs-safety.md", brief)
+        self.assertIn("pptx_tool.py", brief)
         self.assertIn("ai-class-demo-presentation.pptx", brief)
         self.assertIn("ai-class-demo-delivery-report.json", brief)
         self.assertIn("AI 帮助我们更快形成初稿", brief)
@@ -70,7 +69,9 @@ class SlideSpecBridgeTests(unittest.TestCase):
         self.assertIn("Resolved Design Tokens", brief)
         self.assertIn('"standard_pt": 1.25', brief)
         self.assertIn("Student reflection", brief)
-        self.assertIn("python -m markitdown output.pptx", brief)
+        self.assertIn("run `pptx_tool.py inspect --text-output` only for edits", brief)
+        self.assertIn("pptx_tool.py\" validate", brief)
+        self.assertIn("do not rescan an unchanged PPTX", brief)
 
     def test_builds_existing_deck_improvement_brief(self) -> None:
         bridge = load_bridge_module()
@@ -122,9 +123,36 @@ class SlideSpecBridgeTests(unittest.TestCase):
         self.assertEqual([], errors)
         self.assertIn("Existing Deck Improvement Contract", brief)
         self.assertIn("original-demo.pptx", brief)
-        self.assertIn("Use `editing.md`", brief)
+        self.assertIn("Mode: `edit_ooxml`", brief)
+        self.assertIn("references/pptx-editing.md", brief)
         self.assertIn("improved-demo-change-summary.md", brief)
         self.assertIn("Rewrite it as a claim-style title", brief)
+        self.assertIn("## Editing Runtime", brief)
+        self.assertIn("## Slide Edit Plan", brief)
+        self.assertNotIn("## Production Toolkit (MANDATORY)", brief)
+        self.assertNotIn("const pptx = new pptxgen()", brief)
+
+    def test_explicit_clean_rebuild_uses_rebuild_mode(self) -> None:
+        bridge = load_bridge_module()
+        data = {
+            "meta": {"output_prefix": "rebuilt-demo"},
+            "source_deck": "broken-source.pptx",
+            "edit_intent": "rebuild-clean-copy",
+            "slides": [
+                {
+                    "id": 1,
+                    "title": "Rebuilt",
+                    "layout": "title",
+                    "content": "Recovered content",
+                    "timing_sec": 30,
+                    "owner": "A",
+                }
+            ],
+        }
+        brief = bridge.build_brief(data, Path("input.yaml"))
+        self.assertIn("Mode: `rebuild_from_source`", brief)
+        self.assertIn("run_with_pptxgenjs.js", brief)
+        self.assertIn("Do not overwrite the source deck", brief)
 
     def test_long_text_warning_builds_without_key_error(self) -> None:
         bridge = load_bridge_module()

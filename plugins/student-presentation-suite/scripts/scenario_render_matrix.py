@@ -8,23 +8,19 @@ Generated artifacts remain in a temporary directory.  CI should invoke this with
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
-import shutil
+import os
 import subprocess
 import sys
 import tempfile
-import os
 from pathlib import Path
-
-from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from shared.pptx_runtime.render import find_pdftoppm, find_soffice
 from shared.slide_spec_validation import semantic_errors
-
 
 MATRIX = {
     "coursework-zh": ("coursework", "Chinese", ["background", "method", "evidence", "conclusion"]),
@@ -38,123 +34,306 @@ MATRIX = {
     "school-template-edit": ("coursework", "Chinese", ["background", "method", "evidence", "conclusion"]),
 }
 
+VISUAL_RECIPES = (
+    (
+        "comparison",
+        "comparison",
+        {"items": ["Current", "Target"], "dimensions": ["clarity", "evidence"]},
+    ),
+    (
+        "process",
+        "process-path",
+        {"steps": ["Frame", "Build", "Verify"]},
+    ),
+    (
+        "chart",
+        "dashboard",
+        {
+            "measure": "quality score",
+            "unit": "points",
+            "scope": "scenario matrix",
+            "source": "generated fixture",
+            "takeaway": "the runtime completes the scenario",
+            "title": "Scenario quality",
+            "series": [
+                {
+                    "name": "Score",
+                    "labels": ["Plan", "Produce", "QA"],
+                    "values": [72, 88, 96],
+                }
+            ],
+            "metrics": [
+                {"value": "3", "label": "stages"},
+                {"value": "1", "label": "candidate"},
+                {"value": "0", "label": "blockers"},
+            ],
+        },
+    ),
+    (
+        "matrix",
+        "matrix",
+        {
+            "items": [
+                {"label": "Content", "x": 0.25, "y": 0.7},
+                {"label": "Visual", "x": 0.55, "y": 0.85},
+                {"label": "QA", "x": 0.8, "y": 0.6},
+            ]
+        },
+    ),
+    (
+        "architecture",
+        "architecture",
+        {"nodes": ["Spec", "Generator", "PPTX", "QA"]},
+    ),
+    (
+        "timeline",
+        "timeline",
+        {"stages": ["Plan", "Produce", "Render", "Deliver"]},
+    ),
+    (
+        "hero",
+        "hero",
+        {"title": "Scenario checkpoint", "subtitle": "One claim, one visual focus"},
+    ),
+    (
+        "diagram",
+        "visual-dominant",
+        {"annotations": ["Subject", "Evidence", "Takeaway"]},
+    ),
+    (
+        "quote",
+        "quote",
+        {"quote": "Clear visuals verify.", "source": "Fixture"},
+    ),
+    (
+        "summary",
+        "summary",
+        {"takeaways": ["Plan", "Generate", "Verify"]},
+    ),
+    (
+        "reference",
+        "reference",
+        {"references": ["Scenario fixture (2026)", "Suite runtime documentation"]},
+    ),
+)
 
-def digest(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def recipe_for(name: str, index: int) -> tuple[str, str, dict[str, object]]:
+    offset = sum(name.encode("utf-8")) % len(VISUAL_RECIPES)
+    return VISUAL_RECIPES[(offset + index) % len(VISUAL_RECIPES)]
 
 
-def find_soffice() -> str | None:
-    configured = os.environ.get("SOFFICE_PATH")
-    candidates = [configured, shutil.which("soffice")]
-    if os.name == "nt":
-        candidates.extend([
-            r"C:\Program Files\LibreOffice\program\soffice.exe",
-            r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-        ])
-    for candidate in candidates:
-        if candidate and Path(candidate).is_file():
-            return str(candidate)
-    return None
-
-
-def find_pdftoppm() -> str | None:
-    candidate = shutil.which("pdftoppm")
-    if candidate and Path(candidate).suffix.casefold() in {".cmd", ".bat"}:
-        bundled = Path(candidate).parents[2] / "native" / "poppler" / "Library" / "bin" / "pdftoppm.exe"
-        if bundled.is_file():
-            return str(bundled)
-    return candidate
-
-
-def contact_sheet(pages: list[Path], output: Path) -> None:
-    images = [Image.open(page).convert("RGB") for page in pages]
-    width = max(image.width for image in images)
-    height = sum(image.height for image in images)
-    sheet = Image.new("RGB", (width, height), "white")
-    offset = 0
-    for image in images:
-        sheet.paste(image, (0, offset))
-        offset += image.height
-        image.close()
-    sheet.save(output)
-
-
-def run_pdftoppm(pdftoppm: str, pdf: Path, prefix: Path) -> None:
-    command = [pdftoppm, "-png", str(pdf), str(prefix)]
-    if Path(pdftoppm).suffix.casefold() in {".cmd", ".bat"}:
-        command = [os.environ.get("COMSPEC", "cmd.exe"), "/c", *command]
-    subprocess.run(command, check=True)
+def run_checked(command: list[str], label: str) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode:
+        raise RuntimeError(f"{label} failed\n{result.stdout}\n{result.stderr}")
+    return result
 
 
 def generate_deck(work: Path, name: str, language: str, roles: list[str]) -> Path:
     deck = work / f"{name}.js"
     pptx = work / f"{name}-presentation.pptx"
     role_json = json.dumps(roles, ensure_ascii=False)
+    recipes_json = json.dumps(
+        [
+            {
+                "family": recipe_for(name, index)[1],
+                **recipe_for(name, index)[2],
+            }
+            for index in range(len(roles))
+        ],
+        ensure_ascii=False,
+    )
     deck.write_text(f"""
 const pptxgen = require('pptxgenjs');
-const pptx = new pptxgen(); pptx.layout = 'LAYOUT_WIDE';
+const H = require('pptx-helpers');
+const V = require('pptx-visuals');
+const TOKENS = {{
+  palette: {{ canvas: 'F8FAFC', primary_text: '111827', secondary_text: '4B5563' }},
+  typography: {{ title_min_pt: 24, body_cjk_min_pt: 22, body_latin_min_pt: 20,
+                 title_font: 'Aptos Display', body_font: 'Aptos' }},
+  geometry: {{ safe_margin_pct: 6, title_zone_pct: 16, footer_zone_pct: 5,
+               spacing_scale_pt: [6, 12, 18, 24, 36, 48], corner_radius_pt: 8 }}
+}};
+const pptx = new pptxgen();
+H.applyTokens(pptx, TOKENS, '{language.lower()}');
 const roles = {role_json};
+const recipes = {recipes_json};
 for (const [index, role] of roles.entries()) {{
   const slide = pptx.addSlide(); slide.background = {{ color: 'F8FAFC' }};
-  slide.addText(`${{index + 1}}. ${{role}}`, {{x: 0.7, y: 0.25, w: 11.5, h: 0.75, fontSize: 30, bold: true, color: '111827'}});
-  slide.addText('Scenario matrix: {language}. This page verifies production, rendering, and delivery gates.', {{x: 0.7, y: 1.45, w: 11.2, h: 1.3, fontSize: 22, color: '4B5563'}});
+  const area = H.safeArea(H.SLIDE_W_IN, H.SLIDE_H_IN, TOKENS);
+  H.addTitle(slide, `${{index + 1}}. ${{role}}`, area, TOKENS, '{language.lower()}');
+  V.renderVisual(slide, recipes[index].family, recipes[index], area, TOKENS, '{language.lower()}');
 }}
 pptx.writeFile({{ fileName: process.argv[2] }});
 """, encoding="utf-8")
     subprocess.run(
-        ["node", str(ROOT / "scripts" / "run_with_pptxgenjs.js"), str(deck), str(pptx)],
+        [
+            "node",
+            str(ROOT / "scripts" / "run_with_pptxgenjs.js"),
+            "--output",
+            str(pptx),
+            str(deck),
+        ],
         check=True,
     )
     return pptx
 
 
-def validate_scenario(name: str, scenario: str, language: str, roles: list[str]) -> None:
+def validate_scenario(
+    work: Path,
+    name: str,
+    scenario: str,
+    language: str,
+    roles: list[str],
+) -> tuple[Path, Path, Path]:
     data = {
-        "meta": {"scenario": scenario, "language": language, "slide_count": len(roles)},
-        "slides": [{"id": index + 1, "title": role, "layout": "content", "content": role, "role": role, "timing_sec": 30, "owner": "A"} for index, role in enumerate(roles)],
+        "schema_version": "2.0",
+        "meta": {
+            "scenario": scenario,
+            "language": language,
+            "slide_count": len(roles),
+            "visual_text_ratio": "balanced",
+        },
+        "slides": [
+            {
+                "id": index + 1,
+                "title": role,
+                "layout": recipe_for(name, index)[1],
+                "content": role,
+                "role": role,
+                "timing_sec": 30,
+                "owner": "A",
+                "visual": {
+                    "type": recipe_for(name, index)[0],
+                    "purpose": f"Exercise the {role} visual structure",
+                    "layout_family": recipe_for(name, index)[1],
+                    "details": recipe_for(name, index)[2],
+                },
+            }
+            for index, role in enumerate(roles)
+        ],
     }
     errors = semantic_errors(data)
     if errors:
         raise RuntimeError(f"Scenario contract failed for {name}: {errors}")
+    spec_path = work / f"{name}-slide-spec.json"
+    spec_report = work / f"{name}-slide-spec-report.json"
+    visual_plan = work / f"{name}-visual-plan.json"
+    spec_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    run_checked(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "validate_slide_spec.py"),
+            str(spec_path),
+            "--output",
+            str(spec_report),
+            "--json",
+        ],
+        f"{name}: Slide Spec validation",
+    )
+    run_checked(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "compile_visual_plan.py"),
+            str(spec_path),
+            "--output",
+            str(visual_plan),
+            "--json",
+        ],
+        f"{name}: visual plan",
+    )
+    return spec_path, spec_report, visual_plan
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run temporary rendered PPTX scenario matrix")
     parser.add_argument("--require-render", action="store_true")
     args = parser.parse_args()
-    soffice, pdftoppm = find_soffice(), find_pdftoppm()
-    if not soffice or not pdftoppm:
+    if not find_soffice() or not find_pdftoppm():
         if args.require_render:
             raise SystemExit("LibreOffice soffice and pdftoppm are required for the render matrix.")
         print(json.dumps({"ok": True, "skipped": True, "reason": "LibreOffice or Poppler unavailable"}))
         return
     delivery = ROOT / "skills" / "student-presentation-ppt" / "scripts" / "pptx_delivery_check.py"
+    tool = ROOT / "scripts" / "pptx_tool.py"
     completed = []
     with tempfile.TemporaryDirectory(prefix="student-presentation-matrix-") as tmp:
         work = Path(tmp)
         for name, (scenario, language, roles) in MATRIX.items():
-            validate_scenario(name, scenario, language, roles)
+            spec_path, spec_report, visual_plan = validate_scenario(
+                work, name, scenario, language, roles
+            )
             pptx = generate_deck(work, name, language, roles)
             notes = work / f"{name}-speaker-notes.md"
             notes.write_text("# Matrix notes\n", encoding="utf-8")
-            subprocess.run([soffice, "--headless", "--convert-to", "pdf", "--outdir", str(work), str(pptx)], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
-            pdf = work / f"{name}-presentation.pdf"
-            prefix = work / f"{name}-page"
-            run_pdftoppm(pdftoppm, pdf, prefix)
-            pages = sorted(work.glob(f"{name}-page-*.png"))
+            package_report = work / f"{name}-package-report.json"
+            run_checked(
+                [sys.executable, str(tool), "validate", str(pptx), "--output", str(package_report), "--json"],
+                f"{name}: package validation",
+            )
+            render_dir = work / f"{name}-render"
+            render_result = run_checked(
+                [sys.executable, str(tool), "render", str(pptx), "--output-dir", str(render_dir), "--prefix", name],
+                f"{name}: render",
+            )
+            render_payload = json.loads(render_result.stdout)
+            if os.environ.get("PPTX_RUNTIME_FORCE_AF_UNIX_SHIM") == "1" and not any(
+                "AF_UNIX denial simulation active" in message
+                for message in render_payload.get("messages", [])
+            ):
+                raise RuntimeError(f"{name}: forced AF_UNIX shim was not activated")
+            pages = sorted(render_dir.glob(f"{name}-*.png"))
             if len(pages) != len(roles):
                 raise RuntimeError(f"{name}: rendered {len(pages)} pages for {len(roles)} slides")
-            preview = work / f"{name}-contact.png"
-            contact_sheet(pages, preview)
+            static_report = work / f"{name}-presentation-static-report.json"
+            if not static_report.is_file():
+                raise RuntimeError(f"{name}: generation did not publish reusable static evidence")
             manifest = work / f"{name}-qa-manifest.json"
-            manifest.write_text(json.dumps({
-                "pptx_sha256": digest(pptx), "slide_count": len(roles), "rendered_page_count": len(pages), "scenario_contract_passed": True,
-                "preview_files": [preview.name], "preview_sha256": [digest(preview)],
-                "visual_inspection": {"completed": True, "inspected_pages": list(range(1, len(roles) + 1)), "repair_cycles": 0, "no_repair_needed_reason": "CI rendered scenario baseline.", "remaining_blockers": 0},
-            }), encoding="utf-8")
-            delivery_result = subprocess.run([sys.executable, str(delivery), "--pptx", str(pptx), "--notes", str(notes), "--preview", str(preview), "--qa-manifest", str(manifest), "--strict", "--json"], check=False, capture_output=True, text=True, encoding="utf-8", errors="replace")
-            if delivery_result.returncode:
-                raise RuntimeError(f"{name}: strict delivery failed\n{delivery_result.stdout}\n{delivery_result.stderr}")
+            manifest_command = [
+                sys.executable,
+                str(tool),
+                "qa-manifest",
+                "--pptx",
+                str(pptx),
+                "--output",
+                str(manifest),
+                "--no-repair-needed-reason",
+                "CI rendered scenario baseline.",
+                "--slide-spec-report",
+                str(spec_report),
+                "--slide-spec",
+                str(spec_path),
+                "--visual-plan",
+                str(visual_plan),
+            ]
+            for page in pages:
+                manifest_command.extend(["--preview", str(page)])
+            run_checked(manifest_command, f"{name}: QA manifest")
+            delivery_command = [
+                sys.executable,
+                str(delivery),
+                "--pptx",
+                str(pptx),
+                "--notes",
+                str(notes),
+                "--qa-manifest",
+                str(manifest),
+                "--package-report",
+                str(package_report),
+                "--strict",
+                "--json",
+            ]
+            for page in pages:
+                delivery_command.extend(["--preview", str(page)])
+            run_checked(delivery_command, f"{name}: strict delivery")
             completed.append(name)
     print(json.dumps({"ok": True, "rendered_scenarios": completed}, ensure_ascii=False))
 

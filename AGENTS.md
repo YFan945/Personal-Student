@@ -23,7 +23,8 @@ dependencies.
 - `CHANGELOG.md`: newest-first version release history.
 - `CLAUDE.md`: project-specific conventions for Claude Code sessions.
 - `CONTRIBUTING.md`, `SECURITY.md`: community and security guidelines.
-- `PPT-GENERATION-QUALITY-AUDIT.md`: PPTX generation quality audit and ongoing remediation tracker.
+- `PPTX-EMBEDDED-SKILL-ADAPTATION-PLAN.md`: PPTX runtime adaptation plan and acceptance checklist.
+- `plugins/student-presentation-suite/references/pptx-runtime-provenance.md`: runtime ownership and upstream audit provenance.
 
 Inside the plugin package:
 
@@ -87,7 +88,9 @@ Do not add:
 - Codex presentation runtime dependencies
 - generated `.pptx`, `.png`, cache, or `node_modules` files
 
-PPTX production depends on `document-skills@anthropic-agent-skills`.
+PPTX production uses the suite-owned `scripts/pptx_tool.py` facade,
+`shared/pptx_runtime/`, and the task-specific references under the PPTX skill.
+Do not restore the removed external `document-skills` dependency or copied runtime.
 
 ## Editing Rules
 
@@ -109,7 +112,6 @@ Install linting tools first:
 
 ```powershell
 python -m pip install ruff
-npm --prefix plugins/student-presentation-suite install -D eslint prettier
 ```
 
 Then run from the repository root:
@@ -143,9 +145,10 @@ git diff --check
 
 All checks must pass before publishing. The CI pipeline also runs
 `pip-audit` and `npm audit` for dependency vulnerability scanning.
-The environment check treats LibreOffice and Poppler as recommended
-(missing → warning, not block); node, pptxgenjs, markitdown, Pillow,
-and document-skills are required.
+The environment check reports LibreOffice and Poppler as recommended for candidate
+generation but required for rendered QA and `complete` delivery. Required runtime
+dependencies are mode-specific; use `--mode create`, `edit_ooxml`, or
+`rebuild_from_source` when diagnosing a workflow.
 
 ## Release Procedure
 

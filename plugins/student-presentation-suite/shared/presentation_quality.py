@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import re
 from collections import Counter
 from difflib import SequenceMatcher
 from typing import Any
 
 from shared.slide_spec_validation import _validate_scenario_roles
-
 
 GENERIC_PATTERNS = (
     "在当今社会快速发展的背景下",

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from shared.slide_spec_validation import semantic_errors
+from shared.slide_spec_contract import validate_slide_spec
 
 
 def load_optional_dependencies():
@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
         help="JSON Schema path",
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON result")
+    parser.add_argument("--output", type=Path, help="Write a reusable validation report")
     return parser.parse_args()
 
 
@@ -46,11 +47,7 @@ def main() -> None:
     args = parse_args()
     jsonschema, yaml = load_optional_dependencies()
     try:
-        schema = json.loads(args.schema.read_text(encoding="utf-8"))
-        data = yaml.safe_load(args.spec.read_text(encoding="utf-8"))
-        jsonschema.Draft202012Validator.check_schema(schema)
-        validator = jsonschema.Draft202012Validator(schema)
-        schema_errors = sorted(validator.iter_errors(data), key=lambda err: list(err.path))
+        _, errors, spec_hash = validate_slide_spec(args.spec, args.schema)
     except (OSError, json.JSONDecodeError, yaml.YAMLError, jsonschema.SchemaError) as exc:
         result = {"valid": False, "error": str(exc), "errors": []}
         if args.json:
@@ -59,21 +56,19 @@ def main() -> None:
             print(f"Slide Spec validation failed: {exc}")
         raise SystemExit(2) from exc
 
-    errors = [
-            {
-                "path": "." + ".".join(str(part) for part in error.path),
-                "message": error.message,
-            }
-            for error in schema_errors
-        ]
-    if not errors:
-        errors.extend(semantic_errors(data))
-
     result = {
         "valid": not errors,
         "error_count": len(errors),
         "errors": errors,
+        "slide_spec": str(args.spec.resolve()),
+        "slide_spec_sha256": spec_hash,
     }
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif errors:

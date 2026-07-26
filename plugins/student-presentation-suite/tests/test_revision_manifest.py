@@ -5,9 +5,7 @@ import unittest
 from pathlib import Path
 
 import yaml
-
 from test_helpers import load_module
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "create_revision_manifest.py"

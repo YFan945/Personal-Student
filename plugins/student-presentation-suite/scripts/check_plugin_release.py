@@ -10,7 +10,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = ROOT.parents[1]
 REQUIRED_FILES = [
@@ -21,6 +20,7 @@ REQUIRED_FILES = [
     "requirements-claude-pptx.txt",
     "package.json",
     "package-lock.json",
+    "references/pptx-runtime-provenance.md",
     "references/presentation-intake.md",
     "references/presentation-brief.md",
     "references/presentation-brief.schema.json",
@@ -29,22 +29,56 @@ REQUIRED_FILES = [
     "references/revision-training-export.md",
     "skills/student-presentation/SKILL.md",
     "skills/student-presentation-ppt/SKILL.md",
+    "skills/student-presentation-ppt/references/pptx-production.md",
+    "skills/student-presentation-ppt/references/pptx-runtime.md",
+    "skills/student-presentation-ppt/references/pptxgenjs-safety.md",
+    "skills/student-presentation-ppt/references/pptx-editing.md",
+    "skills/student-presentation-ppt/references/pptx-qa.md",
     "skills/student-presentation-review/SKILL.md",
     "scripts/check_claude_pptx_env.py",
+    "scripts/pptx_tool.py",
     "scripts/run_with_pptxgenjs.js",
     "scripts/smoke_pptx.py",
     "scripts/slide_spec_to_pptx_brief.py",
     "scripts/validate_slide_spec.py",
     "scripts/validate_presentation_brief.py",
     "scripts/analyze_presentation_spec.py",
+    "scripts/compile_visual_plan.py",
+    "scripts/pptx-helpers.js",
+    "scripts/pptx-visuals.js",
     "scripts/create_revision_manifest.py",
     "scripts/build_support_outputs.py",
     "scripts/workflow_guard.py",
     "scripts/manage_versions.py",
+    "shared/pptx_runtime/__init__.py",
+    "shared/pptx_runtime/charts.py",
+    "shared/pptx_runtime/findings.py",
+    "shared/pptx_runtime/package.py",
+    "shared/pptx_runtime/edit.py",
+    "shared/pptx_runtime/normalize.py",
+    "shared/pptx_runtime/openxml.py",
+    "shared/pptx_runtime/openxml_validator/OpenXmlValidator.csproj",
+    "shared/pptx_runtime/openxml_validator/packages.lock.json",
+    "shared/pptx_runtime/openxml_validator/Program.cs",
+    "shared/pptx_runtime/validate.py",
+    "shared/pptx_runtime/render.py",
+    "shared/pptx_runtime/soffice.py",
+    "shared/pptx_runtime/thumbnail.py",
+    "shared/pptx_runtime/assets/lo_socket_shim.c",
     "hooks/hooks.json",
+    "tests/test_pptx_tool.py",
+    "tests/test_pptx_runtime.py",
     "tests/test_runtime_paths.py",
 ]
-FORBIDDEN_PATH_PARTS = {".codex-plugin", "agents", "__pycache__", ".pytest_cache", "node_modules"}
+FORBIDDEN_PATH_PARTS = {
+    ".codex-plugin",
+    "agents",
+    "__pycache__",
+    ".pytest_cache",
+    "node_modules",
+    "bin",
+    "obj",
+}
 FORBIDDEN_SUFFIXES = {".pyc", ".pptx", ".png"}
 REQUIRED_METADATA = ("homepage", "repository", "license", "keywords")
 _SEMVER_RE = re.compile(
@@ -126,9 +160,6 @@ def check_manifest(errors: list[str]) -> None:
     author = manifest.get("author") if isinstance(manifest.get("author"), dict) else {}
     if author.get("name") in {None, "", "Local developer"}:
         errors.append("manifest author.name 必须提供发布者名称")
-    if not any("document-skills@anthropic-agent-skills" in dep
-               for dep in manifest.get("dependencies", [])):
-        errors.append("manifest 必须依赖 document-skills@anthropic-agent-skills")
     for field in REQUIRED_METADATA:
         if not manifest.get(field):
             errors.append(f"manifest 缺少必要元数据: {field}")
@@ -152,7 +183,6 @@ def check_runtime_contract(errors: list[str]) -> None:
     for expected in (
         "${CLAUDE_PLUGIN_ROOT}",
         "${CLAUDE_PROJECT_DIR}",
-        "document-skills@anthropic-agent-skills",
         "run_with_pptxgenjs.js",
         "blocked",
         "incomplete",
@@ -162,6 +192,39 @@ def check_runtime_contract(errors: list[str]) -> None:
     for forbidden in ("artifact-tool", "Presentations` skill", "agents/openai.yaml"):
         if forbidden in combined:
             errors.append(f"运行时指令包含 Codex-only 文本: {forbidden}")
+    if "tokens truncated" in combined:
+        errors.append("PPTX 运行时文档包含截断标记")
+    for rel in (
+        "skills/student-presentation-ppt/SKILL.md",
+        "skills/student-presentation-ppt/references/pptx-production.md",
+        "skills/student-presentation-ppt/references/pptx-runtime.md",
+        "skills/student-presentation-ppt/references/pptxgenjs-safety.md",
+        "skills/student-presentation-ppt/references/pptx-editing.md",
+        "skills/student-presentation-ppt/references/pptx-qa.md",
+    ):
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        if text.count("```") % 2:
+            errors.append(f"Markdown code fence 未闭合: {rel}")
+
+
+def check_embedded_runtime(errors: list[str]) -> None:
+    probe = subprocess.run(
+        [sys.executable, "-B", str(ROOT / "scripts" / "pptx_tool.py"), "--help"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if probe.returncode != 0:
+        errors.append(f"suite-owned PPTX runtime 无法启动: {(probe.stderr or probe.stdout).strip()}")
+    legacy_runtime = ROOT / "skills/student-presentation-ppt/scripts/pptx_skill"
+    if legacy_runtime.is_dir() and any(
+        path.is_file() and "__pycache__" not in path.parts
+        for path in legacy_runtime.rglob("*")
+    ):
+        errors.append("已移除的上游 pptx_skill runtime 不应出现在发布包中")
 
 
 def check_hooks(errors: list[str]) -> None:
@@ -191,9 +254,13 @@ def check_hooks(errors: list[str]) -> None:
 
 def check_tracked_files(errors: list[str]) -> None:
     files = tracked_files(errors)
+    tracked = set(files)
+    for rel in REQUIRED_FILES:
+        repository_path = f"plugins/student-presentation-suite/{rel}"
+        if repository_path not in tracked:
+            errors.append(f"必需发布文件尚未被 Git 跟踪: {rel}")
     folded: dict[str, str] = {}
     for rel in files:
-        path = Path(rel)
         if not rel.startswith("plugins/student-presentation-suite/"):
             continue
         local = rel.removeprefix("plugins/student-presentation-suite/")
@@ -218,6 +285,7 @@ def main() -> None:
     check_hooks(errors)
     check_manifest(errors)
     check_runtime_contract(errors)
+    check_embedded_runtime(errors)
     check_tracked_files(errors)
     result = {"ok": not errors, "error_count": len(errors), "errors": errors}
     if args.json:

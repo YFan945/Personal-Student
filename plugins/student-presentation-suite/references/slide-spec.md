@@ -24,7 +24,9 @@ Each slide entry must include:
 
 Optional slide fields:
 - `kind`: `cover`, `content`, `section-divider`, `quotation`, `references`, `appendix`, `qa`, or `closing`; defaults conceptually to `content`
-- `visual`: visual type and purpose; omit when a visual would be forced or decorative
+- `visual`: visual type, purpose, optional `layout_family`, asset/alt text, and structured
+  details. In v2/high-score/balanced/visual-led production it is required on content slides;
+  exempt slide kinds may omit it when a visual would be decorative.
 - `note_goal`: what the speaker note should accomplish
 - `transition`: transition or handoff sentence; omit on the final slide or when no meaningful transition exists
 
@@ -48,7 +50,13 @@ Meta field rules:
 - `image_source`: `"user-assets" | "web-search" | "generated" | "diagram-only" | "text-only" | "ask-before-web-search"`
 - `source_material`: a short evidence-boundary description or a list of supplied sources
 - `visual_style`: confirmed style name from the style menu or a user-defined direction
-- `visual_text_ratio: visual-led` requires a structured `visual` for every content slide. `timeline` needs 3+ stages; `comparison` needs 2+ items plus dimensions; `process` needs 2+ steps; `chart` needs measure, unit, scope, source, and takeaway.
+- `quality_level: high-score` and `visual_text_ratio: balanced|visual-led` require a
+  meaningful structured `visual` for every content slide. `timeline` needs 3+ stages;
+  `comparison` needs 2+ items plus dimensions; `process` needs 2+ steps; `chart` needs
+  measure, unit, scope, source, and takeaway. Architecture/swimlane needs 2+ nodes,
+  cycle needs 3+ steps, matrix needs 2+ items, and annotated-image needs an asset.
+- `visual.layout_family` is one of `hero`, `visual-dominant`, `process-path`, `timeline`,
+  `comparison`, `dashboard`, `architecture`, `matrix`, `quote`, `summary`, or `reference`.
 - `deliverables`: confirmed output names such as `"pptx"`, `"speaker-notes"`,
   `"preview"`, `"change-summary"`, `"full-script"`, or `"pdf"`
 - Use short ASCII-safe `output_prefix` when a later PPTX output filename needs a stable slug.
@@ -84,6 +92,7 @@ Optional v2 top-level fields:
 Schema and validation:
 - JSON Schema: `references/slide-spec.schema.json`
 - Validator: `scripts/validate_slide_spec.py`
+- Visual compiler: `scripts/compile_visual_plan.py`
 - The validator requires `jsonschema` and `PyYAML` from `requirements.txt`.
 - Unknown fields are rejected in `meta`, slides, visuals, and review findings to catch spelling mistakes.
 - Semantic validation also checks contiguous slide ids, `slide_count`, total timing vs `duration_min`, group members/owners, existing-deck combinations, high-score controls, evidence references, and lock semantics.
@@ -97,6 +106,12 @@ Run deterministic story, density, wording, and evidence checks with:
 
 ```powershell
 python "${CLAUDE_PLUGIN_ROOT}/scripts/analyze_presentation_spec.py" path/to/slide-spec.yaml --strict --json
+```
+
+Before PPTX generation, compile the deck-level rhythm and editable component mapping:
+
+```powershell
+python "${CLAUDE_PLUGIN_ROOT}/scripts/compile_visual_plan.py" path/to/slide-spec.yaml --output outputs/visual-plan.json --json
 ```
 
 ```yaml

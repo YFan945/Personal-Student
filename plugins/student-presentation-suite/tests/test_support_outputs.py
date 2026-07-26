@@ -5,7 +5,6 @@ from pathlib import Path
 
 from test_helpers import load_module
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "build_support_outputs.py"
 

@@ -21,6 +21,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
       - name: Install dependencies
         shell: pwsh
         run: |
@@ -28,7 +31,6 @@ jobs:
           python -m pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt
           python -m pip install ruff
           npm --prefix plugins/student-presentation-suite ci
-          npm --prefix plugins/student-presentation-suite install -D eslint prettier
       - name: Validate schema and tests
         shell: pwsh
         env:
@@ -85,6 +87,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
       - name: Install render dependencies
         run: |
           sudo apt-get update
@@ -95,6 +100,7 @@ jobs:
       - name: Render scenario matrix
         env:
           PYTHONPATH: "${{ github.workspace }}/plugins/student-presentation-suite"
+          PPTX_RUNTIME_FORCE_AF_UNIX_SHIM: "1"
         run: python plugins/student-presentation-suite/scripts/scenario_render_matrix.py --require-render
 
   security-scan:
@@ -107,6 +113,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
       - name: Install dependencies
         run: |
           python -m pip install -r plugins/student-presentation-suite/requirements.txt
@@ -115,6 +124,10 @@ jobs:
       - name: Pip audit
         run: |
           python -m pip install pip-audit
-          pip-audit -r plugins/student-presentation-suite/requirements.txt -r plugins/student-presentation-suite/requirements-claude-pptx.txt || true
+          pip-audit -r plugins/student-presentation-suite/requirements.txt -r plugins/student-presentation-suite/requirements-claude-pptx.txt
       - name: Npm audit
-        run: npm --prefix plugins/student-presentation-suite audit || true
+        run: npm --prefix plugins/student-presentation-suite audit
+      - name: NuGet audit
+        run: |
+          dotnet restore plugins/student-presentation-suite/shared/pptx_runtime/openxml_validator/OpenXmlValidator.csproj --locked-mode
+          dotnet list plugins/student-presentation-suite/shared/pptx_runtime/openxml_validator/OpenXmlValidator.csproj package --vulnerable --include-transitive

@@ -4,14 +4,12 @@
 from __future__ import annotations
 
 import json
-import hashlib
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 from PIL import Image
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -47,12 +45,9 @@ const AREA = H.safeArea(H.SLIDE_W_IN, H.SLIDE_H_IN, TOKENS);
 const slide = pptx.addSlide();
 slide.background = { fill: H.color(TOKENS, "canvas") };
 H.addTitle(slide, "Claude Code PPTX smoke test", AREA, TOKENS, LANG);
-slide.addText("Runtime resolution and delivery validation", {
-  x: AREA.x, y: AREA.y + AREA.h * 0.25, w: AREA.w, h: AREA.h * 0.4,
-  fontSize: H.fontSizeScale(TOKENS, LANG).body,
-  fontFace: H.fontFamily(TOKENS).body,
-  color: H.color(TOKENS, "secondary_text")
-});
+H.addTextBox(slide, "Runtime resolution and delivery validation", {
+  x: AREA.x, y: AREA.y + AREA.h * 0.25, w: AREA.w, h: AREA.h * 0.4
+}, TOKENS, LANG, { color: H.color(TOKENS, "secondary_text") });
 
 pptx.writeFile({ fileName: process.argv[2] });
 """,
@@ -62,38 +57,109 @@ pptx.writeFile({ fileName: process.argv[2] });
             [
                 "node",
                 str(ROOT / "scripts/run_with_pptxgenjs.js"),
-                str(deck_script),
+                "--output",
                 str(pptx),
+                str(deck_script),
             ],
             check=True,
         )
+        validation = subprocess.run(
+            [
+                sys.executable,
+                "-B",
+                str(ROOT / "scripts" / "pptx_tool.py"),
+                "validate",
+                str(pptx),
+                "--json",
+                "--output",
+                str(work / "smoke-package-report.json"),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if validation.returncode:
+            raise SystemExit(
+                "Embedded PPTX package validation failed:\n"
+                + validation.stdout
+                + validation.stderr
+            )
         notes.write_text("# Speaker notes\n\nSmoke test.", encoding="utf-8")
         image = Image.new("RGB", (640, 360), "white")
         image.paste((31, 78, 121), (0, 0, 640, 80))
         image.save(preview)
-        qa_manifest = work / "smoke-qa-manifest.json"
-        delivery_report = work / "smoke-delivery-report.json"
-        qa_manifest.write_text(
+        static_report = work / "smoke-presentation-static-report.json"
+        if not static_report.is_file():
+            raise SystemExit("Generation wrapper did not publish reusable static evidence.")
+        spec = work / "smoke-slide-spec.json"
+        spec_report = work / "smoke-slide-spec-report.json"
+        visual_plan = work / "smoke-visual-plan.json"
+        spec.write_text(
             json.dumps(
                 {
-                    "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
-                    "slide_count": 1,
-                    "rendered_page_count": 1,
-                    "scenario_contract_passed": True,
-                    "preview_files": [preview.name],
-                    "preview_sha256": [hashlib.sha256(preview.read_bytes()).hexdigest()],
-                    "rendered_at": "2026-01-01T00:00:00Z",
-                    "visual_inspection": {
-                        "completed": True,
-                        "inspected_pages": [1],
-                        "repair_cycles": 0,
-                        "no_repair_needed_reason": "Minimal smoke deck inspected after render.",
-                        "remaining_blockers": 0,
-                    },
+                    "slides": [
+                        {
+                            "id": 1,
+                            "title": "Smoke",
+                            "layout": "hero",
+                            "kind": "cover",
+                            "content": "Smoke",
+                            "timing_sec": 30,
+                            "owner": "A",
+                        }
+                    ]
                 }
             ),
             encoding="utf-8",
         )
+        for script, output in (
+            ("validate_slide_spec.py", spec_report),
+            ("compile_visual_plan.py", visual_plan),
+        ):
+            command = [sys.executable, str(ROOT / "scripts" / script), str(spec)]
+            command.extend(["--output", str(output), "--json"])
+            evidence = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            if evidence.returncode:
+                raise SystemExit(evidence.stdout + evidence.stderr)
+        qa_manifest = work / "smoke-qa-manifest.json"
+        delivery_report = work / "smoke-delivery-report.json"
+        manifest_result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "pptx_tool.py"),
+                "qa-manifest",
+                "--pptx",
+                str(pptx),
+                "--preview",
+                str(preview),
+                "--output",
+                str(qa_manifest),
+                "--slide-spec-report",
+                str(spec_report),
+                "--slide-spec",
+                str(spec),
+                "--visual-plan",
+                str(visual_plan),
+                "--no-repair-needed-reason",
+                "Minimal smoke deck inspected after render.",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if manifest_result.returncode:
+            raise SystemExit(manifest_result.stdout + manifest_result.stderr)
         proc = subprocess.run(
             [
                 sys.executable,
@@ -106,6 +172,8 @@ pptx.writeFile({ fileName: process.argv[2] });
                 str(preview),
                 "--qa-manifest",
                 str(qa_manifest),
+                "--package-report",
+                str(work / "smoke-package-report.json"),
                 "--output",
                 str(delivery_report),
                 "--strict",

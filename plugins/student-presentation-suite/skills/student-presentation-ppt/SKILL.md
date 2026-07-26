@@ -1,71 +1,65 @@
 ---
 name: student-presentation-ppt
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
+version: 0.4.3
 ---
 
 # Student Presentation PPT
 
-创建或改进实际可编辑的学生演示文稿。
+创建或改进可编辑的学生学术 PPTX。仅大纲走 `student-presentation`；只读审查走
+`student-presentation-review`；“直接改好”先诊断，再进入本 skill 的编辑分支。
 
-## 快速约束
+## Canonical references
 
-- 中文正文 ≥ 22pt / 英文正文 ≥ 20pt / 标题 ≥ 24pt
-- **文字适配优先级**：确保文本框能装下文字 > 保持最小字号。文字装不下时，优先拆分幻灯片或删减内容，不得将字号缩小到最小值以下
-- 预估公式：中文字宽 ≈ 字号×0.035cm，英文 ≈ 字号×0.021cm；行高 ≈ 字号×1.4；每行字符数 = 盒宽÷字宽；所需行数 = 总字符数÷每行字符数；文字总高 = 所需行数×行高。文字总高超过盒高 85% 时存在溢出风险
-- 每页一条核心信息，≤ 4 条要点，≤ 80 中文字 / 40 英文词
-- 避免 AI 套话（"在当今快速发展..."、"具有重要意义..."）；用课程/项目具体细节替代
-- 按目录→逐页主张→PPT文案→演讲版→Slide Spec 分层生成
-- 生成前必须确认完整 Production Summary（20 项）— 用户说"你决定"只填充推荐值，不跳过确认
-- **intake 阶段必须使用 `AskUserQuestion` 工具逐个让用户选择未确认字段**，禁止用文本列出选项让用户打字回复
-- 状态机：`intake_pending → intake_confirmed → planned → producing → qa → complete`
-- 输出写入 `${CLAUDE_PROJECT_DIR}/outputs`，不得覆盖源文件
-- PPTX 生产依赖 `document-skills@anthropic-agent-skills`
+- 始终加载 `../../references/presentation-intake.md` 和
+  `../../references/shared-standards.md`。
+- 规划时加载 `../../references/content-workflow.md`、
+  `../../references/slide-spec.md`、`../../references/image-strategy.md` 和
+  `references/pptx-production.md`。
+- 视觉选择加载 `references/visual-style-menu.md`，确认后只加载一个
+  `references/visual-styles/<style>.md`。
+- 需要引用时加载 `../../references/evidence-and-citations.md`；编辑或版本控制时加载
+  `../../references/revision-training-export.md`。
+- 低层命令、安全规则、编辑和 QA 分别由 `references/pptx-runtime.md`、
+  `references/pptxgenjs-safety.md`、`references/pptx-editing.md`、
+  `references/pptx-qa.md` 负责。
 
-## 职责
+## State gate
 
-- 创建/改进可编辑 PPTX → 本 skill
-- 仅大纲 → `student-presentation`
-- 审查已有文件 → `student-presentation-review`
-- "直接改好" → 先诊断，再在本 skill 中编辑，输出独立改进版 + change summary
+状态严格按
+`intake_pending → intake_confirmed → planned → producing → qa → complete`
+推进，终态为 `incomplete` 或 `blocked`。初始化并持久化状态：
 
-## 状态门禁
+```bash
+python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" init
+```
 
-加载 `../../references/presentation-intake.md`，使用完整 PPTX intake。
+确认前只允许读取用户材料和收集需求，不得检查环境、生成、编辑、渲染或交付。
+必须让用户明确批准完整 Production Summary，再调用 `confirm --summary-file <summary>`。
 
-用 `workflow_guard.py init` 初始化项目状态。保存完整 Production Summary 到 `outputs/`；只有明确批准后运行 `workflow_guard.py confirm --summary-file <摘要>`。`PreToolUse` hook 在确认前阻断生产脚本。
+## Workflow
 
-状态卡住时使用 `workflow_guard.py reset` 重置，使用 `workflow_guard.py unblock` 从 blocked 回到 `intake_pending` 并重新确认摘要。`complete` 只能通过携带当前 PPTX 的 `--qa-manifest` 和 `--pptx` 的状态转换获得。
+1. 完成完整 intake；用户说“你决定”只表示采用推荐值，仍需展示并确认最终摘要。
+2. 确认后运行 `check_claude_pptx_env.py --mode <production_mode> --json --strict`。创建能力缺失或本次编辑能力
+   缺失时转 `blocked`；只缺渲染能力可生成候选文件，但最终只能是 `incomplete`。
+3. 验证 Presentation Brief 和 Slide Spec，运行 `analyze_presentation_spec.py` 和
+   `compile_visual_plan.py`；视觉计划未通过时不写 `deck.js`。生成 production brief，
+   并确定唯一 `production_mode`：`create`、`edit_ooxml` 或
+   `rebuild_from_source`。转为 `planned`。
+4. 转为 `producing`，按 `pptx-production.md` 的对应分支生产。`create` 执行 deck.js；
+   `edit_ooxml` 使用 `pptx_tool.py` 解包、结构修改、内容修改、clean、pack；
+   `rebuild_from_source` 必须记录明确理由。所有模式都输出新文件，禁止覆盖 source deck。
+5. 进入 `qa`，复用生成阶段的 static/package reports，按 `pptx-qa.md` 完成一次渲染、
+   逐页视觉、样式和交付检查。首个 candidate 无 blocker 时直接记录无需修复原因；只有
+   发现问题并修改 PPTX 后，才重新生成相关证据。
+6. 编辑任务生成 change summary 和 revision manifest；版本快照必须传入完整参数。
+7. 只有最终 PPTX、static report、预览、QA manifest、package report 和严格 delivery
+   report 全部绑定且 blocker 为零时，才可调用
+   `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --package-report <package-report> --delivery-report <report>`。
 
-## 工作流
+## Output contract
 
-1. 完成 intake 并获得明确确认。**必须使用 `AskUserQuestion` 工具**分轮让用户逐个选择未确认的字段（场景→规模→视觉→输出），详见 `presentation-intake.md` 的 Required Interaction 章节。禁止用文本列表代替。
-2. 按需加载：
-   - `../../references/presentation-brief.md` — 场景/受众/质量/控制
-   - `../../references/content-workflow.md` — 分层生成与故事检查
-   - `../../references/evidence-and-citations.md` — 证据与引用
-   - `../../references/revision-training-export.md` — 锁定/修订/导出
-   - `references/pptx-production.md` — 生产机制
-   - `references/visual-style-menu.md` → 一份 `references/visual-styles/<style>.md`
-   - `../../references/slide-spec.md` — 结构化交接
-   - `../../references/image-strategy.md` — 视觉素材策略
-3. 验证确认的 Presentation Brief。创建分层内容和经过验证的 Slide Spec v2；运行 `analyze_presentation_spec.py`；将工作流状态转为 `planned`。
-4. 运行 `python "${CLAUDE_PLUGIN_ROOT}/scripts/check_claude_pptx_env.py" --json --strict`。必需工具缺失时 `blocked`（node/pptxgenjs/markitdown/Pillow/document-skills）；LibreOffice/Poppler 缺失仅警告。
-5. 对 Slide Spec 输入运行 `slide_spec_to_pptx_brief.py` 生成 Claude pptx brief。
-6. 转为 `producing`，遵循 `document-skills` 的 `pptx` skill：新建 → `pptxgenjs.md`，编辑 → `editing.md`。
-7. 生成的 Node 脚本通过 `run_with_pptxgenjs.js` 运行。
-8. 用 `build_support_outputs.py` 构建辅助输出。转为 `qa`；运行文本提取、渲染、视觉检查、质量报告、至少一次修复-验证循环，写入带 PPTX/preview hash、页数、检查页和 blocker 数的 `qa-manifest.json`。用 `style_adherence_check.py --pptx <pptx> --visual-style <style> --output <style-report> --strict` 检查 token 一致性，再运行 `pptx_delivery_check.py --pptx <pptx> --qa-manifest <manifest> --style-report <style-report> --strict --json`。编辑时运行 `create_revision_manifest.py --strict`。用 `manage_versions.py` 做版本快照。所有门禁通过后用 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest>` 完成状态转换。
-
-## 输出契约
-
-仅写入 `${CLAUDE_PROJECT_DIR}/outputs`（无此变量时用当前项目）：
-
-- `<topic>-presentation.pptx`
-- `<topic>-speaker-notes.md`
-- `<topic>-preview.png` 或 contact sheet
-- `<topic>-qa-manifest.json`
-- `<topic>-style-adherence-report.json`
-- `<topic>-delivery-report.json`
-- `<topic>-change-summary.md`（改进已有 deck 时）
-- 按需的 PDF、提词版、质量报告和 revision manifest
-
-最终回复必须报告每项文件的绝对路径与存在性、页数、静态风险摘要、渲染 QA 状态，以及状态是 `complete`、`incomplete` 还是 `blocked`。
+仅写入 `${CLAUDE_PROJECT_DIR}/outputs` 或当前项目的 `outputs/`：PPTX、speaker notes、
+逐页 preview/contact sheet、生成时 static report、QA manifest、style/delivery report，以及编辑任务的 change
+summary。中间文件放在 `outputs/.pptx-work/<work-id>/`。最终回复报告所有绝对路径、
+页数、package validation、visual QA、交付状态和剩余限制。

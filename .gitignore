@@ -7,3 +7,5 @@
 **/.pytest_cache/
 **/*.pyc
 **/node_modules/
+**/openxml_validator/bin/
+**/openxml_validator/obj/
