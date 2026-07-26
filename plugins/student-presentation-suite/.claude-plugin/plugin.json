@@ -17,7 +17,5 @@
     "coursework",
     "defense"
   ],
-  "dependencies": [
-    "plugin-dev"
-  ]
+  "dependencies": []
 }

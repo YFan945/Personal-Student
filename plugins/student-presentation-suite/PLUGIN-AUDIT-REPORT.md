@@ -372,7 +372,7 @@ Install ID: `student-presentation-suite@claude-personal`.
 | M4 | 缺失 AGENTS.md | ✅ 已修复 | 新建 `AGENTS.md` 含组件清单、技能激活规则、状态机、开发指南 |
 | M5 | SKILL.md 缺 version | ✅ 已修复 | 3 个 SKILL.md 均添加 `version: 0.4.2` |
 | M6 | PROVENANCE.md 重定位 | ✅ 已修复 | 移至 `references/pptx-runtime-provenance.md`，更新 5 处引用 |
-| E1 | dependencies 为空 | ✅ 已修复 | 添加 `"dependencies": ["plugin-dev"]` |
+| E1 | dependencies 为空 | ✅ 已修复 | 确认无外部硬依赖，保持空数组（plugin-dev 是开发工具，非运行时依赖） |
 | E2 | README Install ID | ✅ 已修复 | 替换为仓库安装说明 |
 | E3 | .env.example 无文档 | ✅ 已修复 | 扩展 `.env.example`，README 新增环境变量章节 |
 | E4 | package.json 命名 | ✅ 已修复 | 统一为 `student-presentation-suite` |
