@@ -86,8 +86,8 @@ Evidence Ledger 引用、锁定页面及 revision 元数据；旧版 Slide Spec 
 - `<topic>-presentation.pptx`
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` 或 contact sheet
-- `<topic>-presentation-static-report.json`（随 candidate 一次生成并复用）
-- `<topic>-visual-plan.json`（整套布局节奏和可编辑组件映射）
+- `<topic>-presentation-package-report.json`（suite validation 产物，可复用）
+- `<topic>-visual-plan.json`（建议性布局节奏和可编辑组件映射）
 - `<topic>-qa-manifest.json`（与 Slide Spec 证据、最终 PPTX 及渲染预览绑定）
 - `<topic>-style-adherence-report.json`（所选视觉风格 token 一致性）
 - `<topic>-delivery-report.json`（最终门禁证据）
@@ -105,24 +105,26 @@ PPTX skill 先读取 `visual-style-menu.md`，推荐最适合主题的风格，�
 风格是生成方向，不是固定模板。页面布局必须服务于内容功能，装饰不能代替
 证据、层级和可读性。
 
-写 `deck.js` 前，`compile_visual_plan.py` 会把每页映射到 11 类可编辑布局，并检查
-有意义视觉覆盖率、布局多样性和过度重复。`pptx-visuals.js` 用可编辑形状、连接线、
-标签和图片/图表结构实现这些布局。bridge 只编译并发布一次 visual plan，将
-`visual.details` 标准化为组件参数；图片默认等比包含并写入 alt text，图表使用投影可读字号。
+`deck.js` 按 `references/pptxgenjs-safety.md` 中的官方 gotchas 写成裸 pptxgenjs 脚本；
+`pptx-helpers.js`/`pptx-visuals.js` 是可选工具库。`pptx-visuals.js` 用可编辑形状、
+连接线、标签和图片/图表结构实现 hero/process/timeline/comparison/chart/architecture/
+matrix/quote/summary/reference 等布局族。bridge 可能发布一份建议性 visual plan
+（非门禁），将 `visual.details` 标准化为组件参数；图片默认等比包含并写入 alt text，
+图表使用投影可读字号。
 
 ## 质量门禁
 
 PPTX 交付要求：
 
 - 环境兼容性检查；
-- 输入 Slide Spec 时执行 schema、语义验证和 visual plan 编译；
-- 生成可编辑 PPTX；
+- 输入 Slide Spec 时执行 schema、语义验证（visual plan 编译为建议性）；
+- 生成可编辑 PPTX（裸 pptxgenjs，遵循官方 gotchas）；
 - 提供讲稿；
 - 文本提取检查；
 - LibreOffice 渲染和 Poppler 页面图片；
 - 一次完整视觉检查；首个 candidate 有 blocker 时才修复并重验；
-- static report 无 blocker，且 QA manifest 会重新验证原始 Slide Spec，并保证
-  Slide Spec/visual-plan/PPTX/preview/static-report hash 一致、
+- QA manifest 会重新验证原始 Slide Spec，并保证
+  Slide Spec/PPTX/preview/package-report hash 一致、
   覆盖全部页面且 blocker 数为零；
 - package report 使用完整 suite validation profile，且 Open XML schema 校验已执行并通过；
 - 按需生成的 quality/style report 与原始 Slide Spec 或当前 PPTX hash 一致；
@@ -130,7 +132,7 @@ PPTX 交付要求：
 - 严格 delivery check 通过；
 - 已有 deck 改进提供独立 change summary。
 
-`complete` 还额外要求执行 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --package-report <package-report> --delivery-report <report>`。PptxGenJS wrapper 会在 candidate 落盘前阻断文字溢出、越界和非包含式重叠；生成阶段的 static/package reports 会被 QA 和 delivery 复用，不重复扫描或校验未修改的 deck。CI 也会为 coursework、英语课堂汇报、答辩、竞赛、社团展示、研究展示、软件项目、数据调研和学校模板编辑等场景创建并渲染临时矩阵；不会把生成 deck 或预览提交到仓库。
+`complete` 还额外要求执行 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --package-report <package-report> --delivery-report <report>`。PptxGenJS wrapper 在原子落盘前只做 `normalize-generated`，不做静态门禁；文字溢出、重叠等问题由 QA 逐页视觉检查发现。QA 和 delivery 复用生成阶段的 package report，不重复校验未修改的 deck。CI 也会为 coursework、英语课堂汇报、答辩、竞赛、社团展示、研究展示、软件项目、数据调研和学校模板编辑等场景创建并渲染临时矩阵；不会把生成 deck 或预览提交到仓库。
 
 ## Runtime
 

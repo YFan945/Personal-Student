@@ -23,26 +23,24 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
 - 输出和 work directory 必须在项目 `outputs/` 下。
 - source deck 只读，生产前后都记录 SHA-256。
 - 中文正文不低于 22pt，英文正文不低于 20pt，主要标题不低于 24pt。
-- 文本不适配时依次拆页、删减、扩大容器，禁止突破字号下限。
-- 标题、正文和页脚分别使用 `H.safeArea` 返回的 `titleBox`/内容区及
-  `H.footerArea`；禁止用 `slideH - 常量` 自算页脚坐标，禁止让标题框跨入内容区。
-- 首次生成直接使用 `H.gridLayout` 切分内容区，并只通过 `H.addTitle`、`H.addBody`、
-  `H.addTextBox`、`H.addAccentCard`、`H.addFooter` 写文字。不要为每页重新发明坐标，
-  不要用固定高度文本框绕过 fit 检查。
-- 写 `deck.js` 前必须运行 `compile_visual_plan.py`。严格模式要求内容页有意义视觉覆盖率
-  不低于 70%、同一布局族不得连续超过两页，并按内容页数量使用足够多的布局族。
-- 每页按 visual plan 选择 `pptx-visuals.js` 的可编辑组件；禁止把 process、comparison、
-  chart、architecture 等意图退化为标题加大段正文。
+- 文本不适配时依次拆页、删减、扩大容器，禁止突破字号下限；溢出靠 QA 逐页视觉检查。
+- 坐标必须落在画布内；标题、正文、页脚区与安全边距保持一致。禁止用
+  `slideH - 常量` 自算页脚坐标。可用可选 helper 的 `H.safeArea`/`H.gridLayout` 降低
+  手算坐标出错率。
+- 按 `pptxgenjs-safety.md` 直接写裸 pptxgenjs 脚本；`pptx-helpers.js`/`pptx-visuals.js`
+  是可选工具。每页用 `slide.background` 设置背景（canvas 角色），深色封面/浅色内容对比。
+- visual plan（`*-visual-plan.json`）是建议性参考，不是门禁；可参考其 layout family 与
+  组件建议，但 deck 仍按裸 pptxgenjs 规范写。
 - 使用 resolved design tokens；不得另选本 reference 之外的 palette。
 - 所有最终 candidate 都必须通过 `pptx_tool.py validate`。
 
 ## Create branch
 
 1. 按 Slide Spec 创建 `outputs/.pptx-work/<work-id>/deck.js`。
-2. 加载 `pptxgenjs-safety.md`；使用 `require("pptx-helpers")` 和
-   `require("pptx-visuals")`、
-   `H.applyTokens`、`H.safeArea`、`H.gridLayout` 和受控文字 helper。先把每页分成
-   title/content/footer 三层，再填入内容；不得先写文字后补救坐标。
+2. 加载 `pptxgenjs-safety.md`，按官方 gotchas 直接写裸 pptxgenjs 脚本；可用可选
+   `require("pptx-helpers")`/`require("pptx-visuals")` 降低算坐标出错率。每页先分
+   title/content/footer 三层，再填入内容；每页设 `slide.background`（canvas 角色），
+   深色封面/浅色内容对比。不得先写文字后补救坐标。
 3. deck.js 从 `process.argv[2]` 接收输出路径；每个输出只创建一个 pptxgen 实例。
 4. 执行：
 
@@ -52,10 +50,10 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
      --output <candidate-stem>-package-report.json --json
    ```
 
-5. wrapper 会在原子落盘前运行一次 `static-check`，并自动输出
-   `<candidate-stem>-static-report.json`。QA 和 delivery 必须复用 static/package 两份
-   hash-bound 报告，禁止重复校验未修改的 PPTX。文字溢出、越界、非包含式重叠或关键可读性风险会直接拒绝
-   candidate；修复 generator 后整包重建，禁止对已打包文件做逐项补丁。
+5. wrapper 在原子落盘前只运行 `normalize-generated`（修复 chart axId/presentation 语义），
+   不输出 static report，也不做静态门禁。QA 和 delivery 绑定
+   `<candidate-stem>-package-report.json`；文字溢出、重叠、可读性问题由 QA 阶段逐页视觉
+   检查发现，修复 generator 后整包重建，禁止对已打包文件做逐项补丁。
 
 ## Edit branch
 

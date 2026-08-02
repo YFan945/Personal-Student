@@ -58,11 +58,19 @@ When style selection is needed, show the three best topic-fit choices first usin
 - choose a palette that feels specific to the topic instead of defaulting to blue
 - use 60-70% dominant color weight, 1-2 supporting colors, and one accent
 - create clear hierarchy through size, color, spacing, and section rhythm
-- use a consistent visual motif across the whole deck: rounded image frames, numbered tabs, side bars, circular icons, thick edge bands, or chart callout pills
+- use a consistent visual motif across the whole deck: rounded image frames, numbered tabs, circular icons, chart callout pills, or card grids
 - vary layouts across slides instead of repeating the same card grid
 - use dark cover/conclusion with lighter content slides when appropriate
 - content slides should use a meaningful visual element when it helps explain, compare, evidence, or organize the message; covers, section dividers, quotation slides, references, appendix, and Q&A pages do not need forced decoration
 - avoid decorative underline strokes when they are merely habitual; preserve them when they are part of a supplied template or a deliberate, consistent visual system
+- NEVER add decorative color bars, accent stripes, or single-side border bands — these read as AI-generated filler; separate cards with a subtle background tint, drop shadow, or icon instead
+
+The 14 style files under `visual-styles/` share one field template (`Palette` →
+`Visual character` → `Use when` → `Creative freedom` → `Guardrails` → `Typography` →
+`Slide rhythm` → `Charts and diagrams` → `Layout motif` → `Fallback layout` →
+`Color roles` → `Geometry` → `Slide recipes` → `Image treatment` → `Density control`
+→ `Acceptance checks` → `Do not sacrifice` → `Avoid`). Keep that structure when
+editing a style.
 
 ## Structural Visual Layer
 

@@ -90,12 +90,11 @@ pptx.writeFile({ fileName: process.argv[2] });
         image = Image.new("RGB", (640, 360), "white")
         image.paste((31, 78, 121), (0, 0, 640, 80))
         image.save(preview)
-        static_report = work / "smoke-presentation-static-report.json"
-        if not static_report.is_file():
-            raise SystemExit("Generation wrapper did not publish reusable static evidence.")
+        package_report = work / "smoke-package-report.json"
+        if not package_report.is_file():
+            raise SystemExit("Generation/validation did not publish a package report.")
         spec = work / "smoke-slide-spec.json"
         spec_report = work / "smoke-slide-spec-report.json"
-        visual_plan = work / "smoke-visual-plan.json"
         spec.write_text(
             json.dumps(
                 {
@@ -114,10 +113,7 @@ pptx.writeFile({ fileName: process.argv[2] });
             ),
             encoding="utf-8",
         )
-        for script, output in (
-            ("validate_slide_spec.py", spec_report),
-            ("compile_visual_plan.py", visual_plan),
-        ):
+        for script, output in (("validate_slide_spec.py", spec_report),):
             command = [sys.executable, str(ROOT / "scripts" / script), str(spec)]
             command.extend(["--output", str(output), "--json"])
             evidence = subprocess.run(
@@ -147,8 +143,8 @@ pptx.writeFile({ fileName: process.argv[2] });
                 str(spec_report),
                 "--slide-spec",
                 str(spec),
-                "--visual-plan",
-                str(visual_plan),
+                "--package-report",
+                str(package_report),
                 "--no-repair-needed-reason",
                 "Minimal smoke deck inspected after render.",
             ],

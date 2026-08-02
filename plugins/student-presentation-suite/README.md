@@ -10,6 +10,8 @@ quality contract.
 This plugin is installed as part of the `claude-plugins` repository. See the
 [root README](../../README.md) for installation instructions.
 
+Install ID: `student-presentation-suite@claude-personal`.
+
 ## Skills
 
 ### `student-presentation`
@@ -96,8 +98,8 @@ project's `outputs/` directory when the environment variable is unavailable:
 - `<topic>-presentation.pptx`
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` or contact sheet
-- `<topic>-presentation-static-report.json` produced once with the candidate and reused
-- `<topic>-visual-plan.json` with deck-level layout rhythm and editable component mapping
+- `<topic>-presentation-package-report.json` from suite validation and reused
+- `<topic>-visual-plan.json` (advisory layout rhythm and editable component mapping)
 - `<topic>-qa-manifest.json` bound to Slide Spec evidence, the delivered PPTX, and rendered previews
 - `<topic>-style-adherence-report.json` for the selected visual style
 - `<topic>-delivery-report.json` with final gate evidence
@@ -118,25 +120,26 @@ Styles are directions rather than fixed templates. Layout must follow the
 slide's function, and decorative visuals must not replace evidence or
 readability.
 
-Before `deck.js`, the bridge compiles and publishes one reusable visual plan,
-maps every slide to one of eleven editable layout families, normalizes
-`visual.details` into the component payload, and gates meaningful visual coverage,
-layout diversity, and excessive repetition. `pptx-visuals.js` implements those
-families with editable shapes, connectors, labels, contained images, accessible
-alt text, and projection-readable charts.
+`deck.js` is written as raw pptxgenjs following the official generation
+gotchas in `references/pptxgenjs-safety.md`. `pptx-helpers.js`/`pptx-visuals.js`
+are optional conveniences; `pptx-visuals.js` implements editable layout families
+(hero, process, timeline, comparison, chart, architecture, matrix, quote,
+summary, reference) with shapes, connectors, labels, contained images, accessible
+alt text, and projection-readable charts. A compiled visual plan may be published
+as an advisory reference but is not a production gate.
 
 ## Quality Gates
 
 PPTX delivery requires:
 
 - environment compatibility check;
-- Slide Spec validation and visual-plan compilation when supplied;
-- editable PPTX generation;
+- Slide Spec validation when supplied (visual-plan compilation is advisory);
+- editable PPTX generation (raw pptxgenjs following the official gotchas);
 - speaker notes;
 - text extraction sanity check;
 - LibreOffice rendering and Poppler page images;
 - one full visual inspection; repair and rerun only when the first candidate has a blocker;
-- a blocker-free static report and QA manifest that revalidates the source Slide Spec and matches its Slide Spec/visual-plan/PPTX/preview/static-report hashes,
+- a QA manifest that revalidates the source Slide Spec and matches its Slide Spec/PPTX/preview/package-report hashes,
   full slide coverage, and zero blockers;
 - a package report using the complete suite validation profile with successful Open XML schema validation;
 - requested quality/style reports bound to the source Slide Spec or current PPTX hash;
@@ -146,10 +149,10 @@ PPTX delivery requires:
 
 Results use `complete`, `incomplete`, or `blocked`. `complete` additionally
 requires `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest>
---package-report <package-report> --delivery-report <report>`. The PptxGenJS wrapper rejects
-overflow, out-of-bounds, and non-contained overlap risks before publishing a candidate.
-QA and delivery reuse its static and package reports instead of rescanning or
-revalidating an unchanged deck.
+--package-report <package-report> --delivery-report <report>`. The PptxGenJS wrapper
+normalizes the generated package and atomically publishes it; layout/overflow quality
+is caught by the QA visual inspection rather than a generation-time static gate.
+QA and delivery reuse the package report instead of revalidating an unchanged deck.
 Static XML findings alone are not proof of rendered clipping or readability.
 CI also creates and renders a temporary scenario matrix for coursework, English
 classroom, defense, competition, club showcase, research, software project,

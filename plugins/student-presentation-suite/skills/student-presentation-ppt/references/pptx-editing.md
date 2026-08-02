@@ -12,9 +12,8 @@
 6. `clean`；
 7. `pack --output <new.pptx>`；
 8. `validate <new.pptx> --original <source> --output <new-stem>-package-report.json --json`；
-9. 对最终新文件只运行一次 `static-check --output <new-stem>-static-report.json`；
-10. 验证 preserve contract，生成 change summary；
-11. 再进入共享 visual QA，并复用 static/package reports；未修改新文件时不重复运行。
+9. 验证 preserve contract，生成 change summary；
+10. 再进入共享 visual QA，并复用 package report；未修改新文件时不重复运行。
 
 ## Editing constraints
 

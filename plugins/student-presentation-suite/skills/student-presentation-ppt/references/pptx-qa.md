@@ -30,8 +30,8 @@ Open XML SDK markup/schema validation 加 suite-owned OPC 语义检查，不宣�
 
 ## 3. Render and visual inspection
 
-直接读取生成 wrapper 自动输出的 `<candidate-stem>-static-report.json`。确认其 PPTX
-hash 一致且 blocker 为零；未修改 PPTX 时不要再次运行 `static-check`。
+生成 wrapper 不输出 static report（静态门禁已剥离）。渲染后逐页检查文字溢出、重叠、
+边距、对比度等视觉质量；正确性以第 2 节 package validation 为准。
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" render <pptx> \
@@ -47,21 +47,19 @@ LibreOffice 或 Poppler 缺失时允许保留候选 PPTX，但状态只能为 `i
 
 ## 4. QA manifest
 
-完成逐页检查后调用 `pptx_tool.py qa-manifest`；默认自动发现同名的生成阶段报告，只有
-自定义报告路径时才传 `--static-report`。
-必须传入原始 `--slide-spec`、`validate_slide_spec.py --output` 产生的 Slide Spec
-report 和 bridge 已发布的 visual plan。manifest 会重新执行 schema/语义校验，并验证
-三者 SHA-256、PPTX 页数和 visual plan 页数后自行写入
+完成逐页检查后调用 `pptx_tool.py qa-manifest`。必须传入原始 `--slide-spec`、
+`validate_slide_spec.py --output` 产生的 Slide Spec report，以及可选的
+`--package-report <validate --output 产物>`。manifest 会重新执行 schema/语义校验，并
+验证 Slide Spec/Spec report 的 SHA-256、PPTX 页数后自行写入
 `scenario_contract_passed=true`；命令行不再允许自报该布尔值。
 preview 数必须等于 slide 数。首个 candidate 通过时使用 `repair_cycles=0` 并记录具体
 `no_repair_needed_reason`；只有实际修改过才增加 repair cycle。manifest 自动写入最终
-PPTX、static report 和每个 preview 的 SHA-256，不得手写或复制旧 hash。严格 delivery
-check 直接复用 manifest 绑定的 static report，仅在证据缺失或过期时回退扫描。
+PPTX、package report（若提供）和每个 preview 的 SHA-256，不得手写或复制旧 hash。
+strict delivery check 复用 manifest 绑定的 package report。
 
 ## 5. Suite checks
 
-先运行 `style_adherence_check.py --strict`，再运行
-`pptx_delivery_check.py --strict --json`。delivery command 显式传入 PPTX、notes、
+运行 `pptx_delivery_check.py --strict --json`。delivery command 显式传入 PPTX、notes、
 所有 preview、package report、已经存在的 QA manifest、style report、输出 report，
 以及已确认的 PDF/teleprompter/revision manifest。禁止在 QA manifest 尚未生成时运行
 strict delivery。package report 必须使用 `openxml-sdk-plus-suite-semantic-v4` profile，

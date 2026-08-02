@@ -268,7 +268,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="student-presentation-matrix-") as tmp:
         work = Path(tmp)
         for name, (scenario, language, roles) in MATRIX.items():
-            spec_path, spec_report, visual_plan = validate_scenario(
+            spec_path, spec_report, _visual_plan = validate_scenario(
                 work, name, scenario, language, roles
             )
             pptx = generate_deck(work, name, language, roles)
@@ -293,9 +293,8 @@ def main() -> None:
             pages = sorted(render_dir.glob(f"{name}-*.png"))
             if len(pages) != len(roles):
                 raise RuntimeError(f"{name}: rendered {len(pages)} pages for {len(roles)} slides")
-            static_report = work / f"{name}-presentation-static-report.json"
-            if not static_report.is_file():
-                raise RuntimeError(f"{name}: generation did not publish reusable static evidence")
+            if not package_report.is_file():
+                raise RuntimeError(f"{name}: package validation did not publish a report")
             manifest = work / f"{name}-qa-manifest.json"
             manifest_command = [
                 sys.executable,
@@ -311,8 +310,8 @@ def main() -> None:
                 str(spec_report),
                 "--slide-spec",
                 str(spec_path),
-                "--visual-plan",
-                str(visual_plan),
+                "--package-report",
+                str(package_report),
             ]
             for page in pages:
                 manifest_command.extend(["--preview", str(page)])
