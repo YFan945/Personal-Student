@@ -150,8 +150,8 @@ class QaManifest(TypedDict):
     slide_spec_sha256: NotRequired[str]
     slide_spec_report: NotRequired[str]
     slide_spec_report_sha256: NotRequired[str]
-    visual_plan: NotRequired[str]
-    visual_plan_sha256: NotRequired[str]
+    package_report: NotRequired[str]
+    package_report_sha256: NotRequired[str]
     preview_files: NotRequired[list[str]]
     preview_sha256: NotRequired[list[str]]
     visual_inspection: NotRequired[dict[str, Any]]
@@ -163,7 +163,7 @@ class DeliveryReport(TypedDict):
     ok: bool
     status: str
     slide_count: int | None
-    static_blockers: int | None
+    package_blockers: int | None
     render_blockers: int
     style_adherence_passed: bool | None
     preview_page_coverage: str

@@ -244,7 +244,7 @@ Depending on the request, `outputs/` may contain:
 <topic>-presentation.pptx
 <topic>-speaker-notes.md
 <topic>-preview.png
-<topic>-presentation-static-report.json
+<topic>-presentation-package-report.json
 <topic>-qa-manifest.json
 <topic>-style-adherence-report.json
 <topic>-delivery-report.json
@@ -259,19 +259,20 @@ Depending on the request, `outputs/` may contain:
 
 The final response reports each absolute file path, slide count, rendered QA
 result, and the status: `complete`, `incomplete`, or `blocked`. A `complete`
-delivery now requires a blocker-free static report, a validated visual plan,
-a QA manifest that revalidates and binds the source Slide Spec to the current
-PPTX and rendered previews, full Open XML schema evidence, and a passing strict
-delivery report. Requested quality and style reports are hash-bound to the
+delivery requires a package report using the full suite validation profile with
+successful Open XML schema evidence, a QA manifest that revalidates and binds
+the source Slide Spec to the current PPTX and rendered previews, and a passing
+strict delivery report. Requested quality and style reports are hash-bound to the
 source spec or current PPTX instead of being accepted by filename alone.
-The PptxGenJS wrapper rejects overflow, out-of-bounds, and non-contained overlap
-risks before publishing a candidate. QA and delivery reuse that generation-time
-static report instead of rescanning an unchanged deck.
-Before `deck.js` is written, the visual-plan compiler enforces meaningful visual
-coverage, layout-family diversity, and a two-slide repetition limit in strict
-quality modes. Eleven editable layout families provide process, timeline,
-comparison, dashboard, architecture, matrix, image-led, quote, and summary
-structures without post-generation patch loops.
+`deck.js` is written as raw pptxgenjs following the official generation gotchas
+in `pptxgenjs-safety.md`; the wrapper normalizes and atomically publishes the
+deck, and layout/overflow quality is caught by the QA visual inspection rather
+than a generation-time static gate. QA and delivery reuse the package report
+instead of revalidating an unchanged deck.
+A compiled visual plan may be published as an advisory reference; it is not a
+production gate. Eleven editable layout families (pptx-visuals.js, optional)
+provide process, timeline, comparison, dashboard, architecture, matrix,
+image-led, quote, and summary structures without post-generation patch loops.
 Standard visual styles also resolve to tokenized palette, spacing, typography,
 and line constraints, with a style-adherence report available for delivery QA.
 The release workflow also renders a temporary scenario matrix on Linux for

@@ -230,7 +230,7 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 <topic>-presentation.pptx
 <topic>-speaker-notes.md
 <topic>-preview.png
-<topic>-presentation-static-report.json
+<topic>-presentation-package-report.json
 <topic>-qa-manifest.json
 <topic>-style-adherence-report.json
 <topic>-delivery-report.json
@@ -244,15 +244,17 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 ```
 
 最终回复会说明文件绝对路径、页数、渲染检查结果，以及任务状态：
-`complete`、`incomplete` 或 `blocked`。进入 `complete` 必须提供零 blocker 的
-static report、通过的 visual plan、会重新验证原始 Slide Spec 并与当前 PPTX 和渲染预览
-hash 绑定的 QA manifest、完整 Open XML schema 证据，以及通过的严格 delivery report。
-按需生成的 quality/style report 也必须分别绑定原始 Spec 或当前 PPTX，不能只凭文件名通过。
-PptxGenJS wrapper 会在 candidate 落盘前阻断溢出、越界和非包含式重叠；
-QA 和 delivery 会复用生成阶段的 static report，不重复扫描未修改的 deck。
-写 `deck.js` 前，visual plan 编译器会在严格质量模式下检查有意义视觉覆盖率、布局族
-多样性和同布局最多连续两页。11 类可编辑布局组件直接提供流程、时间线、对比、指标、
-架构、矩阵、图像主导、引文和总结结构，避免生成后逐页修补。
+`complete`、`incomplete` 或 `blocked`。进入 `complete` 必须提供使用完整 suite
+validation profile 且 Open XML schema 校验通过的 package report、会重新验证原始
+Slide Spec 并与当前 PPTX 和渲染预览 hash 绑定的 QA manifest，以及通过的严格
+delivery report。按需生成的 quality/style report 也必须分别绑定原始 Spec 或当前
+PPTX，不能只凭文件名通过。
+`deck.js` 按 `pptxgenjs-safety.md` 中的官方 gotchas 写成裸 pptxgenjs；wrapper 只做
+normalize 后原子落盘，不做生成期静态门禁，布局/溢出问题由 QA 逐页视觉检查发现。
+QA 和 delivery 复用 package report，不重复校验未修改的 deck。
+visual plan 是建议性参考，不是门禁。11 类可编辑布局组件（`pptx-visuals.js`，可选）
+直接提供流程、时间线、对比、指标、架构、矩阵、图像主导、引文和总结结构，避免
+生成后逐页修补。
 标准视觉风格还会解析为 palette、间距、字体和线条 token，并可生成风格一致性报告。
 发布工作流还会在 Linux 上临时渲染课程汇报、英语课堂、答辩、竞赛、社团展示、研究展示、软件项目、数据调查和学校模板编辑场景矩阵。
 
