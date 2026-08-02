@@ -355,7 +355,7 @@ class StateTransitionTests(unittest.TestCase):
                         "package_report_sha256": hashlib.sha256(
                             package.read_bytes()
                         ).hexdigest(),
-                        "static_blockers": 0,
+                        "package_blockers": 0,
                         "package_validation_passed": True,
                         "preview_page_coverage": "1/1",
                     }

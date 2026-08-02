@@ -207,8 +207,10 @@ process.stdout.write(JSON.stringify(images[0]));
         image = json.loads(result.stdout)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("Wide evidence image", image["altText"])
-        self.assertAlmostEqual(6.4, image["w"], places=2)
-        self.assertAlmostEqual(3.2, image["h"], places=2)
+        # addAnnotatedVisual reserves 56% of the area for the image box; the
+        # 2:1 asset is contained within it.
+        self.assertAlmostEqual(5.6, image["w"], places=2)
+        self.assertAlmostEqual(2.8, image["h"], places=2)
 
 
 if __name__ == "__main__":

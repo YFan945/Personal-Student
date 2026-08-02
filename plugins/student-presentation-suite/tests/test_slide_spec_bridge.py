@@ -71,7 +71,7 @@ class SlideSpecBridgeTests(unittest.TestCase):
         self.assertIn("Student reflection", brief)
         self.assertIn("run `pptx_tool.py inspect --text-output` only for edits", brief)
         self.assertIn("pptx_tool.py\" validate", brief)
-        self.assertIn("do not rescan an unchanged PPTX", brief)
+        self.assertIn("Reuse the producing-stage package report when its PPTX hash still matches", brief)
 
     def test_builds_existing_deck_improvement_brief(self) -> None:
         bridge = load_bridge_module()
@@ -151,7 +151,7 @@ class SlideSpecBridgeTests(unittest.TestCase):
         }
         brief = bridge.build_brief(data, Path("input.yaml"))
         self.assertIn("Mode: `rebuild_from_source`", brief)
-        self.assertIn("run_with_pptxgenjs.js", brief)
+        self.assertIn("writes a raw pptxgenjs `deck.js`", brief)
         self.assertIn("Do not overwrite the source deck", brief)
 
     def test_long_text_warning_builds_without_key_error(self) -> None:

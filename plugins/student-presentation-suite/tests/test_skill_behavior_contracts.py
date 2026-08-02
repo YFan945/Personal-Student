@@ -96,20 +96,16 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("${CLAUDE_PLUGIN_ROOT}", review)
         self.assertIn("${CLAUDE_PROJECT_DIR}", review)
 
-    def test_create_flow_is_first_pass_and_reuses_static_evidence(self) -> None:
+    def test_create_flow_is_first_pass_and_reuses_package_evidence(self) -> None:
         production = self.read(
             "skills/student-presentation-ppt/references/pptx-production.md"
         )
         qa = self.read("skills/student-presentation-ppt/references/pptx-qa.md")
-        for helper in (
-            "H.gridLayout",
-            "H.addTitle",
-            "H.addTextBox",
-            "H.addFooter",
-        ):
-            self.assertIn(helper, production)
-        self.assertIn("禁止重复", production)
-        self.assertIn("未修改 PPTX 时不要再次运行 `static-check`", qa)
+        self.assertIn("pptxgenjs-safety.md", production)
+        self.assertIn("裸 pptxgenjs", production)
+        self.assertIn("H.safeArea", production)
+        self.assertIn("QA 和 delivery 绑定", production)
+        self.assertIn("package validation", qa)
         self.assertIn("首个 candidate 全部通过时结束视觉检查", qa)
 
     def test_cross_skill_handoff_is_deterministic(self) -> None:

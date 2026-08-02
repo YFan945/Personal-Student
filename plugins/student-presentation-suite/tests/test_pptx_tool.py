@@ -346,23 +346,22 @@ class PptxToolTests(unittest.TestCase):
             source = root / "deck.pptx"
             preview = root / "slide-1.png"
             output = root / "qa.json"
-            static_report = root / "deck-static-report.json"
+            package_report = root / "deck-package-report.json"
             write_minimal_package(source)
             preview.write_bytes(b"preview")
-            static_report.write_text(
+            package_report.write_text(
                 json.dumps(
                     {
                         "ok": True,
                         "pptx_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
-                        "blocker_like_count": 0,
+                        "validation_profile": "openxml-sdk-plus-suite-semantic-v4",
+                        "schema_validation": {"performed": True, "error_count": 0},
                     }
                 ),
                 encoding="utf-8",
             )
-            spec_hash = "a" * 64
             spec = root / "spec.json"
             spec_report = root / "spec-report.json"
-            visual_plan = root / "visual-plan.json"
             spec.write_text(
                 json.dumps(
                     {
@@ -385,16 +384,6 @@ class PptxToolTests(unittest.TestCase):
                 json.dumps({"valid": True, "slide_spec_sha256": spec_hash}),
                 encoding="utf-8",
             )
-            visual_plan.write_text(
-                json.dumps(
-                    {
-                        "ok": True,
-                        "slide_spec_sha256": spec_hash,
-                        "slides": [{"slide": 1}],
-                    }
-                ),
-                encoding="utf-8",
-            )
             result = self.run_tool(
                 "qa-manifest",
                 "--pptx",
@@ -409,8 +398,8 @@ class PptxToolTests(unittest.TestCase):
                 str(spec_report),
                 "--slide-spec",
                 str(spec),
-                "--visual-plan",
-                str(visual_plan),
+                "--package-report",
+                str(package_report),
             )
             self.assertEqual(0, result.returncode, result.stderr)
             payload = json.loads(output.read_text(encoding="utf-8"))
@@ -418,6 +407,7 @@ class PptxToolTests(unittest.TestCase):
         self.assertEqual([1], payload["visual_inspection"]["inspected_pages"])
         self.assertTrue(payload["scenario_contract_passed"])
         self.assertEqual(spec_hash, payload["slide_spec_sha256"])
+        self.assertEqual(str(package_report), payload["package_report"])
 
     def test_real_package_edit_preserves_source_and_validates_against_original(self) -> None:
         if not shutil.which("node"):
@@ -531,7 +521,9 @@ class PptxToolTests(unittest.TestCase):
         self.assertIn("Refusing to overwrite", result.stderr)
         self.assertEqual(b"preserve-me", preserved)
 
-    def test_wrapper_rejects_partial_overlap_before_publishing_output(self) -> None:
+    def test_wrapper_publishes_deck_without_static_gate(self) -> None:
+        """The wrapper no longer runs a generation-time static gate; it normalizes
+        and atomically publishes the deck, leaving overflow to QA visual checks."""
         if not shutil.which("node"):
             self.skipTest("node is unavailable")
         probe = subprocess.run(
@@ -563,9 +555,9 @@ class PptxToolTests(unittest.TestCase):
                 errors="replace",
             )
             published = output.exists()
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("static gate rejected", result.stderr)
-        self.assertFalse(published)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertTrue(published)
+        self.assertFalse((output.parent / "overlap-static-report.json").exists())
 
     def test_real_pptxgenjs_chart_passes_custom_chart_validation(self) -> None:
         if not shutil.which("node"):
@@ -600,11 +592,8 @@ class PptxToolTests(unittest.TestCase):
                 errors="replace",
             )
             self.assertEqual(0, generated.returncode, generated.stderr)
-            static_report = root / "chart-static-report.json"
-            self.assertTrue(static_report.is_file())
-            static_payload = json.loads(static_report.read_text(encoding="utf-8"))
-            self.assertTrue(static_payload["ok"])
-            self.assertEqual(str(output.resolve()), static_payload["pptx"])
+            # The wrapper no longer emits a static report; package validation is the gate.
+            self.assertFalse((root / "chart-static-report.json").exists())
             validated = self.run_tool("validate", str(output), "--json")
             payload = json.loads(validated.stdout)
         self.assertTrue(payload["ok"], payload["findings"])

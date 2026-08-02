@@ -59,13 +59,7 @@ const SAFE_TITLE_FONTS = [
   'Calibri',
   'Courier New',
 ];
-const SAFE_BODY_FONTS = [
-  'Calibri',
-  'Arial',
-  'Times New Roman',
-  'Cambria',
-  'Courier New',
-];
+const SAFE_BODY_FONTS = ['Calibri', 'Arial', 'Times New Roman', 'Cambria', 'Courier New'];
 
 /**
  * 选中风格的字体族，强制落到官方安全字体。

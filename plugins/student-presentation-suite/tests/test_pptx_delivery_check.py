@@ -27,13 +27,14 @@ class PptxDeliveryCheckTests(unittest.TestCase):
         image = Image.new("RGB", (640, 360), "white")
         image.paste("navy", (0, 0, 640, 80))
         image.save(preview)
-        static_report = manifest.with_name("static-report.json")
-        static_report.write_text(
+        package_report = manifest.with_name("package-report.json")
+        package_report.write_text(
             json.dumps(
                 {
                     "ok": True,
                     "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
-                    "blocker_like_count": 0,
+                    "validation_profile": "openxml-sdk-plus-suite-semantic-v4",
+                    "schema_validation": {"performed": True, "error_count": 0},
                 }
             ),
             encoding="utf-8",
@@ -58,19 +59,8 @@ class PptxDeliveryCheckTests(unittest.TestCase):
         )
         spec_hash = hashlib.sha256(spec.read_bytes()).hexdigest()
         spec_report = manifest.with_name("slide-spec-report.json")
-        visual_plan = manifest.with_name("visual-plan.json")
         spec_report.write_text(
             json.dumps({"valid": True, "slide_spec_sha256": spec_hash}),
-            encoding="utf-8",
-        )
-        visual_plan.write_text(
-            json.dumps(
-                {
-                    "ok": True,
-                    "slide_spec_sha256": spec_hash,
-                    "slides": [{"slide": 1}],
-                }
-            ),
             encoding="utf-8",
         )
         manifest.write_text(json.dumps({
@@ -82,13 +72,10 @@ class PptxDeliveryCheckTests(unittest.TestCase):
             "slide_spec_sha256": spec_hash,
             "slide_spec_report": spec_report.name,
             "slide_spec_report_sha256": hashlib.sha256(spec_report.read_bytes()).hexdigest(),
-            "visual_plan": visual_plan.name,
-            "visual_plan_sha256": hashlib.sha256(visual_plan.read_bytes()).hexdigest(),
             "preview_files": [preview.name],
             "preview_sha256": [hashlib.sha256(preview.read_bytes()).hexdigest()],
-            "static_report": static_report.name,
-            "static_report_sha256": hashlib.sha256(static_report.read_bytes()).hexdigest(),
-            "static_blockers": 0,
+            "package_report": package_report.name,
+            "package_report_sha256": hashlib.sha256(package_report.read_bytes()).hexdigest(),
             "visual_inspection": {
                 "completed": True, "inspected_pages": [1], "repair_cycles": 1,
                 "remaining_blockers": 0,
@@ -151,11 +138,15 @@ class PptxDeliveryCheckTests(unittest.TestCase):
             self.write_minimal_pptx(pptx)
             notes.write_text("notes", encoding="utf-8")
             self.write_valid_preview_and_manifest(pptx, preview, manifest)
-            result = module.inspect_delivery(pptx, notes, [preview], qa_manifest=manifest)
+            result = module.inspect_delivery(
+                pptx, notes, [preview], qa_manifest=manifest,
+                package_report=manifest.with_name("package-report.json"),
+            )
         self.assertTrue(result["ok"])
         self.assertTrue(result["qa_manifest"]["valid"])
         self.assertEqual("complete", result["delivery_report"]["status"])
         self.assertEqual("1/1", result["delivery_report"]["preview_page_coverage"])
+        self.assertEqual(0, result["delivery_report"]["package_blockers"])
 
     def test_corrupt_preview_fails_qa_manifest(self) -> None:
         module = load_module(SCRIPT)
@@ -171,7 +162,7 @@ class PptxDeliveryCheckTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertFalse(result["preview_validation"][0]["valid"])
 
-    def test_blocked_on_static_scan_error(self) -> None:
+    def test_blocked_on_missing_package_report_in_strict_mode(self) -> None:
         module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -179,33 +170,21 @@ class PptxDeliveryCheckTests(unittest.TestCase):
             self.write_minimal_pptx(pptx)
             notes.write_text("notes", encoding="utf-8")
             preview = root / "deck-preview.png"
-            self.write_valid_preview_and_manifest(pptx, preview, root / "qa-manifest.json")
-            (root / "static-report.json").unlink()
-            # 模拟静态扫描返回 error
-            with mock.patch.object(module, "summarize_static_risks", return_value={"blocker_like_count": 0}):
-                with mock.patch.object(
-                    module,
-                    "_load_inspect_pptx",
-                    return_value=lambda _path: {"error": "模拟错误", "findings": []},
-                ):
-                    result = module.inspect_delivery(pptx, notes, [preview], qa_manifest=root / "qa-manifest.json")
+            manifest = root / "qa-manifest.json"
+            self.write_valid_preview_and_manifest(pptx, preview, manifest)
+            result = module.inspect_delivery(
+                pptx,
+                notes,
+                [preview],
+                qa_manifest=manifest,
+                require_package_report=True,
+            )
         self.assertFalse(result["ok"])
+        self.assertFalse(result["package_validation"]["valid"])
 
-    def test_blocked_on_blocker_like_risk(self) -> None:
-        module = load_module(SCRIPT)
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pptx, notes = root / "deck.pptx", root / "deck-speaker-notes.md"
-            self.write_minimal_pptx(pptx)
-            notes.write_text("notes", encoding="utf-8")
-            preview = root / "deck-preview.png"
-            self.write_valid_preview_and_manifest(pptx, preview, root / "qa-manifest.json")
-            (root / "static-report.json").unlink()
-            with mock.patch.object(module, "summarize_static_risks", return_value={"blocker_like_count": 3}):
-                result = module.inspect_delivery(pptx, notes, [preview], qa_manifest=root / "qa-manifest.json")
-        self.assertFalse(result["ok"])
-
-    def test_reuses_bound_generation_static_report_without_rescanning(self) -> None:
+    def test_delivery_ok_without_static_gate_when_package_passes(self) -> None:
+        """Static XML scan is advisory after the gate-stripping refactor; a passing
+        package report alone lets strict delivery succeed."""
         module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -216,22 +195,16 @@ class PptxDeliveryCheckTests(unittest.TestCase):
             self.write_minimal_pptx(pptx)
             notes.write_text("notes", encoding="utf-8")
             self.write_valid_preview_and_manifest(pptx, preview, manifest)
-            with mock.patch.object(
-                module,
-                "_load_inspect_pptx",
-                side_effect=AssertionError("static scan must be reused"),
-            ):
-                result = module.inspect_delivery(
-                    pptx,
-                    notes,
-                    [preview],
-                    qa_manifest=manifest,
-                )
+            result = module.inspect_delivery(
+                pptx,
+                notes,
+                [preview],
+                qa_manifest=manifest,
+                package_report=manifest.with_name("package-report.json"),
+            )
         self.assertTrue(result["ok"])
-        self.assertEqual(
-            "reused-generation-static-report",
-            result["static_xml_risk_summary"]["evidence_source"],
-        )
+        self.assertTrue(result["package_validation"]["valid"])
+        self.assertEqual("delivery-fallback-scan", result["static_xml_risk_summary"]["evidence_source"])
 
     def test_blocked_on_missing_qa_manifest(self) -> None:
         module = load_module(SCRIPT)
