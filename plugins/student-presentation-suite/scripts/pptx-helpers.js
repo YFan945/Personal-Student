@@ -48,16 +48,37 @@ function fontSizeScale(tokens, lang) {
   };
 }
 
+// 官方 pptx skill 安全字体白名单：这些字体在 LibreOffice QA 与 Office 中
+// 宽度一致，可信任 text-fit 检查。绝不默认 Aptos。
+const SAFE_TITLE_FONTS = [
+  'Cambria',
+  'Bookman Old Style',
+  'Century Schoolbook',
+  'Times New Roman',
+  'Arial',
+  'Calibri',
+  'Courier New',
+];
+const SAFE_BODY_FONTS = [
+  'Calibri',
+  'Arial',
+  'Times New Roman',
+  'Cambria',
+  'Courier New',
+];
+
 /**
- * 选中风格的字体族（带通用 fallback）。
+ * 选中风格的字体族，强制落到官方安全字体。
  * @param {object} tokens
  * @returns {{ title: string, body: string }}
  */
 function fontFamily(tokens) {
   const t = tokens.typography || {};
+  const pick = (value, candidates, fallback) =>
+    candidates.includes(String(value || '')) ? String(value) : fallback;
   return {
-    title: t.title_font || 'Aptos Display',
-    body: t.body_font || 'Aptos',
+    title: pick(t.title_font, SAFE_TITLE_FONTS, 'Cambria'),
+    body: pick(t.body_font, SAFE_BODY_FONTS, 'Calibri'),
   };
 }
 

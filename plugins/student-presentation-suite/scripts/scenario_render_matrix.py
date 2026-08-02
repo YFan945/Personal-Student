@@ -158,7 +158,7 @@ const V = require('pptx-visuals');
 const TOKENS = {{
   palette: {{ canvas: 'F8FAFC', primary_text: '111827', secondary_text: '4B5563' }},
   typography: {{ title_min_pt: 24, body_cjk_min_pt: 22, body_latin_min_pt: 20,
-                 title_font: 'Aptos Display', body_font: 'Aptos' }},
+                 title_font: 'Cambria', body_font: 'Calibri' }},
   geometry: {{ safe_margin_pct: 6, title_zone_pct: 16, footer_zone_pct: 5,
                spacing_scale_pt: [6, 12, 18, 24, 36, 48], corner_radius_pt: 8 }}
 }};
