@@ -13,7 +13,7 @@ from defusedxml import ElementTree as ET
 from .charts import validate_charts
 from .findings import Finding
 from .openxml import OPENXML_SDK_VERSION, validate_openxml
-from .package import relationship_source, resolve_target, safe_extract_package
+from .package import pack_directory, relationship_source, resolve_target, safe_extract_package
 
 REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
@@ -340,9 +340,78 @@ def _validate_unpacked(root: Path) -> list[Finding]:
     return findings
 
 
+# Presentation child order: pptxgenjs writes <p:notesMasterIdLst> directly after
+# <p:sldIdLst>, and PowerPoint reads that order. The Open XML SDK schema expects
+# notesMasterIdLst *before* sldIdLst, so like the official pptx skill we reorder a
+# temporary copy for schema validation only and never rewrite the packed file.
+_PRESENTATION_ORDER = (
+    "sldMasterIdLst",
+    "notesMasterIdLst",
+    "handoutMasterIdLst",
+    "sldIdLst",
+    "sldSz",
+    "notesSz",
+    "smartTags",
+    "embeddedFontLst",
+    "custShowLst",
+    "photoAlbum",
+    "custDataLst",
+    "kinsoku",
+    "defaultTextStyle",
+    "modifyVerifier",
+    "extLst",
+)
+_PRESENTATION_ORDER_INDEX = {
+    name: index for index, name in enumerate(_PRESENTATION_ORDER)
+}
+
+
+def _reorder_presentation_for_schema(root: Path) -> None:
+    """Reorder ppt/presentation.xml children to the XSD order in place.
+
+    Operates on an unpacked copy used only for schema validation; the delivered
+    file is never touched.
+    """
+    presentation_path = root / "ppt" / "presentation.xml"
+    if not presentation_path.is_file():
+        return
+    try:
+        presentation = ET.parse(presentation_path).getroot()
+    except Exception:
+        return
+    children = list(presentation)
+    ordered = sorted(
+        enumerate(children),
+        key=lambda item: (
+            _PRESENTATION_ORDER_INDEX.get(_local(item[1].tag), len(_PRESENTATION_ORDER)),
+            item[0],
+        ),
+    )
+    reordered = [child for _, child in ordered]
+    if reordered != children:
+        presentation[:] = reordered
+        presentation_path.write_bytes(ET.tostring(presentation, encoding="utf-8"))
+
+
+def _schema_preprocessed_package(path: Path, work_root: Path) -> Path:
+    """Return a re-packed copy of ``path`` with presentation.xml in XSD order.
+
+    The original package is left untouched; the temporary copy is what the
+    Open XML SDK validates.
+    """
+    unpacked = work_root / "schema-unpacked"
+    safe_extract_package(path, unpacked)
+    _reorder_presentation_for_schema(unpacked)
+    preprocessed = work_root / "schema-preprocessed.pptx"
+    pack_directory(unpacked, preprocessed)
+    return preprocessed
+
+
 def _schema_findings(path: Path) -> tuple[list[Finding], dict]:
     try:
-        result = validate_openxml(path)
+        with tempfile.TemporaryDirectory(prefix="pptx-schema-") as tmp:
+            schema_path = _schema_preprocessed_package(path, Path(tmp))
+            result = validate_openxml(schema_path)
     except RuntimeError as exc:
         return (
             [Finding("schema-validator-unavailable", str(path), str(exc))],

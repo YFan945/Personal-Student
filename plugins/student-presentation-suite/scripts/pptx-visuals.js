@@ -86,17 +86,9 @@ function addNumberMarker(slide, _value, box, tokens) {
 
 function addSectionHero(slide, data, area, tokens, lang) {
   const p = palette(tokens);
-  const accentW = Math.min(0.18, area.w * 0.025);
-  slide.addShape(SHAPE.rect, {
-    x: area.x,
-    y: area.y,
-    w: accentW,
-    h: area.h,
-    fill: { color: p.accent },
-    line: { transparency: 100 },
-  });
+  // 官方规范：禁止装饰性竖向 accent 色条；标题从内容区左缘开始。
   const titleBox = {
-    x: area.x + accentW + H.spacing(tokens, 3),
+    x: area.x,
     y: area.y + area.h * 0.05,
     w: area.w * 0.72,
     h: area.h * 0.42,
@@ -308,18 +300,26 @@ function addChartWithTakeaway(slide, data, area, tokens, lang) {
     throw new RangeError('addChartWithTakeaway requires editable chart series.');
   }
   const chartBox = { x: area.x, y: area.y, w: area.w * 0.64, h: area.h };
+  // 官方规范：stacked 图数据标签只能用 ctr/inEnd/inBase，outEnd 会损坏文件；
+  // 非 stacked 用 outEnd 合法。
+  const stacked = data.stacked === true;
   slide.addChart(CHART.bar, series, {
     ...chartBox,
     showTitle: true,
     title: data.title || data.measure || 'Key result',
     titleFontFace: H.fontFamily(tokens).title,
     titleFontSize: Math.max(20, H.fontSizeScale(tokens, lang).body),
+    chartColors: colors,
     catAxisLabelFontFace: H.fontFamily(tokens).body,
     valAxisLabelFontFace: H.fontFamily(tokens).body,
     catAxisLabelFontSize: 18,
     valAxisLabelFontSize: 18,
+    catAxisLabelColor: p.muted,
+    valAxisLabelColor: p.muted,
+    catGridLine: { style: 'none' },
+    valGridLine: { color: p.muted, size: 1 },
     dataLabelColor: p.text,
-    dataLabelPosition: 'outEnd',
+    dataLabelPosition: stacked ? 'inEnd' : 'outEnd',
     dataLabelFormatCode: '#,##0.##',
     dataLabelFontFace: H.fontFamily(tokens).body,
     dataLabelFontSize: 18,
@@ -483,22 +483,15 @@ function addAnnotatedVisual(slide, data, area, tokens, lang) {
 
 function addQuotePanel(slide, data, area, tokens, lang) {
   const p = palette(tokens);
+  // 官方规范：禁止装饰性竖条；引文仅用底面色块 + 文本层级区分。
   addPanel(slide, area, tokens, { fill: p.surface, line: p.surface });
-  slide.addShape(SHAPE.rect, {
-    x: area.x + area.w * 0.07,
-    y: area.y + area.h * 0.14,
-    w: 0.12,
-    h: area.h * 0.48,
-    fill: { color: p.accent },
-    line: { transparency: 100 },
-  });
   addLabel(
     slide,
     data.quote || data.text,
     {
-      x: area.x + area.w * 0.16,
+      x: area.x + area.w * 0.08,
       y: area.y + area.h * 0.16,
-      w: area.w * 0.72,
+      w: area.w * 0.84,
       h: area.h * 0.38,
     },
     tokens,

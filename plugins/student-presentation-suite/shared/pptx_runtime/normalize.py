@@ -1,4 +1,11 @@
-"""Normalize generated PPTX structures before schema validation."""
+"""Normalize generated PPTX structures before schema validation.
+
+Only fixes structures that cannot pass validation without mutation. The
+<p:presentation> child order that pptxgenjs writes (notesMasterIdLst directly
+after sldIdLst) is left untouched on disk: PowerPoint reads that order, and the
+official pptx skill says never to reorder it. Schema validation reorders a
+temporary copy instead (see validate._schema_preprocessed_package).
+"""
 
 from __future__ import annotations
 
@@ -10,36 +17,8 @@ from defusedxml import ElementTree as ET
 
 from .package import pack_directory, safe_extract_package
 
-P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
-R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
-A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
-StdET.register_namespace("p", P_NS)
-StdET.register_namespace("r", R_NS)
 StdET.register_namespace("c", C_NS)
-StdET.register_namespace("a", A_NS)
-PRESENTATION_CHILD_ORDER = {
-    name: index
-    for index, name in enumerate(
-        (
-            "sldMasterIdLst",
-            "notesMasterIdLst",
-            "handoutMasterIdLst",
-            "sldIdLst",
-            "sldSz",
-            "notesSz",
-            "smartTags",
-            "embeddedFontLst",
-            "custShowLst",
-            "photoAlbum",
-            "custDataLst",
-            "kinsoku",
-            "defaultTextStyle",
-            "modifyVerifier",
-            "extLst",
-        )
-    )
-}
 
 
 def _local(tag: str) -> str:
@@ -48,23 +27,6 @@ def _local(tag: str) -> str:
 
 def normalize_unpacked(root: Path) -> list[str]:
     changed: list[str] = []
-    presentation_path = root / "ppt" / "presentation.xml"
-    if presentation_path.is_file():
-        presentation = ET.parse(presentation_path).getroot()
-        children = list(presentation)
-        ordered = sorted(
-            enumerate(children),
-            key=lambda item: (PRESENTATION_CHILD_ORDER.get(_local(item[1].tag), len(PRESENTATION_CHILD_ORDER)), item[0]),
-        )
-        reordered = [child for _, child in ordered]
-        if reordered != children:
-            presentation[:] = reordered
-            StdET.ElementTree(presentation).write(
-                presentation_path,
-                encoding="utf-8",
-                xml_declaration=True,
-            )
-            changed.append("ppt/presentation.xml")
     charts_root = root / "ppt" / "charts"
     for chart_path in sorted(charts_root.glob("chart*.xml")) if charts_root.is_dir() else []:
         chart = ET.parse(chart_path).getroot()

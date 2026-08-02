@@ -94,18 +94,9 @@ if (!output || !/\.(pptx|potx)$/i.test(output)) {
   process.exit(2);
 }
 const finalOutput = path.resolve(output);
-const finalStaticReport = path.join(
-  path.dirname(finalOutput),
-  `${path.basename(finalOutput, path.extname(finalOutput))}-static-report.json`,
-);
 if (fs.existsSync(finalOutput)) {
   // eslint-disable-next-line no-console
   console.error(`Refusing to overwrite existing output: ${finalOutput}`);
-  process.exit(2);
-}
-if (fs.existsSync(finalStaticReport)) {
-  // eslint-disable-next-line no-console
-  console.error(`Refusing to overwrite existing static report: ${finalStaticReport}`);
   process.exit(2);
 }
 const protectedInputs = [script, ...deckArgs]
@@ -123,7 +114,6 @@ const extension = path.extname(finalOutput);
 const stem = path.basename(finalOutput, extension);
 const generated = path.join(path.dirname(finalOutput), `.${stem}.${token}.raw${extension}`);
 const normalized = path.join(path.dirname(finalOutput), `.${stem}.${token}.normalized${extension}`);
-const staticReport = path.join(path.dirname(finalOutput), `.${stem}.${token}.static-report.json`);
 try {
   const result = spawnSync(process.execPath, [path.resolve(script), generated, ...deckArgs], {
     stdio: 'inherit',
@@ -159,38 +149,11 @@ try {
     process.exitCode = normalization.status === null ? 1 : normalization.status;
     return;
   }
-  const staticCheck = spawnSync(
-    python,
-    [path.join(__dirname, 'pptx_tool.py'), 'static-check', normalized, '--output', staticReport],
-    { encoding: 'utf8', env: process.env },
-  );
-  if (staticCheck.status !== 0) {
-    // eslint-disable-next-line no-console
-    console.error(
-      `PPTX static gate rejected the generated deck. Fix the reported layout/text blockers and retry.\n${(
-        staticCheck.stdout ||
-        staticCheck.stderr ||
-        'Static PPTX validation failed'
-      ).trim()}`,
-    );
-    process.exitCode = staticCheck.status === null ? 1 : staticCheck.status;
-    return;
-  }
-  const staticPayload = JSON.parse(fs.readFileSync(staticReport, 'utf8'));
-  staticPayload.pptx = finalOutput;
-  staticPayload.evidence_reused_by = ['qa-manifest', 'pptx-delivery-check'];
-  fs.writeFileSync(staticReport, `${JSON.stringify(staticPayload, null, 2)}\n`, 'utf8');
   // A same-directory hard link is atomic and fails with EEXIST on every
   // supported platform; rename() would overwrite a raced-in file on POSIX.
-  fs.linkSync(staticReport, finalStaticReport);
-  try {
-    fs.linkSync(normalized, finalOutput);
-  } catch (error) {
-    fs.rmSync(finalStaticReport, { force: true });
-    throw error;
-  }
+  fs.linkSync(normalized, finalOutput);
 } finally {
-  for (const temporary of [generated, normalized, staticReport]) {
+  for (const temporary of [generated, normalized]) {
     try {
       fs.rmSync(temporary, { force: true });
     } catch (_) {

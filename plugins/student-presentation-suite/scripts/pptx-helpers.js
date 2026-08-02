@@ -207,14 +207,16 @@ function estimateTextFit(text, boxW, boxH, fontSize, isCJK) {
 }
 
 /**
- * 在写入文本框前执行硬性适配检查。溢出时拒绝生成，要求拆页或扩大文本框。
+ * 在写入文本框前估算适配情况。溢出时仅警告并返回 fit（含 overflow），
+ * 不再阻断生成——对齐官方方式：溢出靠 QA 阶段逐页视觉检查兜底。
  */
 function assertTextFits(text, boxW, boxH, fontSize, isCJK, label) {
   const fit = estimateTextFit(String(text || ''), boxW, boxH, fontSize, isCJK);
   if (fit.overflow) {
-    throw new RangeError(
+    // eslint-disable-next-line no-console
+    console.warn(
       `${label || '文本框'}存在溢出风险：${fit.lines} 行，填充率 ${fit.fillRatio}。` +
-        '请拆分幻灯片、精简内容或扩大文本框。',
+        '请在 QA 逐页检查中确认，必要时拆分幻灯片、精简内容或扩大文本框。',
     );
   }
   return fit;
@@ -459,10 +461,32 @@ function addDivider(slide, x, y, w, tokens, weight) {
   });
 }
 
+/**
+ * 给 slide 设置背景色（canvas 角色落到背景）。
+ * 官方设计规范：深色封面/总结页用 dark_palette.canvas，浅色内容页用 canvas，
+ * 形成深/浅对比；生成脚本必须逐页调用。
+ * @param {object} slide - pptxgen slide 对象
+ * @param {object} tokens
+ * @param {boolean} [dark] - true 用 dark_palette.canvas，false/缺省用 canvas
+ * @returns {object} slide
+ */
+function addBackground(slide, tokens, dark) {
+  if (dark && tokens.dark_palette && tokens.dark_palette.canvas) {
+    slide.background = {
+      color: String(tokens.dark_palette.canvas).replace(/^#/, '').slice(0, 6).toUpperCase(),
+    };
+  } else {
+    slide.background = { color: color(tokens, 'canvas') };
+  }
+  return slide;
+}
+
 // ── 全局主题 ──────────────────────────────────────────────
 
 /**
  * 将 design tokens 应用到 pptxgen 实例的全局默认值。
+ * 背景不是全局属性：每页必须用 addBackground()（或 slide.background）显式设置，
+ * 深色封面/浅色内容对比由调用处决定。
  * @param {object} pptx - new pptxgen() 实例
  * @param {object} tokens
  * @param {string} lang
@@ -518,6 +542,9 @@ module.exports = {
   addFooter,
   addAccentCard,
   addDivider,
+
+  // 背景
+  addBackground,
 
   // 全局
   applyTokens,
