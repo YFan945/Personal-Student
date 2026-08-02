@@ -179,7 +179,6 @@ def validate_qa_manifest(
             result["errors"].append("slide_spec_sha256 does not match the source Slide Spec.")
     for field, hash_field, ok_field in (
         ("slide_spec_report", "slide_spec_report_sha256", "valid"),
-        ("visual_plan", "visual_plan_sha256", "ok"),
     ):
         value = data.get(field)
         if not isinstance(value, str) or not value:
@@ -199,38 +198,39 @@ def validate_qa_manifest(
             result["errors"].append(f"{field} did not pass.")
         if evidence.get("slide_spec_sha256") != bound_spec_hash:
             result["errors"].append(f"{field} does not match slide_spec_sha256.")
-        if field == "visual_plan" and slide_count is not None:
-            if len(evidence.get("slides") or []) != slide_count:
-                result["errors"].append("visual_plan slide count does not match the PPTX.")
-    static_report_value = data.get("static_report")
-    static_report_hash = data.get("static_report_sha256")
-    if not isinstance(static_report_value, str) or not static_report_value:
-        result["errors"].append("static_report must identify the blocker-free static evidence.")
+    package_report_value = data.get("package_report")
+    package_report_hash = data.get("package_report_sha256")
+    if not isinstance(package_report_value, str) or not package_report_value:
+        result["errors"].append("package_report must identify the package validation evidence.")
     else:
-        static_path = Path(static_report_value)
-        if not static_path.is_absolute():
-            static_path = manifest_path.parent / static_path
+        package_path = Path(package_report_value)
+        if not package_path.is_absolute():
+            package_path = manifest_path.parent / package_path
         try:
-            static_data = json.loads(static_path.read_text(encoding="utf-8"))
+            package_data = json.loads(package_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            result["errors"].append(f"Cannot read static report: {exc}")
+            result["errors"].append(f"Cannot read package report: {exc}")
         else:
-            actual_static_hash = sha256_file(static_path)
-            static_valid = True
-            if static_report_hash != actual_static_hash:
-                result["errors"].append("static_report_sha256 does not match the static report.")
-                static_valid = False
-            if static_data.get("pptx_sha256") != sha256_file(pptx):
-                result["errors"].append("Static report does not match the current PPTX.")
-                static_valid = False
-            if static_data.get("ok") is not True or static_data.get("blocker_like_count") != 0:
-                result["errors"].append("Static report contains unresolved blocker-like findings.")
-                static_valid = False
-            result["static_report"] = {
-                "path": str(static_path.resolve()),
-                "sha256": actual_static_hash,
-                "valid": static_valid,
-                "report": static_data,
+            actual_package_hash = sha256_file(package_path)
+            package_valid = True
+            if package_report_hash != actual_package_hash:
+                result["errors"].append("package_report_sha256 does not match the package report.")
+                package_valid = False
+            if package_data.get("pptx_sha256") != sha256_file(pptx):
+                result["errors"].append("Package report does not match the current PPTX.")
+                package_valid = False
+            if package_data.get("ok") is not True:
+                result["errors"].append("Package report did not pass validation.")
+                package_valid = False
+            schema = package_data.get("schema_validation") or {}
+            if schema.get("performed") is not True or (schema.get("error_count") or 0) != 0:
+                result["errors"].append("Package report schema validation was not complete.")
+                package_valid = False
+            result["package_report"] = {
+                "path": str(package_path.resolve()),
+                "sha256": actual_package_hash,
+                "valid": package_valid,
+                "report": package_data,
             }
     inspection = data.get("visual_inspection")
     if not isinstance(inspection, dict) or inspection.get("completed") is not True:
@@ -355,27 +355,16 @@ def inspect_delivery(
             missing.append(name)
 
     qa_summary = validate_qa_manifest(qa_manifest, pptx, slide_count, preview_checks)
+    # Static XML risk summary is advisory after the gate-stripping refactor: the
+    # authoritative package evidence is the package report, and the wrapper no
+    # longer emits a static report. An optional on-demand scan remains available
+    # for review scenarios.
     static_summary: dict[str, Any] = {
         "available": False,
         "finding_count": None,
         "error": None,
     }
-    bound_static = qa_summary.get("static_report")
-    if isinstance(bound_static, dict) and bound_static.get("valid") is True:
-        report = bound_static["report"]
-        static_summary = {
-            "available": True,
-            "evidence_source": "reused-generation-static-report",
-            "finding_count": report.get("finding_count"),
-            "error": report.get("error"),
-            "risk_breakdown": report.get("risk_breakdown", {}),
-            "acceptable_minor_risk_breakdown": report.get(
-                "acceptable_minor_risk_breakdown", {}
-            ),
-            "blocker_like_count": report.get("blocker_like_count"),
-            "blocker_like_examples": report.get("blocker_like_examples", []),
-        }
-    elif pptx_info and pptx_info["exists"]:
+    if pptx_info and pptx_info["exists"] and static_summary.get("error") is None:
         static_result = _load_inspect_pptx()(pptx)
         static_summary = {
             "available": True,
@@ -432,8 +421,6 @@ def inspect_delivery(
         required_files_valid
         and pptx_readable
         and slide_count and slide_count > 0
-        and static_summary.get("error") is None
-        and static_summary.get("blocker_like_count", 0) == 0
         and render_qa_valid
         and qa_summary["valid"]
         and quality_summary["valid"] is not False
@@ -455,7 +442,9 @@ def inspect_delivery(
             else None
         ),
         "slide_count": slide_count,
-        "static_blockers": static_summary.get("blocker_like_count"),
+        "package_blockers": (
+            len(package_summary.get("errors", [])) if package_summary.get("valid") is False else 0
+        ),
         "render_blockers": len(qa_summary.get("errors", [])),
         "scenario_contract_passed": qa_summary.get("manifest", {}).get("scenario_contract_passed") if qa_summary.get("valid") else False,
         "style_adherence_passed": style_summary.get("valid"),

@@ -221,10 +221,10 @@ def build_brief(
         "",
         "## Runtime Contract",
         "",
-        "Create/rebuild mode uses `run_with_pptxgenjs.js` with `pptx-helpers.js`; follow",
-        "`pptxgenjs-safety.md` for the helper API and code rules. Edit mode uses only",
-        "`pptx_tool.py` and must preserve the source package. Do not duplicate runtime",
-        "implementation or helper documentation inside this data brief.",
+        "Create/rebuild mode writes a raw pptxgenjs `deck.js` following `pptxgenjs-safety.md`;",
+        "`pptx-helpers.js`/`pptx-visuals.js` are optional conveniences, not required. Edit",
+        "mode uses only `pptx_tool.py` and must preserve the source package. Do not duplicate",
+        "runtime implementation or helper documentation inside this data brief.",
         "",
         "## Output Contract",
         f"- Project output directory: `{resolved_output_dir}`",
@@ -298,8 +298,10 @@ def build_brief(
         [
             "",
             "## Compiled Visual Plan",
-            "This plan is a production gate, not a suggestion. Use `pptx-visuals.js` and the named",
-            "editable component for each slide. Do not replace it with a generic title-and-bullets page.",
+            "This plan is advisory, not a gate: it suggests a layout family and editable component",
+            "per slide, but the deck must be written as raw pptxgenjs following `pptxgenjs-safety.md`.",
+            "`pptx-visuals.js` components are optional. Do not replace every slide with a generic",
+            "title-and-bullets page.",
             f"- Artifact: `{visual_plan_path}`",
             f"- Meaningful visual coverage: {visual_plan['metrics']['meaningful_visual_coverage']:.0%}",
             f"- Layout family count: {visual_plan['metrics']['layout_family_count']}",
@@ -458,19 +460,18 @@ def build_brief(
         [
             "",
             "## Required QA",
-            f"- Reuse the validated visual plan already published at `{visual_plan_path}`; do not compile it again unless the Slide Spec changes.",
+            f"- The published visual plan at `{visual_plan_path}` is advisory, not a gate.",
             f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/scripts/analyze_presentation_spec.py\" <spec> --output \"{quality_report_path}\" --strict --json` before final production.",
             "- Reuse the validated Slide Spec/deck.js as content evidence for create mode; run `pptx_tool.py inspect --text-output` only for edits, template-derived decks, or suspicious content.",
             "- Reuse the producing-stage package report when its PPTX hash still matches; otherwise run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" validate <pptx> --output <package-report.json> --json`. Source-derived decks add `--original <source>`.",
-            "- Reuse the generation wrapper's `<candidate-stem>-static-report.json`; do not rescan an unchanged PPTX.",
             "- Run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" render <pptx> --output-dir <render-dir> --prefix <topic>`.",
             "- Inspect every rendered page once. Repair and rerun only when the first candidate has a blocker.",
-            f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/scripts/pptx_tool.py\" qa-manifest --pptx <pptx> --preview <page.png> --slide-spec <spec> --slide-spec-report <slide-spec-report.json> --visual-plan \"{visual_plan_path}\" --output <manifest> ...`; it revalidates the source spec, derives the scenario contract result, and auto-discovers the generation static report.",
+            f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/scripts/pptx_tool.py\" qa-manifest --pptx <pptx> --preview <page.png> --slide-spec <spec> --slide-spec-report <slide-spec-report.json> --package-report <package-report.json> --output <manifest> ...`; it revalidates the source spec, derives the scenario contract result, and binds the package report.",
             f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/skills/student-presentation-ppt/scripts/pptx_delivery_check.py\" --pptx <pptx> --notes <notes> --preview <preview> --package-report <package-report.json> --qa-manifest <manifest> --output \"{delivery_report_path}\" --strict --json`.",
             f"- Transition to complete only with `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --package-report <package-report.json> --delivery-report \"{delivery_report_path}\"`.",
             f"- For existing deck improvements, verify `{change_summary_path}` lists kept content, changed slides, unresolved risks, and QA results.",
             f"- When versioning is enabled, store the versioned package under `{resolved_output_dir / 'versions'}` and write `{revision_manifest_path}`.",
-            "- Final response must report file existence, slide count, static XML risks, visual QA status, and limitations.",
+            "- Final response must report file existence, slide count, package validation, visual QA status, and limitations.",
             "",
         ]
     )
@@ -504,18 +505,25 @@ def main() -> None:
     deliverable_dir = output_root(args.output_dir)
     visual_plan = compile_visual_plan(data)
     if not visual_plan["ok"]:
-        result = {
-            "valid": False,
-            "error_count": len(visual_plan["errors"]),
-            "errors": visual_plan["errors"],
-        }
+        # Visual plan is advisory after the gate-stripping refactor: it still gets
+        # published for reference, but its warnings no longer block production.
         if args.json:
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    {
+                        "visual_plan_advisory": True,
+                        "error_count": len(visual_plan["errors"]),
+                        "errors": visual_plan["errors"],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                file=sys.stderr,
+            )
         else:
-            print("Visual plan is invalid:", file=sys.stderr)
+            print("Visual plan advisory warnings (not a gate):", file=sys.stderr)
             for error in visual_plan["errors"]:
                 print(f"- {error['path']}: {error['message']}", file=sys.stderr)
-        raise SystemExit(1)
     output_prefix = (data.get("meta") or {}).get("output_prefix") or args.spec.stem
     visual_plan_path = deliverable_dir / f"{output_prefix}-visual-plan.json"
     visual_plan["slide_spec"] = str(args.spec.resolve())

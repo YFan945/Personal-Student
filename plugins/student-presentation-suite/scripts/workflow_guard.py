@@ -35,7 +35,6 @@ _PRODUCTION_PATTERNS = (
         r"|run_with_pptxgenjs\.js"
         r"|pptx_tool\.py\s+(?!inspect\b)[a-z-]+"
         r"|build_support_outputs\.py"
-        r"|style_adherence_check\.py"
         r"|pptx_delivery_check\.py"
         r"|create_revision_manifest\.py"
         r")",
@@ -49,7 +48,6 @@ _FAST_MARKERS = (
     "run_with_pptxgenjs.js",
     "pptx_tool.py",
     "build_support_outputs.py",
-    "style_adherence_check.py",
     "pptx_delivery_check.py",
     "create_revision_manifest.py",
 )
@@ -184,8 +182,8 @@ def validate_completion_manifest(
         errors.append("严格交付报告与当前 PPTX 不一致。")
     if delivery.get("qa_manifest_sha256") != sha256_file(manifest_path):
         errors.append("严格交付报告与当前 QA manifest 不一致。")
-    if delivery.get("static_blockers") != 0:
-        errors.append("严格交付报告仍包含静态 blocker。")
+    if delivery.get("package_blockers") != 0:
+        errors.append("严格交付报告仍包含 package validation blocker。")
     if delivery.get("package_validation_passed") is not True:
         errors.append("严格交付报告未通过 PPTX package validation。")
     if delivery.get("preview_page_coverage") != f"{slide_count}/{slide_count}":
@@ -216,17 +214,15 @@ def _required_states(command: str) -> set[str]:
     if "pptx_tool.py" in lowered:
         if re.search(r"pptx_tool\.py(?:['\"])?\s+(?:render|qa-manifest)\b", lowered):
             return {"qa"}
-        if re.search(r"pptx_tool\.py(?:['\"])?\s+static-check\b", lowered):
-            return {"producing", "qa"}
         if re.search(r"pptx_tool\.py(?:['\"])?\s+thumbnail\b", lowered):
             return {"intake_confirmed", "planned", "producing", "qa"}
         if re.search(
             r"pptx_tool\.py(?:['\"])?\s+"
-            r"(?:unpack|pack|add-slide|delete-slide|reorder-slides|clean|validate|normalize-generated)\b",
+            r"(?:unpack|pack|add-slide|delete-slide|reorder-slides|clean|validate|normalize-generated|static-check)\b",
             lowered,
         ):
             return {"producing", "qa"}
-    if any(name in lowered for name in ("pptx_delivery_check.py", "style_adherence_check.py")):
+    if "pptx_delivery_check.py" in lowered:
         return {"qa"}
     if "run_with_pptxgenjs.js" in lowered:
         return {"producing"}

@@ -395,15 +395,29 @@ def command_static_check(args: argparse.Namespace) -> int:
     return 0 if payload["ok"] else 1
 
 
+def _validate_package_report(report: Path, pptx: Path) -> dict:
+    try:
+        data = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"cannot read package report: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit("package report root must be an object")
+    if data.get("pptx_sha256") != _sha256(pptx):
+        raise SystemExit("package report does not match the current PPTX")
+    if data.get("ok") is not True:
+        raise SystemExit("package report did not pass validation")
+    if data.get("validation_profile") != "openxml-sdk-plus-suite-semantic-v4":
+        raise SystemExit("package report must use the complete suite validation profile")
+    schema = data.get("schema_validation") or {}
+    if schema.get("performed") is not True:
+        raise SystemExit("package report schema validation was not performed")
+    if (schema.get("error_count") or 0) != 0:
+        raise SystemExit("package report contains Open XML schema errors")
+    return data
+
+
 def command_qa_manifest(args: argparse.Namespace) -> int:
     pptx: Path = args.pptx
-    static_report: Path = args.static_report or pptx.with_name(
-        f"{pptx.stem}-static-report.json"
-    )
-    if not static_report.is_file():
-        raise SystemExit(
-            f"static report not found: {static_report}; generation must publish it once"
-        )
     previews: list[Path] = args.preview
     slide_count = _slide_count(pptx)
     if len(previews) != slide_count:
@@ -412,28 +426,15 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
         )
     if args.repair_cycles < 1 and not args.no_repair_needed_reason:
         raise SystemExit("provide --repair-cycles >= 1 or --no-repair-needed-reason")
-    try:
-        static_report_data = json.loads(static_report.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"cannot read static report: {exc}") from exc
-    if not isinstance(static_report_data, dict):
-        raise SystemExit("static report root must be an object")
-    if static_report_data.get("pptx_sha256") != _sha256(pptx):
-        raise SystemExit("static report does not match the current PPTX")
-    if (
-        static_report_data.get("ok") is not True
-        or static_report_data.get("blocker_like_count") != 0
-    ):
-        raise SystemExit("static report contains unresolved blocker-like findings")
+    package_report_data = None
+    if args.package_report:
+        package_report_data = _validate_package_report(args.package_report, pptx)
     try:
         spec_report_data = json.loads(args.slide_spec_report.read_text(encoding="utf-8"))
-        visual_plan_data = json.loads(args.visual_plan.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"cannot read generation contract evidence: {exc}") from exc
+        raise SystemExit(f"cannot read Slide Spec report: {exc}") from exc
     if not isinstance(spec_report_data, dict) or spec_report_data.get("valid") is not True:
         raise SystemExit("Slide Spec validation report did not pass")
-    if not isinstance(visual_plan_data, dict) or visual_plan_data.get("ok") is not True:
-        raise SystemExit("visual plan did not pass")
     try:
         spec_data, spec_errors, actual_spec_hash = validate_slide_spec(args.slide_spec)
     except (OSError, ValueError) as exc:
@@ -446,14 +447,8 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
     if len((spec_data or {}).get("slides") or []) != slide_count:
         raise SystemExit("Slide Spec slide count does not match the current PPTX")
     spec_hash = spec_report_data.get("slide_spec_sha256")
-    if (
-        not spec_hash
-        or actual_spec_hash != spec_hash
-        or visual_plan_data.get("slide_spec_sha256") != spec_hash
-    ):
-        raise SystemExit("Slide Spec report and visual plan do not bind the same spec")
-    if len(visual_plan_data.get("slides") or []) != slide_count:
-        raise SystemExit("visual plan slide count does not match the current PPTX")
+    if not spec_hash or actual_spec_hash != spec_hash:
+        raise SystemExit("Slide Spec report does not bind the current spec")
     output: Path = args.output
     output.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -465,13 +460,8 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
         "slide_spec_report": str(args.slide_spec_report),
         "slide_spec_report_sha256": _sha256(args.slide_spec_report),
         "slide_spec_sha256": spec_hash,
-        "visual_plan": str(args.visual_plan),
-        "visual_plan_sha256": _sha256(args.visual_plan),
         "preview_files": [str(path) for path in previews],
         "preview_sha256": [_sha256(path) for path in previews],
-        "static_report": str(static_report),
-        "static_report_sha256": _sha256(static_report),
-        "static_blockers": 0,
         "visual_inspection": {
             "completed": True,
             "inspected_pages": list(range(1, slide_count + 1)),
@@ -480,6 +470,12 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
             "remaining_blockers": args.remaining_blockers,
         },
     }
+    if package_report_data is not None:
+        payload["package_report"] = str(args.package_report)
+        payload["package_report_sha256"] = _sha256(args.package_report)
+        payload["package_validation_profile"] = package_report_data.get(
+            "validation_profile"
+        )
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"ok": True, "output": str(output)}, ensure_ascii=False))
     return 0
@@ -574,16 +570,15 @@ def build_parser() -> argparse.ArgumentParser:
     manifest.add_argument("--preview", required=True, action="append", type=_existing_file)
     manifest.add_argument("--output", required=True, type=_path)
     manifest.add_argument(
-        "--static-report",
+        "--package-report",
         type=_existing_file,
-        help="generation static report; defaults to <pptx-stem>-static-report.json",
+        help="validate-produced package report to bind to the PPTX (optional)",
     )
     manifest.add_argument("--repair-cycles", type=int, default=0)
     manifest.add_argument("--no-repair-needed-reason")
     manifest.add_argument("--remaining-blockers", type=int, default=0)
     manifest.add_argument("--slide-spec-report", required=True, type=_existing_file)
     manifest.add_argument("--slide-spec", required=True, type=_existing_file)
-    manifest.add_argument("--visual-plan", required=True, type=_existing_file)
     manifest.set_defaults(handler=command_qa_manifest)
     return parser
 
