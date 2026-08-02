@@ -296,6 +296,11 @@ def _validate_master_themes(root: Path, files: set[str], findings: list[Finding]
             if kind == THEME_REL and target in files:
                 owners[target].append(master)
 
+    # PowerPoint tolerates masters sharing one theme only while presentation.xml
+    # keeps <p:notesMasterIdLst> directly after <p:sldIdLst> (pptxgenjs order).
+    # Under the XSD order the shared theme becomes a real blocker, so escalate it.
+    official_order = _presentation_has_official_notes_order(root)
+    shared_severity = "info" if official_order else "error"
     for theme, theme_masters in sorted(owners.items()):
         if len(theme_masters) < 2:
             continue
@@ -304,7 +309,7 @@ def _validate_master_themes(root: Path, files: set[str], findings: list[Finding]
                 "shared-master-theme",
                 theme,
                 f"shared by {len(theme_masters)} masters: {', '.join(theme_masters)}",
-                "info",
+                shared_severity,
             )
         )
     for master, slides in sorted(master_slides.items()):
@@ -317,6 +322,272 @@ def _validate_master_themes(root: Path, files: set[str], findings: list[Finding]
                     "info",
                 )
             )
+
+
+def _presentation_children_order(root: Path) -> list[str] | None:
+    """Return local child element names of ppt/presentation.xml, or None if absent."""
+    presentation_path = root / "ppt" / "presentation.xml"
+    if not presentation_path.is_file():
+        return None
+    try:
+        presentation = ET.parse(presentation_path).getroot()
+    except Exception:
+        return None
+    return [_local(child.tag) for child in presentation]
+
+
+def _presentation_has_official_notes_order(root: Path) -> bool:
+    """True when notesMasterIdLst directly follows sldIdLst (official pptxgenjs order).
+
+    False when the file uses the XSD order (notesMasterIdLst before sldIdLst) or
+    has no notesMasterIdLst at all.
+    """
+    order = _presentation_children_order(root)
+    if order is None or "notesMasterIdLst" not in order or "sldIdLst" not in order:
+        return True
+    return order.index("notesMasterIdLst") == order.index("sldIdLst") + 1
+
+
+def _validate_namespaces(root: Path, files: set[str], findings: list[Finding]) -> None:
+    """Check mc:Ignorable prefixes are declared on the same element."""
+    MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+    for part in sorted(name for name in files if name.endswith(".xml")):
+        xml_root = _parse(root / Path(part), part, findings)
+        if xml_root is None:
+            continue
+        for node in xml_root.iter():
+            ignorable = node.attrib.get(f"{{{MC_NS}}}Ignorable", "")
+            if not ignorable:
+                continue
+            declared = {prefix for prefix, _ in (node.nsmap or {}).items()} | {
+                prefix.split("}")[-1]
+                for prefix in node.attrib
+                if prefix.startswith("xmlns:")
+            }
+            for token in ignorable.split():
+                if token not in declared:
+                    findings.append(
+                        Finding(
+                            "namespace-ignorable-undeclared",
+                            part,
+                            f"mc:Ignorable prefix '{token}' is not declared",
+                        )
+                    )
+
+
+def _validate_uuid_ids(root: Path, files: set[str], findings: list[Finding]) -> None:
+    """Check UUID-shaped *id attributes contain only hex characters."""
+    import re as _re
+
+    uuid_pattern = _re.compile(
+        r"^[\{\(]?[0-9A-Fa-f]{8}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{12}[\}\)]?$"
+    )
+    for part in sorted(name for name in files if name.endswith(".xml")):
+        xml_root = _parse(root / Path(part), part, findings)
+        if xml_root is None:
+            continue
+        for node in xml_root.iter():
+            for attribute, value in node.attrib.items():
+                attribute_name = _local(attribute).casefold()
+                if attribute_name != "id" and not attribute_name.endswith("id"):
+                    continue
+                clean = value.strip("{}()").replace("-", "")
+                if len(clean) != 32 or not clean.isalnum():
+                    continue
+                if not uuid_pattern.match(value):
+                    findings.append(
+                        Finding(
+                            "uuid-id-invalid",
+                            part,
+                            f"UUID-shaped id '{value}' contains non-hex characters",
+                        )
+                    )
+
+
+def _validate_unique_ids(root: Path, files: set[str], findings: list[Finding]) -> None:
+    """Check drawing element ids are unique within their file and master ids globally."""
+    master_files = {
+        name for name in files if name.startswith("ppt/slideMasters/") and name.endswith(".xml")
+    }
+    global_ids: dict[str, list[str]] = {}
+    for part in sorted(name for name in files if name.endswith(".xml")):
+        xml_root = _parse(root / Path(part), part, findings)
+        if xml_root is None:
+            continue
+        local_seen: set[str] = set()
+        for node in xml_root.iter():
+            tag = _local(node.tag)
+            if tag not in {"sp", "pic", "cxnSp", "grpSp"}:
+                continue
+            node_id = node.attrib.get("id", "")
+            if not node_id:
+                continue
+            if node_id in local_seen:
+                findings.append(
+                    Finding(
+                        "drawing-id-duplicate",
+                        part,
+                        f"duplicate <{tag} id=\"{node_id}\"> within the same part",
+                    )
+                )
+            local_seen.add(node_id)
+        if part in master_files:
+            for node in xml_root.iter():
+                if _local(node.tag) != "sldLayoutId":
+                    continue
+                layout_id = node.attrib.get("id", "")
+                if layout_id:
+                    global_ids.setdefault(layout_id, []).append(part)
+    for layout_id, owners in sorted(global_ids.items()):
+        if len(owners) > 1:
+            findings.append(
+                Finding(
+                    "slide-layout-id-global-duplicate",
+                    "ppt/slideMasters/",
+                    f"slide layout id {layout_id} reused across {len(owners)} masters",
+                )
+            )
+
+
+def _relationship_rid_map(root: Path, source: str) -> dict[str, str]:
+    """Return {rId: resolved target} for a part's .rels file."""
+    rels = root / Path(source).parent / "_rels" / f"{Path(source).name}.rels"
+    if not rels.is_file():
+        return {}
+    mapping: dict[str, str] = {}
+    try:
+        rels_root = ET.parse(rels).getroot()
+    except Exception:
+        return mapping
+    for relation in rels_root:
+        if relation.attrib.get("TargetMode") == "External":
+            continue
+        rid = relation.attrib.get("Id", "")
+        target = relation.attrib.get("Target")
+        if rid and target:
+            try:
+                mapping[rid] = resolve_target(source, target)
+            except ValueError:
+                continue
+    return mapping
+
+
+def _validate_slide_layout_ids(root: Path, files: set[str], findings: list[Finding]) -> None:
+    """Check each master's sldLayoutId r:id resolves in its .rels to a slideLayout."""
+    for master in sorted(
+        name for name in files if name.startswith("ppt/slideMasters/") and name.endswith(".xml")
+    ):
+        rels = _relationship_rid_map(root, master)
+        xml_root = _parse(root / Path(master), master, findings)
+        if xml_root is None:
+            continue
+        for node in xml_root.iter():
+            if _local(node.tag) != "sldLayoutId":
+                continue
+            rid = node.attrib.get(f"{{{R_NS}}}id", "")
+            if not rid:
+                findings.append(Finding("slide-layout-id-missing-rid", master, "sldLayoutId has no r:id"))
+                continue
+            target = rels.get(rid)
+            if target is None:
+                findings.append(
+                    Finding("slide-layout-id-unresolved", master, f"sldLayoutId r:id {rid} has no relationship")
+                )
+            elif not target.startswith("ppt/slideLayouts/slideLayout"):
+                findings.append(
+                    Finding("slide-layout-id-bad-target", master, f"sldLayoutId r:id {rid} -> {target}")
+                )
+
+
+def _validate_notes_slide_references(root: Path, files: set[str], findings: list[Finding]) -> None:
+    """Check no notesSlide is referenced by more than one slide."""
+    references: dict[str, list[str]] = {}
+    for slide in sorted(
+        name for name in files if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+    ):
+        for kind, target in _relationship_records(root, slide):
+            if kind == f"{OFFICE_REL_NS}/notesSlide" and target.startswith("ppt/notesSlides/"):
+                references.setdefault(target, []).append(slide)
+    for notes_slide, slides in sorted(references.items()):
+        if len(slides) > 1:
+            findings.append(
+                Finding(
+                    "notes-slide-shared",
+                    notes_slide,
+                    f"referenced by multiple slides: {', '.join(slides)}",
+                )
+            )
+
+
+def _validate_no_duplicate_slide_layouts(root: Path, files: set[str], findings: list[Finding]) -> None:
+    """Check each slide references exactly one slideLayout."""
+    for slide in sorted(
+        name for name in files if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+    ):
+        layouts = [
+            target
+            for kind, target in _relationship_records(root, slide)
+            if kind == SLIDE_LAYOUT_REL and target.startswith("ppt/slideLayouts/")
+        ]
+        if len(layouts) > 1:
+            findings.append(
+                Finding(
+                    "slide-layout-duplicate",
+                    slide,
+                    f"references {len(layouts)} slideLayouts: {', '.join(layouts)}",
+                )
+            )
+
+
+def _validate_unreferenced_files(root: Path, files: set[str], findings: list[Finding]) -> None:
+    """Check every non-package-infrastructure part is reachable from some .rels."""
+    referenced: set[str] = set()
+    for rels_name in sorted(name for name in files if name.endswith(".rels")):
+        rels_root = _parse(root / Path(rels_name), rels_name, findings)
+        if rels_root is None:
+            continue
+        try:
+            source = relationship_source(rels_name)  # None for the root _rels/.rels
+        except ValueError:
+            continue
+        for rel in rels_root:
+            if rel.attrib.get("TargetMode") == "External":
+                continue
+            target = rel.attrib.get("Target")
+            if not target:
+                continue
+            try:
+                # resolve_target(None, "docProps/app.xml") returns the root-relative
+                # part name, so root relationships are covered too.
+                referenced.add(resolve_target(source, target))
+            except ValueError:
+                continue
+    exempt_prefixes = ("[Content_Types].xml", "_rels/.rels", "ppt/_rels/")
+    for part in sorted(files):
+        if part.startswith(exempt_prefixes) or part.endswith(".rels"):
+            continue
+        if part not in referenced:
+            findings.append(
+                Finding(
+                    "unreferenced-part",
+                    part,
+                    "not referenced by any relationship",
+                    "warning",
+                )
+            )
+
+
+def _validate_slides_fatal(root: Path, files: set[str], findings: list[Finding]) -> None:
+    """Run the official slide-XML fatal defect denylist on every slide part."""
+    from .pptx_slide import is_slide_part, fatal_slide_findings
+
+    for part in sorted(
+        name for name in files if name.endswith(".xml") and is_slide_part(name)
+    ):
+        xml_root = _parse(root / Path(part), part, findings)
+        if xml_root is None:
+            continue
+        findings.extend(fatal_slide_findings(part, xml_root))
 
 
 def _validate_unpacked(root: Path) -> list[Finding]:
@@ -336,6 +607,14 @@ def _validate_unpacked(root: Path) -> list[Finding]:
     _validate_part_roots(root, files, findings)
     _validate_notes(root, files, findings)
     _validate_master_themes(root, files, findings)
+    _validate_namespaces(root, files, findings)
+    _validate_uuid_ids(root, files, findings)
+    _validate_unique_ids(root, files, findings)
+    _validate_slide_layout_ids(root, files, findings)
+    _validate_notes_slide_references(root, files, findings)
+    _validate_no_duplicate_slide_layouts(root, files, findings)
+    _validate_unreferenced_files(root, files, findings)
+    _validate_slides_fatal(root, files, findings)
     validate_charts(root, files, findings)
     return findings
 

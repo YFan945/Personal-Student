@@ -370,7 +370,9 @@ def validate_charts(root: Path, files: set[str], findings: list[Finding]) -> Non
                     "chart-axis-missing",
                     part,
                     f"chart references an axis not declared in this chart part: {missing}",
-                    "warning",
+                    # Official skill treats an undeclared axis reference as a
+                    # PowerPoint-refused defect, not a warning.
+                    "error",
                 )
             )
         for duplicate in sorted(duplicate_declared):
