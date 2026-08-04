@@ -14,7 +14,7 @@ def project_root(env: dict[str, str] | None = None, cwd: Path | None = None) -> 
     if configured:
         resolved = Path(configured).expanduser().resolve()
         # 安全防护：拒绝路径穿越尝试
-        if ".." in configured.split(os.sep):
+        if ".." in configured.replace("/", os.sep).split(os.sep):
             raise ValueError(
                 f"CLAUDE_PROJECT_DIR 包含 '..' 路径穿越: {configured}"
             )

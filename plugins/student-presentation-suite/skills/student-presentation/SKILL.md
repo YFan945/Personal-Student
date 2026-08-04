@@ -39,11 +39,11 @@ version: 0.4.3
    - `../../references/slide-spec.md` — 结构化 PPTX 交接
    - `../../references/image-strategy.md` — 视觉素材策略
 4. 宽泛主题时，根据时长和证据提供 2-3 个角度选择。
-5. 沿单一主线构建，按序生成：目录→每页主张/要点→PPT文案→演讲版→可选 Slide Spec。
+5. 沿单一主线构建，按序生成：目录→每页主张/要点→PPT文案→演讲版→Slide Spec（用户表明将转 PPTX 时必写）。
 6. 每页内容幻灯片提供：故事角色、主张、精简文案、可选视觉、证据引用、讲稿、时间、归属、转场。
-7. 新手模式下解释关键结构/布局选择。需要时运行 `analyze_presentation_spec.py`，添加训练卡、Q&A、词汇表、评分风险、Evidence Ledger 或修订元数据。
-8. 如需文件输出，交接给 `student-presentation-ppt`；其完整 intake 门禁仍适用。
+7. 新手模式下解释关键结构/布局选择。用 `analyze_presentation_spec.py` 做结构/证据/密度风险检查；需要训练卡、Q&A、词汇表、提词版或修订元数据时运行 `build_support_outputs.py`。
+8. 如需文件输出并转 PPTX，先写 `outputs/<topic>-brief.yaml`（按 `../../references/presentation-brief.schema.json`，用 `validate_presentation_brief.py` 校验）与 `outputs/<topic>-slide-spec.yaml`（按 `../../references/slide-spec.schema.json`，用 `validate_slide_spec.py` 校验），把两个文件路径交接给 `student-presentation-ppt`；其完整 intake 门禁仍适用。
 
 ## 输出契约
 
-使用 `outputs/<topic>-outline.md`、`outputs/<topic>-speaker-notes.md` 或 `outputs/<topic>-handoff-plan.md`。不得写入 `${CLAUDE_PLUGIN_ROOT}`。
+使用 `outputs/<topic>-outline.md`、`outputs/<topic>-speaker-notes.md`、`outputs/<topic>-handoff-plan.md`；转 PPTX 时另写 `outputs/<topic>-brief.yaml` 与 `outputs/<topic>-slide-spec.yaml` 作为交接工件。不得写入 `${CLAUDE_PLUGIN_ROOT}`。

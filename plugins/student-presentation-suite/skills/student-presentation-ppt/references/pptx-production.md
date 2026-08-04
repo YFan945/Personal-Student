@@ -29,8 +29,6 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
   手算坐标出错率。
 - 按 `pptxgenjs-safety.md` 直接写裸 pptxgenjs 脚本；`pptx-helpers.js`/`pptx-visuals.js`
   是可选工具。每页用 `slide.background` 设置背景（canvas 角色），深色封面/浅色内容对比。
-- visual plan（`*-visual-plan.json`）是建议性参考，不是门禁；可参考其 layout family 与
-  组件建议，但 deck 仍按裸 pptxgenjs 规范写。
 - 使用 resolved design tokens；不得另选本 reference 之外的 palette。
 - 所有最终 candidate 都必须通过 `pptx_tool.py validate`。
 
@@ -52,8 +50,10 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
 
 5. wrapper 在原子落盘前只运行 `normalize-generated`（修复 chart axId/presentation 语义），
    不输出 static report，也不做静态门禁。QA 和 delivery 绑定
-   `<candidate-stem>-package-report.json`；文字溢出、重叠、可读性问题由 QA 阶段逐页视觉
-   检查发现，修复 generator 后整包重建，禁止对已打包文件做逐项补丁。
+   `<candidate-stem>-package-report.json`；文字溢出、重叠、可读性问题可在 producing 阶段
+   用 `pptx_tool.py render` 自检（可选），也可在 qa 阶段按需渲染。发现问题时修复
+   generator 后整包重建，禁止对已打包文件做逐项补丁；重建直接走返工边
+   `workflow_guard.py transition --to producing --reason <blocker 摘要>`，无需 reset。
 
 ## Edit branch
 

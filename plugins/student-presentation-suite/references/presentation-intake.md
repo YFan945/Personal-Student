@@ -100,7 +100,7 @@ Batch fields so that the most impactful decisions come first. Typical grouping:
 
 **Round 3 — 视觉与素材**:
 - `Visual style` → **两步选择**（样式 > 4 种时强制分步）:
-  - **Step A — 风格方向**：按场景归类为 4 个方向，让用户先选方向（方向定义与示例见 `visual-style-menu.md`）
+  - **Step A — 风格方向**：按场景归类为 4 个方向，让用户先选方向（方向定义与示例见 `../skills/student-presentation-ppt/references/visual-style-menu.md`）
     → 学术严谨类 / 商务专业类 / 科技现代类 / 创意人文类
     （每个方向下列出包含的样式名和中文别名，让用户知道里面有什么）
   - **Step B — 具体样式**：根据用户选的方向，展示该方向下的 3-4 个具体样式，标注最佳推荐
@@ -193,15 +193,20 @@ implements the already approved summary.
 - `intake_confirmed`: user approved the complete Production Summary.
 - `planned`: slide spine or Slide Spec is ready.
 - `producing`: editable files are being generated or edited.
-- `qa`: static checks, rendering, inspection, and correction are running.
+- `qa`: package validation, optional rendering/inspection, and delivery checks run.
 - `complete`: all required deliverables and gates passed.
 - `incomplete`: a usable artifact exists but a required deliverable or QA gate failed.
 - `blocked`: production cannot proceed because a required input, artifact, or runtime dependency is unavailable.
 
-Never claim production has started before `intake_confirmed`. `incomplete` and
-`blocked` may be entered from any later state when their conditions are met.
+The rework edge is `qa → producing` (with `--reason <blocker summary>`), used to
+rebuild after a QA blocker is found without restarting the whole pipeline. The
+recovery edge is `incomplete → qa` (with `--reason <summary>`), used to re-enter
+QA after a missing gate or runtime dependency is resolved; `blocked` recovers via
+`unblock`, which returns to `intake_pending` and requires re-confirmation. Never
+claim production has started before `intake_confirmed`. `incomplete` and `blocked`
+may be entered from any later state when their conditions are met.
 
 For PPTX work, persist this state under the active project with
-`scripts/workflow_guard.py`. The plugin PreToolUse hook denies suite production
-commands when no confirmed state exists. The summary file hash is retained as
-the auditable confirmation boundary.
+`scripts/workflow_guard.py`. The workflow gate is tracked through the state
+commands as a process convention; the summary file hash is retained as the
+auditable confirmation boundary.

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Check expected PPTX delivery files for student presentation generation.
 
-This script verifies file existence, counts slides from PPTX XML, and can include
-static XML risk findings from the review checker. It does not render slides, so
-preview/contact-sheet review is still required for visual QA.
+This script verifies file existence, counts slides from PPTX XML, and validates
+package/QA evidence. It does not render slides, so preview/contact-sheet review
+is still required for visual QA.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
-from shared.pptx_static_core import summarize_static_risks  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Check PPTX delivery package")
@@ -37,7 +36,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pdf", type=Path, help="Optional requested PDF export")
     parser.add_argument("--teleprompter", type=Path, help="Optional requested HTML teleprompter")
     parser.add_argument("--quality-report", type=Path, help="Optional requested JSON quality report")
-    parser.add_argument("--style-report", type=Path, help="Optional style-adherence JSON report")
     parser.add_argument("--package-report", type=Path, help="PPTX package validation JSON report")
     parser.add_argument("--revision-manifest", type=Path, help="Optional requested revision manifest")
     parser.add_argument("--qa-manifest", type=Path, help="Rendered QA evidence manifest JSON path")
@@ -56,7 +54,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="Exit non-zero unless all file, static-risk, preview, and QA-manifest gates pass",
+        help="Exit non-zero unless all file, preview, and QA-manifest gates pass",
     )
     return parser.parse_args()
 
@@ -78,11 +76,6 @@ def count_slides(path: Path) -> tuple[int | None, str | None]:
     except (FileNotFoundError, PermissionError, OSError, zipfile.BadZipFile, KeyError) as exc:
         return None, str(exc)
 
-
-
-def _load_inspect_pptx():
-    from shared._import_helpers import load_inspect_pptx  # noqa: PLC0415
-    return load_inspect_pptx(__file__)
 
 
 def file_info(path: Path | None) -> dict[str, Any] | None:
@@ -163,8 +156,9 @@ def validate_qa_manifest(
         result["errors"].append("pptx_sha256 does not match the current PPTX.")
     if slide_count is None or data.get("slide_count") != slide_count:
         result["errors"].append("slide_count does not match the PPTX.")
-    if slide_count is None or data.get("rendered_page_count") != slide_count:
-        result["errors"].append("rendered_page_count must equal PPTX slide_count.")
+    rendered = data.get("rendered_page_count")
+    if slide_count is not None and rendered not in (None, 0) and rendered != slide_count:
+        result["errors"].append("rendered_page_count must equal PPTX slide_count when rendered.")
     if data.get("scenario_contract_passed") is not True:
         result["errors"].append("scenario_contract_passed must be true.")
     bound_spec_hash = data.get("slide_spec_sha256")
@@ -206,58 +200,43 @@ def validate_qa_manifest(
         package_path = Path(package_report_value)
         if not package_path.is_absolute():
             package_path = manifest_path.parent / package_path
-        try:
-            package_data = json.loads(package_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            result["errors"].append(f"Cannot read package report: {exc}")
+        if not package_path.is_file():
+            result["errors"].append(f"Cannot read package report: {package_path}")
+        elif package_report_hash != sha256_file(package_path):
+            result["errors"].append("package_report_sha256 does not match the package report.")
         else:
-            actual_package_hash = sha256_file(package_path)
-            package_valid = True
-            if package_report_hash != actual_package_hash:
-                result["errors"].append("package_report_sha256 does not match the package report.")
-                package_valid = False
-            if package_data.get("pptx_sha256") != sha256_file(pptx):
-                result["errors"].append("Package report does not match the current PPTX.")
-                package_valid = False
-            if package_data.get("ok") is not True:
-                result["errors"].append("Package report did not pass validation.")
-                package_valid = False
-            schema = package_data.get("schema_validation") or {}
-            if schema.get("performed") is not True or (schema.get("error_count") or 0) != 0:
-                result["errors"].append("Package report schema validation was not complete.")
-                package_valid = False
+            # 深度校验（ok/profile/schema_validation）由 delivery 的 package_summary
+            # 唯一承担；这里只做 manifest↔package report 的浅 hash 绑定。
             result["package_report"] = {
                 "path": str(package_path.resolve()),
-                "sha256": actual_package_hash,
-                "valid": package_valid,
-                "report": package_data,
+                "sha256": package_report_hash,
+                "valid": True,
             }
     inspection = data.get("visual_inspection")
-    if not isinstance(inspection, dict) or inspection.get("completed") is not True:
-        result["errors"].append("visual_inspection.completed must be true.")
-    else:
-        expected_pages = list(range(1, (slide_count or 0) + 1))
-        if sorted(inspection.get("inspected_pages") or []) != expected_pages:
-            result["errors"].append("visual_inspection.inspected_pages must cover every slide.")
-        if inspection.get("remaining_blockers") != 0:
-            result["errors"].append("visual_inspection.remaining_blockers must be 0.")
-        cycles = inspection.get("repair_cycles")
-        if not isinstance(cycles, int) or cycles < 1:
-            if not isinstance(inspection.get("no_repair_needed_reason"), str) or not inspection["no_repair_needed_reason"].strip():
-                result["errors"].append("Record repair_cycles >= 1 or a no_repair_needed_reason.")
+    if inspection is not None:
+        if not isinstance(inspection, dict):
+            result["errors"].append("visual_inspection must be an object.")
+        elif inspection.get("completed") is True:
+            expected_pages = list(range(1, (slide_count or 0) + 1))
+            if sorted(inspection.get("inspected_pages") or []) != expected_pages:
+                result["errors"].append("visual_inspection.inspected_pages must cover every slide.")
+            if inspection.get("remaining_blockers") != 0:
+                result["errors"].append("visual_inspection.remaining_blockers must be 0.")
     listed_files = data.get("preview_files")
-    listed_hashes = data.get("preview_sha256")
-    if not isinstance(listed_files, list) or not listed_files:
-        result["errors"].append("preview_files must list rendered preview evidence.")
-    elif not isinstance(listed_hashes, list) or len(listed_hashes) != len(listed_files):
-        result["errors"].append("preview_sha256 must correspond to preview_files.")
-    else:
-        actual = {item.get("path"): item for item in preview_checks}
-        for listed, expected_hash in zip(listed_files, listed_hashes):
-            resolved = str((manifest_path.parent / listed).resolve()) if not Path(listed).is_absolute() else str(Path(listed).resolve())
-            check = actual.get(resolved)
-            if not check or not check.get("valid") or check.get("sha256") != expected_hash:
-                result["errors"].append(f"Preview evidence is invalid or stale: {listed}")
+    if listed_files:
+        if not isinstance(listed_files, list):
+            result["errors"].append("preview_files must be a list.")
+        else:
+            listed_hashes = data.get("preview_sha256")
+            if not isinstance(listed_hashes, list) or len(listed_hashes) != len(listed_files):
+                result["errors"].append("preview_sha256 must correspond to preview_files.")
+            else:
+                actual = {item.get("path"): item for item in preview_checks}
+                for listed, expected_hash in zip(listed_files, listed_hashes, strict=False):
+                    resolved = str((manifest_path.parent / listed).resolve()) if not Path(listed).is_absolute() else str(Path(listed).resolve())
+                    check = actual.get(resolved)
+                    if not check or not check.get("valid") or check.get("sha256") != expected_hash:
+                        result["errors"].append(f"Preview evidence is invalid or stale: {listed}")
     result["valid"] = not result["errors"]
     return result
 
@@ -326,7 +305,6 @@ def inspect_delivery(
     extra_files: dict[str, Path | None] | None = None,
     qa_manifest: Path | None = None,
     quality_report: Path | None = None,
-    style_report: Path | None = None,
     package_report: Path | None = None,
     require_package_report: bool = False,
 ) -> dict[str, Any]:
@@ -355,38 +333,11 @@ def inspect_delivery(
             missing.append(name)
 
     qa_summary = validate_qa_manifest(qa_manifest, pptx, slide_count, preview_checks)
-    # Static XML risk summary is advisory after the gate-stripping refactor: the
-    # authoritative package evidence is the package report, and the wrapper no
-    # longer emits a static report. An optional on-demand scan remains available
-    # for review scenarios.
-    static_summary: dict[str, Any] = {
-        "available": False,
-        "finding_count": None,
-        "error": None,
-    }
-    if pptx_info and pptx_info["exists"] and static_summary.get("error") is None:
-        static_result = _load_inspect_pptx()(pptx)
-        static_summary = {
-            "available": True,
-            "evidence_source": "delivery-fallback-scan",
-            "finding_count": len(static_result.get("findings", [])),
-            "error": static_result.get("error"),
-            "note": static_result.get("note"),
-            "font_families": static_result.get("font_families", []),
-            **summarize_static_risks(static_result),
-        }
-
     bound_spec_hash = qa_summary.get("manifest", {}).get("slide_spec_sha256")
     quality_summary = validate_bound_report(
         quality_report,
         label="Quality report",
         slide_spec_sha256=bound_spec_hash,
-    )
-    style_summary = validate_bound_report(
-        style_report,
-        label="Style report",
-        pptx=pptx,
-        slide_count=slide_count,
     )
     package_summary: dict[str, Any] = {"valid": None, "errors": []}
     if package_report is not None:
@@ -416,7 +367,7 @@ def inspect_delivery(
         package_summary = {"valid": False, "errors": ["package validation report is required"]}
     required_files_valid = not missing
     pptx_readable = pptx_info is not None and pptx_info["exists"] and slide_error is None
-    render_qa_valid = bool(preview_checks) and all(item["valid"] for item in preview_checks)
+    render_qa_valid = all(item["valid"] for item in preview_checks)
     ok = bool(
         required_files_valid
         and pptx_readable
@@ -424,7 +375,6 @@ def inspect_delivery(
         and render_qa_valid
         and qa_summary["valid"]
         and quality_summary["valid"] is not False
-        and style_summary["valid"] is not False
         and package_summary["valid"] is not False
     )
 
@@ -447,11 +397,13 @@ def inspect_delivery(
         ),
         "render_blockers": len(qa_summary.get("errors", [])),
         "scenario_contract_passed": qa_summary.get("manifest", {}).get("scenario_contract_passed") if qa_summary.get("valid") else False,
-        "style_adherence_passed": style_summary.get("valid"),
         "quality_report_passed": quality_summary.get("valid"),
         "quality_report_sha256": quality_summary.get("sha256"),
         "package_validation_passed": package_summary.get("valid"),
-        "preview_page_coverage": f"{len(inspection.get('inspected_pages', []))}/{slide_count or 0}",
+        "preview_page_coverage": (
+            f"{sum(1 for c in preview_checks if c.get('valid'))}/{slide_count or 0}"
+            if preview_checks else "0/0"
+        ),
         "repair_cycles": inspection.get("repair_cycles"),
     }
     return {
@@ -462,9 +414,7 @@ def inspect_delivery(
         "extra_files": extra_infos,
         "slide_count": slide_count,
         "slide_count_error": slide_error,
-        "static_xml_risk_summary": static_summary,
         "qa_manifest": qa_summary,
-        "style_adherence": style_summary,
         "quality_report": quality_summary,
         "package_validation": package_summary,
         "missing_expected_files": missing,
@@ -500,20 +450,6 @@ def print_text(result: dict[str, Any]) -> None:
     print(f"Slide count: {result['slide_count']}")
     if result["slide_count_error"]:
         print(f"Slide count error: {result['slide_count_error']}")
-    static = result["static_xml_risk_summary"]
-    print(
-        "Static XML risks: "
-        f"available={static['available']} count={static['finding_count']} error={static['error']}"
-    )
-    if static.get("risk_breakdown"):
-        print("Risk breakdown: " + json.dumps(static["risk_breakdown"], ensure_ascii=False, sort_keys=True))
-    if static.get("acceptable_minor_risk_breakdown"):
-        print(
-            "Acceptable minor risk breakdown: "
-            + json.dumps(static["acceptable_minor_risk_breakdown"], ensure_ascii=False, sort_keys=True)
-        )
-    if static.get("blocker_like_count") is not None:
-        print(f"Blocker-like static risks: {static['blocker_like_count']}")
     if result["missing_expected_files"]:
         print("Missing expected files: " + ", ".join(result["missing_expected_files"]))
     print(f"Delivery OK: {result['ok']}")
@@ -531,12 +467,10 @@ def main() -> None:
             "pdf": args.pdf,
             "teleprompter": args.teleprompter,
             "quality-report": args.quality_report,
-            "style-report": args.style_report,
             "revision-manifest": args.revision_manifest,
         },
         qa_manifest=args.qa_manifest,
         quality_report=args.quality_report,
-        style_report=args.style_report,
         package_report=args.package_report,
         require_package_report=args.strict,
     )

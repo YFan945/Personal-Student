@@ -17,8 +17,8 @@
 student-presentation-suite@claude-personal
 ```
 
-当前 PPTX 内嵌运行时适配步骤与验收标准详见
-[PPTX-EMBEDDED-SKILL-ADAPTATION-PLAN.md](PPTX-EMBEDDED-SKILL-ADAPTATION-PLAN.md)。
+插件自主拥有完整 PPTX 运行时（创建/编辑/渲染/校验），运行时归属与审计记录见
+[`plugins/student-presentation-suite/references/pptx-runtime-provenance.md`](plugins/student-presentation-suite/references/pptx-runtime-provenance.md)。
 
 ## 功能
 
@@ -153,8 +153,10 @@ claude
 课程、受众、语言、时长、页数、评分要求、资料来源、视觉风格和交付物。你确认
 后才会开始生成。这样可避免在关键信息不完整时直接产出错误文件。
 
-插件通过 `PreToolUse` hook 对生产命令执行确定性门禁，并在项目输出目录保存
-已确认摘要的哈希和工作流状态，因此不再只依赖模型是否遵循文字说明。
+插件通过 `workflow_guard.py` 状态机命令（init/confirm/transition）记录状态，
+并在项目输出目录保存已确认摘要的哈希和工作流状态。PreToolUse hook 已移除，
+命令不再自动拦截；状态由 SKILL 文本自律维护——状态未推进到 `intake_confirmed`
+前不运行生产脚本。
 
 生成结果默认写入当前项目的 `outputs/` 目录，不会写进插件安装目录。修改已有
 PPT 时也不会覆盖原文件。
@@ -232,14 +234,12 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 <topic>-preview.png
 <topic>-presentation-package-report.json
 <topic>-qa-manifest.json
-<topic>-style-adherence-report.json
 <topic>-delivery-report.json
 <topic>-change-summary.md
 <topic>-presentation.pdf
 <topic>-teleprompter.html
 <topic>-training-cards.md
 <topic>-quality-report.json
-<topic>-visual-plan.json
 <topic>-revision-manifest.json
 ```
 
@@ -247,15 +247,15 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 `complete`、`incomplete` 或 `blocked`。进入 `complete` 必须提供使用完整 suite
 validation profile 且 Open XML schema 校验通过的 package report、会重新验证原始
 Slide Spec 并与当前 PPTX 和渲染预览 hash 绑定的 QA manifest，以及通过的严格
-delivery report。按需生成的 quality/style report 也必须分别绑定原始 Spec 或当前
+delivery report。按需生成的 quality report 也必须分别绑定原始 Spec 或当前
 PPTX，不能只凭文件名通过。
-`deck.js` 按 `pptxgenjs-safety.md` 中的官方 gotchas 写成裸 pptxgenjs；wrapper 只做
-normalize 后原子落盘，不做生成期静态门禁，布局/溢出问题由 QA 逐页视觉检查发现。
+`deck.js` 按 `skills/student-presentation-ppt/references/pptxgenjs-safety.md` 中的
+官方 gotchas 写成裸 pptxgenjs；wrapper 只做 normalize 后原子落盘，不做生成期静态
+门禁，布局/溢出问题由 QA 逐页视觉检查与 package validation 发现。
 QA 和 delivery 复用 package report，不重复校验未修改的 deck。
-visual plan 是建议性参考，不是门禁。11 类可编辑布局组件（`pptx-visuals.js`，可选）
-直接提供流程、时间线、对比、指标、架构、矩阵、图像主导、引文和总结结构，避免
-生成后逐页修补。
-标准视觉风格还会解析为 palette、间距、字体和线条 token，并可生成风格一致性报告。
+11 类可编辑布局组件（`pptx-visuals.js`，可选）直接提供 hero、visual-dominant、
+process-path、时间线、对比、指标、架构、矩阵、引文、总结和参考资料结构，避免生成后逐页修补。
+标准视觉风格还会解析为 palette、间距、字体和线条 token。
 发布工作流还会在 Linux 上临时渲染课程汇报、英语课堂、答辩、竞赛、社团展示、研究展示、软件项目、数据调查和学校模板编辑场景矩阵。
 
 ## 更新与卸载
@@ -328,7 +328,6 @@ python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
 - **Python 代码质量**：Ruff（启用 E, F, W, I, N, UP, B, SIM, ARG, RET 规则集）
 - **JavaScript 代码质量**：ESLint（标准规则）+ Prettier 格式化
 - **跨编辑器**：`.editorconfig` 确保缩进和行尾一致性
-- **类型安全**：共享 `TypedDict` 定义（[`shared/types.py`](plugins/student-presentation-suite/shared/types.py)）
 - **安全扫描**：CI 流水线包含 `pip-audit` 和 `npm audit`
 - **依赖管理**：Dependabot 已配置 pip、npm 和 GitHub Actions 自动更新
 - **集成测试**：spec → bridge 流水线的端到端冒烟测试

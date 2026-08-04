@@ -6,8 +6,9 @@ version: 0.4.3
 
 # Student Presentation PPT
 
-创建或改进可编辑的学生学术 PPTX。仅大纲走 `student-presentation`；只读审查走
-`student-presentation-review`；“直接改好”先诊断，再进入本 skill 的编辑分支。
+创建或改进可编辑的学生学术 PPTX。仅大纲走 `student-presentation`；只读审查/诊断走
+`student-presentation-review`；编辑请求由 `student-presentation-review` 诊断后以结构化
+交接（`outputs/<topic>-slide-spec.yaml`）进入本 skill 的编辑分支。
 
 ## Canonical references
 
@@ -26,9 +27,11 @@ version: 0.4.3
 
 ## State gate
 
-状态严格按
+状态按
 `intake_pending → intake_confirmed → planned → producing → qa → complete`
-推进，终态为 `incomplete` 或 `blocked`。初始化并持久化状态：
+正向推进，终态为 `incomplete` 或 `blocked`；返工边 `qa → producing` 用于发现问题
+后重建，恢复边 `incomplete → qa` 用于补齐缺失门禁后重入 QA，均须带 `--reason <摘要>`。
+初始化并持久化状态：
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" init
@@ -40,26 +43,27 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" init
 ## Workflow
 
 1. 完成完整 intake；用户说“你决定”只表示采用推荐值，仍需展示并确认最终摘要。
-2. 确认后运行 `check_claude_pptx_env.py --mode <production_mode> --json --strict`。创建能力缺失或本次编辑能力
+2. 确认后先确定唯一 `production_mode`（`create` / `edit_ooxml` / `rebuild_from_source`），
+   再运行 `check_claude_pptx_env.py --mode <production_mode> --json --strict`。创建能力缺失或本次编辑能力
    缺失时转 `blocked`；只缺渲染能力可生成候选文件，但最终只能是 `incomplete`。
 3. 验证 Presentation Brief 和 Slide Spec，运行 `analyze_presentation_spec.py`；
-   `slide_spec_to_pptx_brief.py` 生成 production brief（视觉计划为建议性，不是门禁）。
-   确定唯一 `production_mode`：`create`、`edit_ooxml` 或 `rebuild_from_source`。
-   转为 `planned`。
-4. 转为 `producing`，按 `pptx-production.md` 的对应分支生产。`create` 执行 deck.js；
+   `slide_spec_to_pptx_brief.py` 生成 production brief。转为 `planned`。
+4. 转为 `producing`，按 `references/pptx-production.md` 的对应分支生产。`create` 执行 deck.js；
    `edit_ooxml` 使用 `pptx_tool.py` 解包、结构修改、内容修改、clean、pack；
    `rebuild_from_source` 必须记录明确理由。所有模式都输出新文件，禁止覆盖 source deck。
-5. 进入 `qa`，复用生成阶段的 package report，按 `pptx-qa.md` 完成一次渲染、逐页视觉、
-   样式和交付检查。首个 candidate 无 blocker 时直接记录无需修复原因；只有发现问题并
-   修改 PPTX 后，才重新生成相关证据。
+5. 进入 `qa`，复用生成阶段的 package report，按 `references/pptx-qa.md` 完成交付检查。package
+   validation 是强制结构门禁；逐页渲染视觉检查可选（可先在 producing 用 `render` 自检）。
+   发现问题时无需重置：`transition --to producing --reason <blocker 摘要>` 返工重建，
+   再 `transition --to qa` 重新 qa-manifest 与 delivery check。
 6. 编辑任务生成 change summary 和 revision manifest；版本快照必须传入完整参数。
-7. 只有最终 PPTX、预览、QA manifest、package report 和严格 delivery report 全部绑定且
-   blocker 为零时，才可调用
-   `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --package-report <package-report> --delivery-report <report>`。
+7. 只有最终 PPTX、QA manifest 和严格 delivery report 全部绑定且 blocker 为零时，才可调用
+   `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --delivery-report <report>`。
+   预览渲染可选：未渲染时 delivery 的 `preview_page_coverage` 为 `0/0`，不阻断 complete。
 
 ## Output contract
 
 仅写入 `${CLAUDE_PROJECT_DIR}/outputs` 或当前项目的 `outputs/`：PPTX、speaker notes、
-逐页 preview/contact sheet、package report、QA manifest、style/delivery report，以及编辑任务的 change
-summary。中间文件放在 `outputs/.pptx-work/<work-id>/`。最终回复报告所有绝对路径、
-页数、package validation、visual QA、交付状态和剩余限制。
+逐页 preview/contact sheet、package report、QA manifest、delivery report，以及编辑任务的 change
+summary 与 `outputs/<topic>-slide-spec.yaml`（供 review 做 plan-vs-actual）。中间文件放在
+`outputs/.pptx-work/<work-id>/`。交付完成后提示用户可运行 `student-presentation-review` 做
+只读复核/评分。最终回复报告所有绝对路径、页数、package validation、visual QA、交付状态和剩余限制。

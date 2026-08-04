@@ -206,6 +206,8 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
         "PyYAML": {"ok": python_module("yaml"), "module": "yaml"},
     }
     common_required = [
+        "jsonschema",
+        "PyYAML",
         "markitdown",
         "Pillow",
         "defusedxml",

@@ -57,8 +57,10 @@ Meta field rules:
   cycle needs 3+ steps, matrix needs 2+ items, and annotated-image needs an asset.
 - `visual.layout_family` is one of `hero`, `visual-dominant`, `process-path`, `timeline`,
   `comparison`, `dashboard`, `architecture`, `matrix`, `quote`, `summary`, or `reference`.
-- `deliverables`: confirmed output names such as `"pptx"`, `"speaker-notes"`,
-  `"preview"`, `"change-summary"`, `"full-script"`, or `"pdf"`
+- `deliverables`: confirmed output names among `"pptx"`, `"pdf"`, `"speaker-notes"`,
+  `"preview"`, `"teleprompter"`, `"quality-report"`, `"revision-manifest"`
+  (subset of `meta.export_formats`). `change-summary` 由 `change_summary_required: true`
+  表达，`full-script` 由讲稿覆盖，均非独立导出格式。
 - Use short ASCII-safe `output_prefix` when a later PPTX output filename needs a stable slug.
 - For PPTX work, populate meta from the explicitly confirmed Production Summary
   defined in `presentation-intake.md`; do not turn unconfirmed recommendations
@@ -92,7 +94,6 @@ Optional v2 top-level fields:
 Schema and validation:
 - JSON Schema: `references/slide-spec.schema.json`
 - Validator: `scripts/validate_slide_spec.py`
-- Visual compiler: `scripts/compile_visual_plan.py`
 - The validator requires `jsonschema` and `PyYAML` from `requirements.txt`.
 - Unknown fields are rejected in `meta`, slides, visuals, and review findings to catch spelling mistakes.
 - Semantic validation also checks contiguous slide ids, `slide_count`, total timing vs `duration_min`, group members/owners, existing-deck combinations, high-score controls, evidence references, and lock semantics.
@@ -106,12 +107,6 @@ Run deterministic story, density, wording, and evidence checks with:
 
 ```powershell
 python "${CLAUDE_PLUGIN_ROOT}/scripts/analyze_presentation_spec.py" path/to/slide-spec.yaml --strict --json
-```
-
-Before PPTX generation, compile the deck-level rhythm and editable component mapping:
-
-```powershell
-python "${CLAUDE_PLUGIN_ROOT}/scripts/compile_visual_plan.py" path/to/slide-spec.yaml --output outputs/visual-plan.json --json
 ```
 
 ```yaml

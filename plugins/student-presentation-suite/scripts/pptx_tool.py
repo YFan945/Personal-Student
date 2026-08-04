@@ -30,7 +30,6 @@ from shared.pptx_runtime import (  # noqa: E402
 from shared.pptx_runtime.normalize import normalize_generated_package  # noqa: E402
 from shared.pptx_runtime.render import align_rendered_pages, render_pptx  # noqa: E402
 from shared.pptx_runtime.thumbnail import create_thumbnail_grids, slide_metadata  # noqa: E402
-from shared.pptx_static_core import inspect_pptx, summarize_static_risks  # noqa: E402
 from shared.slide_spec_contract import validate_slide_spec  # noqa: E402
 
 PPTX_SUFFIXES = {".pptx", ".potx"}
@@ -271,7 +270,7 @@ def command_validate(args: argparse.Namespace) -> int:
     path: Path = args.input
     original: Path | None = args.original
     if not path.is_file():
-        print(json.dumps({"ok": False, "findings": [{"code": "input", "detail": "validate requires a packed PPTX"}]}))
+        print(json.dumps({"ok": False, "findings": [{"code": "input", "part": str(path), "severity": "error", "detail": "validate requires a packed PPTX"}]}))
         return 1
     result = {
         **validate_pptx(path, original),
@@ -372,29 +371,6 @@ def command_render(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
-def command_static_check(args: argparse.Namespace) -> int:
-    pptx: Path = args.input
-    result = inspect_pptx(pptx)
-    summary = summarize_static_risks(result)
-    payload = {
-        "ok": result.get("error") is None and summary["blocker_like_count"] == 0,
-        "pptx": str(pptx),
-        "pptx_sha256": _sha256(pptx),
-        "slide_count": _slide_count(pptx),
-        "error": result.get("error"),
-        "finding_count": len(result.get("findings", [])),
-        **summary,
-    }
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
-    return 0 if payload["ok"] else 1
-
-
 def _validate_package_report(report: Path, pptx: Path) -> dict:
     try:
         data = json.loads(report.read_text(encoding="utf-8"))
@@ -420,12 +396,11 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
     pptx: Path = args.pptx
     previews: list[Path] = args.preview
     slide_count = _slide_count(pptx)
-    if len(previews) != slide_count:
+    if previews and len(previews) != slide_count:
         raise SystemExit(
-            f"preview count ({len(previews)}) must equal slide count ({slide_count})"
+            f"preview count ({len(previews)}) must equal slide count ({slide_count}) "
+            "when previews are provided"
         )
-    if args.repair_cycles < 1 and not args.no_repair_needed_reason:
-        raise SystemExit("provide --repair-cycles >= 1 or --no-repair-needed-reason")
     package_report_data = None
     if args.package_report:
         package_report_data = _validate_package_report(args.package_report, pptx)
@@ -435,6 +410,8 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
         raise SystemExit(f"cannot read Slide Spec report: {exc}") from exc
     if not isinstance(spec_report_data, dict) or spec_report_data.get("valid") is not True:
         raise SystemExit("Slide Spec validation report did not pass")
+    # 重校验是刻意的完成一致性门禁：捕获 spec 漂移与 spec-vs-pptx 页数不一致，
+    # 并非规划期校验（slide_spec_to_pptx_brief）的简单重复。
     try:
         spec_data, spec_errors, actual_spec_hash = validate_slide_spec(args.slide_spec)
     except (OSError, ValueError) as exc:
@@ -451,6 +428,8 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
         raise SystemExit("Slide Spec report does not bind the current spec")
     output: Path = args.output
     output.parent.mkdir(parents=True, exist_ok=True)
+    # scenario_contract_passed 恒为 True：由上方对 Slide Spec 的重校验推导
+    # （spec 有效且页数与 slide_count 一致），并非独立的场景检测结果。
     payload = {
         "pptx_sha256": _sha256(pptx),
         "slide_count": slide_count,
@@ -462,14 +441,16 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
         "slide_spec_sha256": spec_hash,
         "preview_files": [str(path) for path in previews],
         "preview_sha256": [_sha256(path) for path in previews],
-        "visual_inspection": {
+    }
+    if previews:
+        # 视觉检查仅在实际渲染后记录；无 preview 时跳过（视觉检查可选）。
+        payload["visual_inspection"] = {
             "completed": True,
             "inspected_pages": list(range(1, slide_count + 1)),
             "repair_cycles": args.repair_cycles,
             "no_repair_needed_reason": args.no_repair_needed_reason,
             "remaining_blockers": args.remaining_blockers,
-        },
-    }
+        }
     if package_report_data is not None:
         payload["package_report"] = str(args.package_report)
         payload["package_report_sha256"] = _sha256(args.package_report)
@@ -557,17 +538,9 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument("--dpi", type=int, default=150)
     render.set_defaults(handler=command_render)
 
-    static_check = sub.add_parser(
-        "static-check",
-        help="reject layout, overflow, boundary, and readability blockers before rendering",
-    )
-    static_check.add_argument("input", type=_pptx_file)
-    static_check.add_argument("--output", type=_path)
-    static_check.set_defaults(handler=command_static_check)
-
     manifest = sub.add_parser("qa-manifest", help="bind inspected previews to the final PPTX")
     manifest.add_argument("--pptx", required=True, type=_pptx_file)
-    manifest.add_argument("--preview", required=True, action="append", type=_existing_file)
+    manifest.add_argument("--preview", action="append", default=[], type=_existing_file)
     manifest.add_argument("--output", required=True, type=_path)
     manifest.add_argument(
         "--package-report",

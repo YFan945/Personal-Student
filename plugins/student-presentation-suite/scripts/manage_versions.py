@@ -49,7 +49,7 @@ def snapshot(output_root: Path, revision_id: str, files: list[Path]) -> dict:
     manifest = {
         "version_manifest": "1.0",
         "revision_id": revision_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017  # 环境无 datetime.UTC
         "files": entries,
     }
     (version_root / "version-manifest.json").write_text(

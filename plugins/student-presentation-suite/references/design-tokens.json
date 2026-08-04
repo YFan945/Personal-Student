@@ -4,8 +4,7 @@
   "defaults": {
     "geometry": {"slide_ratio": "16:9", "safe_margin_pct": 6, "title_zone_pct": 16, "footer_zone_pct": 5, "spacing_scale_pt": [6, 12, 18, 24, 36, 48], "min_gutter_pt": 18, "min_card_padding_pt": 16, "max_columns": 3, "alignment_tolerance_pt": 3},
     "lines": {"hairline_pt": 0.75, "standard_pt": 1.25, "emphasis_pt": 2.5, "section_rule_pt": 4, "connector_style": "orthogonal", "connector_color_role": "secondary_text", "arrowhead": "triangle-small", "dashed_semantics": "optional-or-future"},
-    "typography": {"title_min_pt": 24, "body_cjk_min_pt": 22, "body_latin_min_pt": 20, "caption_min_pt": 10, "title_weight": "semibold", "title_font": "Cambria", "body_font": "Calibri"},
-    "style_adherence": {"max_unapproved_srgb_colors": 2, "max_font_families": 3}
+    "typography": {"title_min_pt": 24, "body_cjk_min_pt": 22, "body_latin_min_pt": 20, "caption_min_pt": 10, "title_weight": "semibold", "title_font": "Cambria", "body_font": "Calibri"}
   },
   "styles": {
     "academic-rigorous": {"name": "Academic Rigorous", "palette": {"canvas": "F8FAFC", "surface": "FFFFFF", "primary_text": "0F172A", "secondary_text": "475569", "primary_accent": "1D4ED8", "secondary_accent": "8B9BAB"}, "typography": {"title_font": "Cambria", "body_font": "Calibri"}},

@@ -11,6 +11,8 @@ from unittest import mock
 from PIL import Image
 from test_helpers import load_module
 
+from shared.pptx_static_core import summarize_static_risks
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "skills" / "student-presentation-ppt" / "scripts" / "pptx_delivery_check.py"
 
@@ -111,8 +113,7 @@ class PptxDeliveryCheckTests(unittest.TestCase):
         self.assertEqual([], result["missing_expected_files"])
 
     def test_font_inheritance_uncertainty_is_not_blocker_like(self) -> None:
-        module = load_module(SCRIPT)
-        result = module.summarize_static_risks(
+        result = summarize_static_risks(
             {
                 "findings": [
                     {
@@ -204,7 +205,7 @@ class PptxDeliveryCheckTests(unittest.TestCase):
             )
         self.assertTrue(result["ok"])
         self.assertTrue(result["package_validation"]["valid"])
-        self.assertEqual("delivery-fallback-scan", result["static_xml_risk_summary"]["evidence_source"])
+        self.assertNotIn("static_xml_risk_summary", result)
 
     def test_blocked_on_missing_qa_manifest(self) -> None:
         module = load_module(SCRIPT)
@@ -271,7 +272,7 @@ class PptxDeliveryCheckTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("Open XML schema validation was not performed", result["package_validation"]["errors"])
 
-    def test_rejects_stale_quality_and_style_reports(self) -> None:
+    def test_rejects_stale_quality_report(self) -> None:
         module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -283,23 +284,16 @@ class PptxDeliveryCheckTests(unittest.TestCase):
             notes.write_text("notes", encoding="utf-8")
             self.write_valid_preview_and_manifest(pptx, preview, manifest)
             quality = root / "quality.json"
-            style = root / "style.json"
             quality.write_text(json.dumps({"ok": True, "slide_spec_sha256": "0" * 64}), encoding="utf-8")
-            style.write_text(
-                json.dumps({"ok": True, "pptx_sha256": "0" * 64, "slide_count": 1}),
-                encoding="utf-8",
-            )
             result = module.inspect_delivery(
                 pptx,
                 notes,
                 [preview],
                 qa_manifest=manifest,
                 quality_report=quality,
-                style_report=style,
             )
         self.assertFalse(result["ok"])
         self.assertFalse(result["quality_report"]["valid"])
-        self.assertFalse(result["style_adherence"]["valid"])
 
     def test_blocked_on_pptx_unreadable(self) -> None:
         module = load_module(SCRIPT)
@@ -308,20 +302,6 @@ class PptxDeliveryCheckTests(unittest.TestCase):
             pptx = root / "not-a-pptx.pptx"
             pptx.write_text("not a zip", encoding="utf-8")
             result = module.inspect_delivery(pptx, None, [])
-        self.assertFalse(result["ok"])
-
-    def test_blocked_on_style_report_failure(self) -> None:
-        module = load_module(SCRIPT)
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pptx, notes = root / "deck.pptx", root / "deck-speaker-notes.md"
-            self.write_minimal_pptx(pptx)
-            notes.write_text("notes", encoding="utf-8")
-            preview = root / "deck-preview.png"
-            self.write_valid_preview_and_manifest(pptx, preview, root / "qa-manifest.json")
-            style_report = root / "style-report.json"
-            style_report.write_text(json.dumps({"valid": False, "errors": ["style mismatch"]}), encoding="utf-8")
-            result = module.inspect_delivery(pptx, notes, [preview], qa_manifest=root / "qa-manifest.json", style_report=style_report)
         self.assertFalse(result["ok"])
 
     def test_strict_mode_exits_on_failure(self) -> None:

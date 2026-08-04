@@ -23,7 +23,6 @@ dependencies.
 - `CHANGELOG.md`: newest-first version release history.
 - `CLAUDE.md`: project-specific conventions for Claude Code sessions.
 - `CONTRIBUTING.md`, `SECURITY.md`: community and security guidelines.
-- `PPTX-EMBEDDED-SKILL-ADAPTATION-PLAN.md`: PPTX runtime adaptation plan and acceptance checklist.
 - `plugins/student-presentation-suite/references/pptx-runtime-provenance.md`: runtime ownership and upstream audit provenance.
 
 Inside the plugin package:
@@ -135,7 +134,6 @@ python plugins/student-presentation-suite/scripts/smoke_pptx.py
 python plugins/student-presentation-suite/scripts/check_plugin_release.py --json
 python scripts/check_marketplace_release.py --json
 python plugins/student-presentation-suite/scripts/check_claude_pptx_env.py --json --strict
-python scripts/check_installed_version.py --source-only --json
 
 # Claude manifest validation
 claude plugin validate --strict .\plugins\student-presentation-suite

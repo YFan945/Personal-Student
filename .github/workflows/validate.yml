@@ -40,16 +40,31 @@ jobs:
           python -m json.tool plugins/student-presentation-suite/references/presentation-brief.schema.json | Out-Null
           python -m unittest discover -s plugins/student-presentation-suite/tests
           node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js --probe
-          python plugins/student-presentation-suite/scripts/smoke_pptx.py
+      - name: Smoke test (Windows only; Ubuntu covered by render-matrix)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: python plugins/student-presentation-suite/scripts/smoke_pptx.py
       - name: Lint Python (ruff)
         shell: pwsh
         run: |
-          ruff check plugins/student-presentation-suite/shared/ plugins/student-presentation-suite/scripts/ plugins/student-presentation-suite/tests/ --ignore B904,SIM115
+          ruff check plugins/student-presentation-suite/shared/ plugins/student-presentation-suite/scripts/ plugins/student-presentation-suite/tests/
       - name: Lint JavaScript (eslint + prettier)
         shell: pwsh
         run: |
           npx --prefix plugins/student-presentation-suite eslint plugins/student-presentation-suite/scripts/*.js
           npx --prefix plugins/student-presentation-suite prettier --check plugins/student-presentation-suite/scripts/*.js
+  release-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -r plugins/student-presentation-suite/requirements.txt
+          python -m pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt
       - name: Release checks
         shell: pwsh
         env:
@@ -61,7 +76,6 @@ jobs:
           git diff --check
           python plugins/student-presentation-suite/scripts/check_plugin_release.py
           python scripts/check_marketplace_release.py
-          python scripts/check_installed_version.py --source-only
 
   claude-manifest:
     runs-on: ubuntu-latest

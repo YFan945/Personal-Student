@@ -19,8 +19,9 @@ Plugin install ID:
 student-presentation-suite@claude-personal
 ```
 
-The embedded-runtime adaptation plan and acceptance criteria are documented in
-[PPTX-EMBEDDED-SKILL-ADAPTATION-PLAN.md](PPTX-EMBEDDED-SKILL-ADAPTATION-PLAN.md).
+The suite owns its PPTX runtime end-to-end; ownership and audit provenance are
+documented in
+[`plugins/student-presentation-suite/references/pptx-runtime-provenance.md`](plugins/student-presentation-suite/references/pptx-runtime-provenance.md).
 
 ## Features
 
@@ -159,9 +160,11 @@ Before creating or editing a PPTX, Claude prepares a complete
 slide count, rubric, sources, visual style, and deliverables. Production starts
 only after you confirm it.
 
-A plugin `PreToolUse` hook enforces this boundary for suite production
-commands. The approved summary hash and workflow state are stored in the
-project output directory, so the gate does not rely only on model compliance.
+The suite records this boundary through `workflow_guard.py` state commands
+(init/confirm/transition); the approved summary hash and workflow state are
+stored in the project output directory. State is enforced by SKILL text
+self-discipline — the PreToolUse hook is removed, so no command is intercepted
+automatically.
 
 Deliverables are written to the active project's `outputs/` directory, never
 to the plugin installation. Existing source decks are never overwritten.
@@ -246,14 +249,12 @@ Depending on the request, `outputs/` may contain:
 <topic>-preview.png
 <topic>-presentation-package-report.json
 <topic>-qa-manifest.json
-<topic>-style-adherence-report.json
 <topic>-delivery-report.json
 <topic>-change-summary.md
 <topic>-presentation.pdf
 <topic>-teleprompter.html
 <topic>-training-cards.md
 <topic>-quality-report.json
-<topic>-visual-plan.json
 <topic>-revision-manifest.json
 ```
 
@@ -262,19 +263,18 @@ result, and the status: `complete`, `incomplete`, or `blocked`. A `complete`
 delivery requires a package report using the full suite validation profile with
 successful Open XML schema evidence, a QA manifest that revalidates and binds
 the source Slide Spec to the current PPTX and rendered previews, and a passing
-strict delivery report. Requested quality and style reports are hash-bound to the
+strict delivery report. Requested quality reports are hash-bound to the
 source spec or current PPTX instead of being accepted by filename alone.
 `deck.js` is written as raw pptxgenjs following the official generation gotchas
-in `pptxgenjs-safety.md`; the wrapper normalizes and atomically publishes the
-deck, and layout/overflow quality is caught by the QA visual inspection rather
-than a generation-time static gate. QA and delivery reuse the package report
-instead of revalidating an unchanged deck.
-A compiled visual plan may be published as an advisory reference; it is not a
-production gate. Eleven editable layout families (pptx-visuals.js, optional)
-provide process, timeline, comparison, dashboard, architecture, matrix,
-image-led, quote, and summary structures without post-generation patch loops.
-Standard visual styles also resolve to tokenized palette, spacing, typography,
-and line constraints, with a style-adherence report available for delivery QA.
+in `skills/student-presentation-ppt/references/pptxgenjs-safety.md`; the wrapper
+normalizes and atomically publishes the deck, and layout/overflow quality is
+caught by QA visual inspection and package validation. QA and delivery reuse the
+package report instead of revalidating an unchanged deck.
+Eleven editable layout families (pptx-visuals.js, optional) provide hero,
+visual-dominant, process-path, timeline, comparison, dashboard, architecture,
+matrix, quote, summary, and reference structures without post-generation patch
+loops. Standard visual styles
+resolve to tokenized palette, spacing, typography, and line constraints.
 The release workflow also renders a temporary scenario matrix on Linux for
 coursework, English-classroom, defense, competition, club-showcase, research,
 software projects, data surveys, and school-template editing.
@@ -319,14 +319,16 @@ them skips rendered QA and PDF export but does not block PPTX generation.
 
 ### Workflow State Is Stuck
 
-If the plugin blocks production commands because the Production Summary was not
-confirmed yet, or the state is stuck in `blocked`:
+If QA found a blocker, do **not** reset: return to production via the rework edge
+to rebuild the generator and re-enter QA:
 
 ```powershell
-python .\plugins\student-presentation-suite\scripts\workflow_guard.py reset
+python .\plugins\student-presentation-suite\scripts\workflow_guard.py transition --to producing --reason "<blocker summary>"
 ```
 
-To recover from `blocked` state after fixing a missing dependency:
+`reset` / `unblock` are last resorts only — they drop the confirmed summary and
+force a full restart. To recover from `blocked` state after fixing a missing
+dependency:
 
 ```powershell
 python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
@@ -354,7 +356,6 @@ Starting with 0.4.1 the project also includes a dedicated engineering toolchain:
 - **Python linting**: Ruff with selected rule sets (E, F, W, I, N, UP, B, SIM, ARG, RET)
 - **JavaScript linting**: ESLint with standard rules + Prettier formatting
 - **Cross-editor**: `.editorconfig` for consistent indentation and line endings
-- **Type safety**: Shared `TypedDict` definitions in [`shared/types.py`](plugins/student-presentation-suite/shared/types.py)
 - **Security scanning**: `pip-audit` and `npm audit` in CI pipeline
 - **Dependency management**: Dependabot configured for pip, npm, and GitHub Actions
 - **Integration tests**: End-to-end smoke tests for the spec → bridge pipeline

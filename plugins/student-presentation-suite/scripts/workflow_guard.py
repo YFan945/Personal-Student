@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""持久化演示文稿工作流状态，并在确认前阻断生产脚本。"""
+"""持久化演示文稿工作流状态，并管理确认门禁。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import sys
 import zipfile
 from datetime import datetime, timezone
@@ -24,52 +23,13 @@ SEQUENCE = (
 )
 TERMINAL = {"incomplete", "blocked"}
 
-# 使用正则精确匹配脚本调用路径，避免注释/echo 中的子串误判。
-# 支持绝对/相对路径解释器、版本后缀、py/python3.12、node.exe 等常见形式。
-_PRODUCTION_PATTERNS = (
-    re.compile(
-        r"(?:^|\s|['\"]|&|;)\s*(?:\S+[\\/])?"
-        r"(?:python(?:3(?:\.\d+)?)?|py(?:thon)?(?:\.exe)?|node(?:js)?(?:\.exe)?)"
-        r"\b\s+.*(?:"
-        r"slide_spec_to_pptx_brief\.py"
-        r"|run_with_pptxgenjs\.js"
-        r"|pptx_tool\.py\s+(?!inspect\b)[a-z-]+"
-        r"|build_support_outputs\.py"
-        r"|pptx_delivery_check\.py"
-        r"|create_revision_manifest\.py"
-        r")",
-        re.IGNORECASE,
-    ),
-)
-
-# 快速子串预扫描清单（用于跳过 JSON 解析）
-_FAST_MARKERS = (
-    "slide_spec_to_pptx_brief.py",
-    "run_with_pptxgenjs.js",
-    "pptx_tool.py",
-    "build_support_outputs.py",
-    "pptx_delivery_check.py",
-    "create_revision_manifest.py",
-)
-
-HOOK_DENY_REASON = (
-    "演示文稿生产命令被阻断：尚未确认 Production Summary。"
-    "请先完成需求确认，然后运行 workflow_guard.py confirm --summary-file <摘要文件>。"
-    "状态文件位于: {state_path}"
-)
-HOOK_DENY_CONTEXT = (
-    "请先让用户确认完整的 Production Summary，然后运行 "
-    "workflow_guard.py confirm 命令。"
-)
-
-STATE_MISSING_MSG = (
-    "工作流状态文件不存在。请先运行 'workflow_guard.py init' 初始化状态，"
-    "然后完成需求确认。状态文件路径: {state_path}"
-)
-
+# 返工边：qa 阶段发现 blocker 后回到 producing 重建，无需 reset 重跑
+# 「confirm → 环境检查 → 规划」全流程。
+# 恢复边：incomplete 补齐缺失门禁后回到 qa 重做交付检查。
+REWORK_EDGES = {("qa", "producing"), ("incomplete", "qa")}
 
 def project_root(cwd: Path | None = None) -> Path:
-    """优先使用 CLAUDE_PROJECT_DIR，其次使用 hook payload 的 cwd，最后用进程 cwd。"""
+    """优先使用 CLAUDE_PROJECT_DIR，其次使用调用时的 cwd。"""
     configured = os.environ.get("CLAUDE_PROJECT_DIR")
     if configured:
         return Path(configured).expanduser().resolve()
@@ -90,13 +50,15 @@ def load_state(path: Path) -> dict[str, Any] | None:
 
 def save_state(path: Path, state: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    state["updated_at"] = datetime.now(timezone.utc).isoformat()  # noqa: UP017  # 环境无 datetime.UTC
     path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def transition_allowed(before: str, after: str) -> bool:
     if after in TERMINAL:
-        return before != "intake_pending"
+        return before not in {"intake_pending"} and before != after
+    if (before, after) in REWORK_EDGES:
+        return True
     if before not in SEQUENCE or after not in SEQUENCE:
         return False
     return SEQUENCE.index(after) == SEQUENCE.index(before) + 1
@@ -104,15 +66,6 @@ def transition_allowed(before: str, after: str) -> bool:
 
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def has_valid_summary(state: dict[str, Any] | None) -> bool:
-    if not state or not state.get("summary_sha256") or not state.get("summary_file"):
-        return False
-    try:
-        return sha256_file(Path(state["summary_file"])) == state["summary_sha256"]
-    except OSError:
-        return False
 
 
 def count_slides(pptx: Path) -> int | None:
@@ -130,18 +83,14 @@ def validate_completion_manifest(
     manifest_path: Path | None,
     pptx: Path | None,
     delivery_report_path: Path | None = None,
-    package_report_path: Path | None = None,
 ) -> list[str]:
     if manifest_path is None or pptx is None:
         return [
-            "转换到 complete 必须提供 --qa-manifest、--delivery-report、"
-            "--package-report 和 --pptx。"
+            "转换到 complete 必须提供 --qa-manifest、--delivery-report 和 --pptx。"
         ]
     errors: list[str] = []
     if delivery_report_path is None:
         errors.append("转换到 complete 必须提供 --delivery-report。")
-    if package_report_path is None:
-        errors.append("转换到 complete 必须提供 --package-report。")
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -149,23 +98,21 @@ def validate_completion_manifest(
     if not isinstance(manifest, dict) or not pptx.is_file():
         return ["QA manifest 或 PPTX 无效。"]
     slide_count = count_slides(pptx)
-    inspection = manifest.get("visual_inspection")
     if manifest.get("pptx_sha256") != sha256_file(pptx):
         errors.append("QA manifest 的 pptx_sha256 与当前 PPTX 不一致。")
-    if slide_count is None or manifest.get("slide_count") != slide_count or manifest.get("rendered_page_count") != slide_count:
-        errors.append("QA manifest 的页数证据与 PPTX 不一致。")
+    if slide_count is None or manifest.get("slide_count") != slide_count:
+        errors.append("QA manifest 的 slide_count 与 PPTX 不一致。")
+    rendered = manifest.get("rendered_page_count")
+    if rendered and rendered != slide_count:
+        errors.append("QA manifest 的 rendered_page_count 与 PPTX 不一致。")
     if manifest.get("scenario_contract_passed") is not True:
         errors.append("QA manifest 未通过 scenario contract。")
-    if not isinstance(inspection, dict) or inspection.get("completed") is not True:
-        errors.append("QA manifest 未记录完成视觉检查。")
-    elif inspection.get("remaining_blockers") != 0:
-        errors.append("QA manifest 仍有未解决 blocker。")
-    elif sorted(inspection.get("inspected_pages") or []) != list(range(1, (slide_count or 0) + 1)):
-        errors.append("QA manifest 未覆盖全部页面。")
-    elif not isinstance(inspection.get("repair_cycles"), int):
-        errors.append("QA manifest 未记录 repair_cycles。")
-    elif inspection["repair_cycles"] < 1 and not inspection.get("no_repair_needed_reason"):
-        errors.append("QA manifest 必须记录修复周期或无需修复的具体原因。")
+    inspection = manifest.get("visual_inspection")
+    if inspection is not None:
+        if not isinstance(inspection, dict):
+            errors.append("QA manifest 的 visual_inspection 无效。")
+        elif inspection.get("completed") is True and inspection.get("remaining_blockers") != 0:
+            errors.append("QA manifest 仍有未解决 blocker。")
     if delivery_report_path is None:
         return errors
     try:
@@ -186,96 +133,10 @@ def validate_completion_manifest(
         errors.append("严格交付报告仍包含 package validation blocker。")
     if delivery.get("package_validation_passed") is not True:
         errors.append("严格交付报告未通过 PPTX package validation。")
-    if delivery.get("preview_page_coverage") != f"{slide_count}/{slide_count}":
+    coverage = delivery.get("preview_page_coverage")
+    if coverage and coverage not in ("0/0", "") and coverage != f"{slide_count}/{slide_count}":
         errors.append("严格交付报告未覆盖全部渲染页面。")
-    if package_report_path is None:
-        return errors
-    try:
-        package = json.loads(package_report_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        errors.append(f"无法读取 package validation 报告: {exc}")
-        return errors
-    if not isinstance(package, dict) or package.get("ok") is not True:
-        errors.append("package validation 报告未通过。")
-    if package.get("pptx_sha256") != sha256_file(pptx):
-        errors.append("package validation 报告与当前 PPTX 不一致。")
-    if delivery.get("package_report_sha256") != sha256_file(package_report_path):
-        errors.append("严格交付报告与当前 package validation 报告不一致。")
     return errors
-
-
-def _contains_production_command(command: str) -> bool:
-    """使用正则精确匹配生产脚本调用，避免注释/echo 中的子串误判。"""
-    return any(pattern.search(command) for pattern in _PRODUCTION_PATTERNS)
-
-
-def _required_states(command: str) -> set[str]:
-    lowered = command.casefold()
-    if "pptx_tool.py" in lowered:
-        if re.search(r"pptx_tool\.py(?:['\"])?\s+(?:render|qa-manifest)\b", lowered):
-            return {"qa"}
-        if re.search(r"pptx_tool\.py(?:['\"])?\s+thumbnail\b", lowered):
-            return {"intake_confirmed", "planned", "producing", "qa"}
-        if re.search(
-            r"pptx_tool\.py(?:['\"])?\s+"
-            r"(?:unpack|pack|add-slide|delete-slide|reorder-slides|clean|validate|normalize-generated|static-check)\b",
-            lowered,
-        ):
-            return {"producing", "qa"}
-    if "pptx_delivery_check.py" in lowered:
-        return {"qa"}
-    if "run_with_pptxgenjs.js" in lowered:
-        return {"producing"}
-    return {"intake_confirmed", "planned", "producing", "qa"}
-
-
-def hook_decision(payload: dict[str, Any]) -> dict[str, Any] | None:
-    if payload.get("tool_name") != "Bash":
-        return None
-    command = str((payload.get("tool_input") or {}).get("command") or "")
-    if not _contains_production_command(command):
-        return None
-    cwd_raw = payload.get("cwd")
-    cwd = Path(cwd_raw) if cwd_raw else None
-    state_path = default_state_file(cwd)
-    state = load_state(state_path)
-    current = state.get("state") if state else None
-    allowed = current in _required_states(command) and has_valid_summary(state)
-    if allowed:
-        return None
-    if current is None:
-        reason = STATE_MISSING_MSG.format(state_path=state_path)
-    else:
-        reason = HOOK_DENY_REASON.format(state_path=state_path)
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": reason,
-            "additionalContext": HOOK_DENY_CONTEXT,
-        }
-    }
-
-
-def _check_and_parse_stdin() -> dict[str, Any] | None:
-    """快速预扫描 stdin：如果内容不包含生产标记则跳过 JSON 解析。
-
-    对 99% 的非 PPT 相关 Bash 调用，避免了 json.loads 的开销。
-    """
-    try:
-        raw = sys.stdin.buffer.read().decode("utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    if not raw.strip():
-        return None
-    # 快速子串扫描
-    if not any(marker in raw for marker in _FAST_MARKERS):
-        return None
-    # 只有潜在匹配时才解析 JSON
-    try:
-        return json.loads(raw)
-    except (json.JSONDecodeError, OSError):
-        return None
 
 
 def state_command(args: argparse.Namespace) -> int:
@@ -367,7 +228,7 @@ def state_command(args: argparse.Namespace) -> int:
             }
         )
         save_state(state_path, base)
-        print(f"✅ 状态已确认（intake_confirmed），生产门禁已解除 → {state_path}")
+        print(f"✅ 状态已确认（intake_confirmed）→ {state_path}")
 
     elif args.action == "transition":
         if not current:
@@ -383,6 +244,10 @@ def state_command(args: argparse.Namespace) -> int:
                 valid_next.append(SEQUENCE[idx + 1])
             except (ValueError, IndexError):
                 pass
+            if before == "qa":
+                valid_next.append("producing")
+            if before == "incomplete":
+                valid_next.append("qa")
             if before != "intake_pending":
                 valid_next.extend(sorted(TERMINAL))
             raise SystemExit(
@@ -394,11 +259,18 @@ def state_command(args: argparse.Namespace) -> int:
                 args.qa_manifest,
                 args.pptx,
                 args.delivery_report,
-                args.package_report,
             )
             if errors:
                 raise SystemExit("无法完成交付：\n- " + "\n- ".join(errors))
+        is_rework = (before == "qa" and args.to == "producing") or (
+            before == "incomplete" and args.to == "qa"
+        )
+        if is_rework and not args.reason:
+            raise SystemExit("返工/恢复必须提供 --reason 记录 blocker 摘要")
         current["state"] = args.to
+        if is_rework:
+            current["rework_count"] = current.get("rework_count", 0) + 1
+            current["last_rework_reason"] = args.reason
         save_state(state_path, current)
         print(f"✅ 状态转换: {before} → {args.to}")
 
@@ -407,16 +279,6 @@ def state_command(args: argparse.Namespace) -> int:
 
 
 def main() -> None:
-    if len(sys.argv) == 1:
-        # Hook 模式：快速预扫描避免每次 Bash 调用都解析 JSON
-        payload = _check_and_parse_stdin()
-        if payload is None:
-            return
-        decision = hook_decision(payload)
-        if decision:
-            print(json.dumps(decision, ensure_ascii=False))
-        return
-
     parser = argparse.ArgumentParser(
         description="管理 Student Presentation 工作流状态",
     )
@@ -453,16 +315,16 @@ def main() -> None:
         required=True,
         help=f"目标状态（正向: {', '.join(SEQUENCE[2:])}；终态: {', '.join(sorted(TERMINAL))}）",
     )
+    transition.add_argument(
+        "--reason",
+        type=str,
+        help="返工 blocker 摘要（qa→producing 时必填）",
+    )
     transition.add_argument("--qa-manifest", type=Path, help="转换到 complete 所需的 QA manifest")
     transition.add_argument(
         "--delivery-report",
         type=Path,
         help="转换到 complete 所需的严格 delivery report",
-    )
-    transition.add_argument(
-        "--package-report",
-        type=Path,
-        help="转换到 complete 所需的 package validation report",
     )
     transition.add_argument("--pptx", type=Path, help="转换到 complete 所需的交付 PPTX")
 

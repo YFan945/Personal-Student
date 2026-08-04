@@ -5,9 +5,10 @@ description: 创建学生演示文稿 PPT/PPTX。提供主题后引导完成 int
 
 # 创建学生演示文稿
 
-加载 `skills/student-presentation-ppt/SKILL.md` 的工作流。严格按
+加载 `../skills/student-presentation-ppt/SKILL.md` 的工作流。按
 intake → 规划 → 生产 → QA → 完成的顺序推进。使用 `${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py`
-管理状态门禁。
+管理状态门禁。QA 发现 blocker 时走返工边
+`transition --to producing --reason <摘要>` 重建，无需 reset。
 
 ## 快速参数
 

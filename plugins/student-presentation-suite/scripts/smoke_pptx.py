@@ -33,8 +33,7 @@ const TOKENS = {
                 title_font: "Cambria", body_font: "Calibri" },
   geometry: { safe_margin_pct: 6, title_zone_pct: 16, footer_zone_pct: 5,
               spacing_scale_pt: [6,12,18,24,36,48], corner_radius_pt: 8 },
-  lines: { standard_pt: 1.25, emphasis_pt: 2.5 },
-  style_adherence: { max_unapproved_srgb_colors: 2, max_font_families: 3 }
+  lines: { standard_pt: 1.25, emphasis_pt: 2.5 }
 };
 const LANG = "english";
 

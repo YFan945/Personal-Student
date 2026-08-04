@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sys
 import tempfile
 import unittest
 import zipfile
@@ -13,244 +12,6 @@ from test_helpers import load_module
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "workflow_guard.py"
-
-
-class HookDecisionTests(unittest.TestCase):
-    """PreToolUse hook 决策逻辑测试"""
-
-    def test_blocks_production_without_confirmation(self) -> None:
-        module = load_module(SCRIPT)
-        with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch.dict("os.environ", {}, clear=True):
-                decision = module.hook_decision(
-                    {
-                        "tool_name": "Bash",
-                        "cwd": tmp,
-                        "tool_input": {
-                            "command": "python slide_spec_to_pptx_brief.py spec.yaml"
-                        },
-                    }
-                )
-        self.assertIsNotNone(decision)
-        self.assertEqual(
-            "deny",
-            decision["hookSpecificOutput"]["permissionDecision"],
-        )
-
-    def test_generation_waits_for_producing_after_confirmation(self) -> None:
-        module = load_module(SCRIPT)
-        with tempfile.TemporaryDirectory() as tmp:
-            state_path = Path(tmp) / "outputs" / ".student-presentation-state.json"
-            state_path.parent.mkdir()
-            summary = Path(tmp) / "summary.md"
-            summary.write_text("confirmed", encoding="utf-8")
-            state_path.write_text(
-                json.dumps({
-                    "state": "intake_confirmed",
-                    "summary_file": str(summary),
-                    "summary_sha256": module.sha256_file(summary),
-                }), encoding="utf-8"
-            )
-            with mock.patch.dict("os.environ", {}, clear=True):
-                decision = module.hook_decision(
-                    {
-                        "tool_name": "Bash",
-                        "cwd": tmp,
-                        "tool_input": {
-                            "command": "node run_with_pptxgenjs.js deck.js"
-                        },
-                    }
-                )
-        self.assertEqual("deny", decision["hookSpecificOutput"]["permissionDecision"])
-
-    def test_allows_in_producing_state(self) -> None:
-        """producing 状态应允许生产命令"""
-        module = load_module(SCRIPT)
-        for state in ("producing",):
-            with self.subTest(state=state):
-                with tempfile.TemporaryDirectory() as tmp:
-                    state_path = (
-                        Path(tmp) / "outputs" / ".student-presentation-state.json"
-                    )
-                    state_path.parent.mkdir()
-                    summary = Path(tmp) / "summary.md"
-                    summary.write_text("confirmed", encoding="utf-8")
-                    state_path.write_text(
-                        json.dumps({
-                            "state": state,
-                            "summary_file": str(summary),
-                            "summary_sha256": module.sha256_file(summary),
-                        }), encoding="utf-8"
-                    )
-                    with mock.patch.dict("os.environ", {}, clear=True):
-                        decision = module.hook_decision(
-                            {
-                                "tool_name": "Bash",
-                                "cwd": tmp,
-                                "tool_input": {
-                                    "command": "python build_support_outputs.py spec --json"
-                                },
-                            }
-                        )
-                self.assertIsNone(decision)
-
-    def test_blocks_in_complete_state(self) -> None:
-        """complete 状态不应再允许生产命令"""
-        module = load_module(SCRIPT)
-        with tempfile.TemporaryDirectory() as tmp:
-            state_path = Path(tmp) / "outputs" / ".student-presentation-state.json"
-            state_path.parent.mkdir()
-            state_path.write_text(
-                json.dumps({"state": "complete"}), encoding="utf-8"
-            )
-            with mock.patch.dict("os.environ", {}, clear=True):
-                decision = module.hook_decision(
-                    {
-                        "tool_name": "Bash",
-                        "cwd": tmp,
-                        "tool_input": {
-                            "command": "node run_with_pptxgenjs.js deck.js"
-                        },
-                    }
-                )
-        self.assertIsNotNone(decision)
-        self.assertEqual(
-            "deny",
-            decision["hookSpecificOutput"]["permissionDecision"],
-        )
-
-    def test_missing_summary_hash_blocks_production(self) -> None:
-        module = load_module(SCRIPT)
-        with tempfile.TemporaryDirectory() as tmp:
-            state_path = Path(tmp) / "outputs" / ".student-presentation-state.json"
-            state_path.parent.mkdir()
-            state_path.write_text(json.dumps({"state": "intake_confirmed"}), encoding="utf-8")
-            with mock.patch.dict("os.environ", {}, clear=True):
-                decision = module.hook_decision({
-                    "tool_name": "Bash", "cwd": tmp,
-                    "tool_input": {"command": "node run_with_pptxgenjs.js deck.js"},
-                })
-        self.assertIsNotNone(decision)
-
-    def test_ignores_unrelated_bash(self) -> None:
-        module = load_module(SCRIPT)
-        for cmd in ("git status", "npm install", "ls -la", "echo hello"):
-            with self.subTest(cmd=cmd):
-                self.assertIsNone(
-                    module.hook_decision(
-                        {"tool_name": "Bash", "tool_input": {"command": cmd}}
-                    )
-                )
-
-    def test_ignores_non_bash_tool(self) -> None:
-        module = load_module(SCRIPT)
-        self.assertIsNone(
-            module.hook_decision(
-                {
-                    "tool_name": "Read",
-                    "tool_input": {
-                        "command": "python slide_spec_to_pptx_brief.py x.yaml"
-                    },
-                }
-            )
-        )
-
-    def test_blocked_state_does_not_allow_more_production(self) -> None:
-        module = load_module(SCRIPT)
-        with tempfile.TemporaryDirectory() as tmp:
-            state_path = Path(tmp) / "outputs" / ".student-presentation-state.json"
-            state_path.parent.mkdir()
-            state_path.write_text(
-                json.dumps({"state": "blocked"}), encoding="utf-8"
-            )
-            with mock.patch.dict("os.environ", {}, clear=True):
-                decision = module.hook_decision(
-                    {
-                        "tool_name": "Bash",
-                        "cwd": tmp,
-                        "tool_input": {
-                            "command": "node run_with_pptxgenjs.js deck.js"
-                        },
-                    }
-                )
-        self.assertIsNotNone(decision)
-        self.assertEqual(
-            "deny",
-            decision["hookSpecificOutput"]["permissionDecision"],
-        )
-
-    def test_incomplete_state_blocks_production(self) -> None:
-        module = load_module(SCRIPT)
-        with tempfile.TemporaryDirectory() as tmp:
-            state_path = Path(tmp) / "outputs" / ".student-presentation-state.json"
-            state_path.parent.mkdir()
-            state_path.write_text(
-                json.dumps({"state": "incomplete"}), encoding="utf-8"
-            )
-            with mock.patch.dict("os.environ", {}, clear=True):
-                decision = module.hook_decision(
-                    {
-                        "tool_name": "Bash",
-                        "cwd": tmp,
-                        "tool_input": {
-                            "command": "python pptx_delivery_check.py --pptx x.pptx"
-                        },
-                    }
-                )
-        self.assertIsNotNone(decision)
-        self.assertEqual(
-            "deny",
-            decision["hookSpecificOutput"]["permissionDecision"],
-        )
-
-    def test_no_false_positive_on_echo_comment(self) -> None:
-        """echo/注释中包含脚本名不应被误拦截"""
-        module = load_module(SCRIPT)
-        safe_commands = [
-            "echo 'learned about run_with_pptxgenjs.js today'",
-            "# TODO: use slide_spec_to_pptx_brief.py later",
-            "cat build_support_outputs.py",
-            "echo build_support_outputs.py",
-        ]
-        for cmd in safe_commands:
-            with self.subTest(cmd=cmd):
-                self.assertIsNone(
-                    module.hook_decision(
-                        {"tool_name": "Bash", "tool_input": {"command": cmd}}
-                    )
-                )
-
-    def test_claude_plugin_root_pattern_matches(self) -> None:
-        """${CLAUDE_PLUGIN_ROOT} 前缀的脚本调用应被正确识别"""
-        module = load_module(SCRIPT)
-        commands = [
-            'python "${CLAUDE_PLUGIN_ROOT}/scripts/slide_spec_to_pptx_brief.py" spec.yaml',
-            'node "${CLAUDE_PLUGIN_ROOT}/scripts/run_with_pptxgenjs.js" deck.js',
-        ]
-        for cmd in commands:
-            with self.subTest(cmd=cmd):
-                with tempfile.TemporaryDirectory() as tmp:
-                    with mock.patch.dict("os.environ", {}, clear=True):
-                        decision = module.hook_decision(
-                            {
-                                "tool_name": "Bash",
-                                "cwd": tmp,
-                                "tool_input": {"command": cmd},
-                            }
-                        )
-                self.assertIsNotNone(decision)
-                self.assertEqual(
-                    "deny",
-                    decision["hookSpecificOutput"]["permissionDecision"],
-                )
-
-    def test_empty_command_ignored(self) -> None:
-        module = load_module(SCRIPT)
-        self.assertIsNone(
-            module.hook_decision(
-                {"tool_name": "Bash", "tool_input": {"command": ""}}
-            )
-        )
 
 
 class StateTransitionTests(unittest.TestCase):
@@ -274,9 +35,30 @@ class StateTransitionTests(unittest.TestCase):
         seq = module.SEQUENCE
         for i in range(1, len(seq)):
             with self.subTest(before=seq[i], after=seq[i - 1]):
+                if (seq[i], seq[i - 1]) in module.REWORK_EDGES:
+                    # qa → producing 是允许的返工边，用于修复后重建
+                    self.assertTrue(module.transition_allowed(seq[i], seq[i - 1]))
+                    continue
                 self.assertFalse(
                     module.transition_allowed(seq[i], seq[i - 1])
                 )
+
+    def test_rework_edge_qa_to_producing_allowed(self) -> None:
+        module = self.module
+        self.assertTrue(module.transition_allowed("qa", "producing"))
+        # 其他回退仍被拒绝
+        self.assertFalse(module.transition_allowed("complete", "qa"))
+        self.assertFalse(module.transition_allowed("producing", "planned"))
+
+    def test_recovery_edge_incomplete_to_qa_allowed(self) -> None:
+        module = self.module
+        self.assertTrue(module.transition_allowed("incomplete", "qa"))
+        # 其它从 incomplete 的出口仍被拒绝（除 reset）
+        self.assertFalse(module.transition_allowed("incomplete", "planned"))
+        self.assertFalse(module.transition_allowed("incomplete", "producing"))
+        # 终态互转仍允许（complete→incomplete 等）
+        self.assertTrue(module.transition_allowed("complete", "incomplete"))
+        self.assertTrue(module.transition_allowed("incomplete", "blocked"))
 
     def test_skip_transitions_blocked(self) -> None:
         module = self.module
@@ -305,7 +87,8 @@ class StateTransitionTests(unittest.TestCase):
 
     def test_same_state_blocked(self) -> None:
         module = self.module
-        for state in module.SEQUENCE:
+        # SEQUENCE 内状态与终态（incomplete/blocked）的同状态自转都应被拒绝
+        for state in list(module.SEQUENCE) + sorted(module.TERMINAL):
             with self.subTest(state=state):
                 self.assertFalse(
                     module.transition_allowed(state, state)
@@ -364,7 +147,7 @@ class StateTransitionTests(unittest.TestCase):
             )
             self.assertEqual(
                 [],
-                module.validate_completion_manifest(manifest, pptx, delivery, package),
+                module.validate_completion_manifest(manifest, pptx, delivery),
             )
             manifest.write_text("{}", encoding="utf-8")
             self.assertTrue(module.validate_completion_manifest(manifest, pptx))
@@ -410,7 +193,8 @@ class StateTransitionTests(unittest.TestCase):
             errors = module.validate_completion_manifest(manifest, pptx)
             self.assertTrue(any("blocker" in e.lower() for e in errors))
 
-    def test_complete_rejects_no_visual_inspection(self) -> None:
+    def test_complete_allows_missing_visual_inspection(self) -> None:
+        """视觉检查为可选：无 visual_inspection 的 manifest 在 delivery 通过时仍可 complete。"""
         module = self.module
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -421,22 +205,22 @@ class StateTransitionTests(unittest.TestCase):
             manifest.write_text(json.dumps({
                 "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
                 "slide_count": 1,
-                "rendered_page_count": 1,
+                "scenario_contract_passed": True,
             }), encoding="utf-8")
-            errors = module.validate_completion_manifest(manifest, pptx)
-            self.assertTrue(any("视觉检查" in e for e in errors))
-
-
-class FastPreScanTests(unittest.TestCase):
-    """快速预扫描测试"""
-
-    def test_skip_json_parsing_for_unrelated_input(self) -> None:
-        """非生产命令应跳过 JSON 解析"""
-        module = load_module(SCRIPT)
-        with mock.patch.object(sys.stdin.buffer, "read", return_value=b""):
-            result = module._check_and_parse_stdin()
-        # 无 stdin 输入时应返回 None
-        self.assertIsNone(result)
+            delivery = root / "delivery.json"
+            delivery.write_text(json.dumps({
+                "ok": True,
+                "status": "complete",
+                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                "qa_manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+                "package_blockers": 0,
+                "package_validation_passed": True,
+                "preview_page_coverage": "0/0",
+            }), encoding="utf-8")
+            self.assertEqual(
+                [],
+                module.validate_completion_manifest(manifest, pptx, delivery),
+            )
 
 
 class ProjectRootTests(unittest.TestCase):
@@ -455,67 +239,6 @@ class ProjectRootTests(unittest.TestCase):
         with mock.patch.dict("os.environ", {}, clear=True):
             root = module.project_root()
             self.assertEqual(root, Path.cwd().resolve())
-
-
-class ProductionPatternTests(unittest.TestCase):
-    """生产命令模式匹配测试"""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.module = load_module(SCRIPT)
-
-    def test_matches_production_commands(self) -> None:
-        commands = [
-            "python slide_spec_to_pptx_brief.py spec.yaml",
-            "python3 build_support_outputs.py --json",
-            "node run_with_pptxgenjs.js deck.js",
-            "python pptx_delivery_check.py --pptx x.pptx",
-            "python create_revision_manifest.py old new --strict",
-            "py slide_spec_to_pptx_brief.py spec.yaml",
-            "python3.12 build_support_outputs.py --json",
-            r"C:\Python312\python.exe slide_spec_to_pptx_brief.py spec.yaml",
-            "uv run python slide_spec_to_pptx_brief.py spec.yaml",
-            "python pptx_tool.py thumbnail source.pptx --output-prefix out/template",
-            "python pptx_tool.py validate candidate.pptx --json",
-            "python pptx_tool.py delete-slide source.pptx slide2.xml --output edited.pptx",
-            "python pptx_tool.py reorder-slides source.pptx slide2.xml slide1.xml --output edited.pptx",
-        ]
-        for cmd in commands:
-            with self.subTest(cmd=cmd):
-                self.assertTrue(
-                    self.module._contains_production_command(cmd),
-                    f"应匹配生产命令: {cmd}",
-                )
-
-    def test_does_not_match_echo_comments(self) -> None:
-        safe = [
-            "echo 'using run_with_pptxgenjs.js later'",
-            "echo build_support_outputs.py",
-            "# slide_spec_to_pptx_brief.py is the bridge",
-            "cat pptx_delivery_check.py",
-            "ls create_revision_manifest.py",
-            "python validate_slide_spec.py spec.yaml",
-        ]
-        for cmd in safe:
-            with self.subTest(cmd=cmd):
-                self.assertFalse(
-                    self.module._contains_production_command(cmd),
-                    f"不应匹配非调用命令: {cmd}",
-                )
-
-    def test_empty_command(self) -> None:
-        self.assertFalse(self.module._contains_production_command(""))
-        self.assertFalse(self.module._contains_production_command("   "))
-
-    def test_inspect_is_read_only_but_thumbnail_requires_confirmation(self) -> None:
-        inspect = "python pptx_tool.py inspect source.pptx"
-        thumbnail = "python pptx_tool.py thumbnail source.pptx --output-prefix out/template"
-        self.assertFalse(self.module._contains_production_command(inspect))
-        self.assertTrue(self.module._contains_production_command(thumbnail))
-        self.assertEqual(
-            {"intake_confirmed", "planned", "producing", "qa"},
-            self.module._required_states(thumbnail),
-        )
 
 
 if __name__ == "__main__":

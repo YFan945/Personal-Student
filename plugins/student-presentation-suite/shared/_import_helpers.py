@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager, suppress
 from pathlib import Path
 
@@ -27,7 +27,7 @@ def _plugin_root_on_path(plugin_root: Path) -> Generator[None, None, None]:
                 sys.path.remove(root_str)
 
 
-def load_inspect_pptx(script_path: str | Path) -> type:
+def load_inspect_pptx(script_path: str | Path) -> Callable:
     """Import and return the shared ``inspect_pptx`` function.
 
     Temporarily adds the plugin root to ``sys.path`` to resolve the

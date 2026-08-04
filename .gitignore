@@ -5,6 +5,7 @@
 **/*.png
 **/__pycache__/
 **/.pytest_cache/
+**/.ruff_cache/
 **/*.pyc
 **/node_modules/
 **/openxml_validator/bin/

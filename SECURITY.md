@@ -13,7 +13,7 @@
 
 本插件的安全模型基于：
 
-1. **工作流状态机** — 通过 `PreToolUse` 钩子阻止未授权的 PPTX 生产命令
-2. **Production Summary 确认门禁** — 用户必须明确确认才能开始生产
+1. **工作流状态机** — 通过 `workflow_guard.py` 显式状态命令（init/confirm/transition）记录 PPTX 生产状态，由 SKILL 文本自律维护
+2. **Production Summary 确认** — 用户必须明确确认 Production Summary 后才开始生产
 3. **QA manifest** — 交付必须附带可验证的质量证据
 4. **路径安全** — 环境变量 `CLAUDE_PROJECT_DIR` 有路径穿越防护

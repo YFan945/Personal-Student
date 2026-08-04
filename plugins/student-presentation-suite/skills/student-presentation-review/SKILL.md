@@ -37,11 +37,14 @@ version: 0.4.3
    - `../../references/image-strategy.md` — 视觉/来源审查
 3. 对 PPTX 输入运行 `pptx_static_check.py <deck.pptx> --json`。
 4. 检查渲染预览、PDF 页面、截图或 contact sheet。渲染证据决定裁剪和可读性结论。
-5. 每次发现分级为 Critical / Major / Minor，包括：目标页面、问题、影响、具体修复建议。
+5. 每次发现分级为 Critical / Major / Minor，记录 `target`（目标页面/页码）、`problem`（问题+影响）、`fix`（具体修复建议），与 `review_findings` schema 一致。
 6. 检查来源缺口、故事顺序、重复页面、结论支撑、时间、转场、开篇/收尾、可能的问题。有 Slide Spec 时运行 `analyze_presentation_spec.py`。
-7. 编辑请求时，生成结构化交接（`source_deck`、`edit_intent`、`review_findings`、`preserve`、`change_summary_required`），然后进入 `student-presentation-ppt`。
+7. 编辑请求时，写 `outputs/<topic>-slide-spec.yaml`（含 `source_deck`、`edit_intent`、`review_findings`（`severity`/`target`/`problem`/`fix`）、`preserve`、`change_summary_required`，按 `../../references/slide-spec.schema.json` 校验），再进入 `student-presentation-ppt`。
 
-## 状态规则
+## 评审结论标签
+
+`complete` / `incomplete` / `blocked` 是评审报告的结论标签，仅描述审查完成度；
+本 skill 不调用 `workflow_guard.py`，不写 `.student-presentation-state.json`。
 
 - 静态扫描 + 渲染检查完成 → `complete`
 - 审查有用但缺少渲染证据 → `incomplete`；声明视觉结论未经核实
@@ -51,4 +54,5 @@ version: 0.4.3
 
 ## 输出契约
 
+评审报告默认写入 `outputs/<topic>-review.md`；编辑交接件写入 `outputs/<topic>-slide-spec.yaml`。
 写入 `${CLAUDE_PROJECT_DIR}/outputs` 或当前项目的 `outputs/` 回退，不得写入 `${CLAUDE_PLUGIN_ROOT}`。

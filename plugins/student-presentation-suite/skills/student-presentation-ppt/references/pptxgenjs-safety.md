@@ -2,8 +2,8 @@
 
 本文件是生成 deck.js 的权威约束，对齐官方 pptx skill 的 gotchas。模型直接写裸
 pptxgenjs 脚本；`pptx-helpers.js`/`pptx-visuals.js` 是可选工具库，不是必须依赖。
-生成后的正确性由 QA 阶段的 `pptx_tool.py validate` 与逐页视觉检查兜底；wrapper
-只在生成后做 `normalize-generated`（修复类），不做静态门禁。
+生成后的正确性由 QA 阶段的 `pptx_tool.py validate` 兜底；逐页渲染视觉检查可选，仅在
+怀疑布局问题时做。wrapper 只在生成后做 `normalize-generated`（修复类），不做静态门禁。
 
 ## 布局与坐标
 
@@ -67,8 +67,8 @@ pptxgenjs 脚本；`pptx-helpers.js`/`pptx-visuals.js` 是可选工具库，不�
 ## 图片与图标
 
 20. 图片走 `addImage({ data: "image/png;base64," + buf.toString("base64") })`——
-    前缀必须带。图标流程：`react-icons` → `ReactDOMServer.renderToStaticMarkup` 渲染
-    SVG → `sharp` 栅格化 ≥256px → base64 塞进 `addImage`。
+    前缀必须带。图标默认用 `addText`/`addShape` 或内联 SVG 经 `addImage` base64 嵌入，
+    不引入外部图标库；如用户点名要求成套图标，按项目临时安装并注明在生产 brief 中。
 
 ## 字体安全表（QA 可信）
 

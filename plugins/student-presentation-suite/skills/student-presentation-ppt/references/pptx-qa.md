@@ -28,10 +28,11 @@ relationship source/target/ID、content type、slide 注册、notes 反向关系
 Open XML SDK markup/schema validation 加 suite-owned OPC 语义检查，不宣称内置
 完整 PML/DML/OPC XSD 文件集。
 
-## 3. Render and visual inspection
+## 3. Render and visual inspection（可选）
 
-生成 wrapper 不输出 static report（静态门禁已剥离）。渲染后逐页检查文字溢出、重叠、
-边距、对比度等视觉质量；正确性以第 2 节 package validation 为准。
+package validation（第 2 节）是唯一强制结构门禁；逐页渲染视觉检查**可选**，用于发现
+文字溢出、重叠、边距、对比度等视觉质量问题。仅在 package validate 通过后怀疑布局问题
+（或用户要求）时才运行渲染：
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" render <pptx> \
@@ -43,32 +44,37 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" render <pptx> \
 只有发现问题时才修改 generator 并整包重建；修改后重新执行 package、render 和全部页面
 检查，不能复用旧 PDF 或 preview。
 
-LibreOffice 或 Poppler 缺失时允许保留候选 PPTX，但状态只能为 `incomplete`。
+未做渲染时，QA manifest 不写 preview/visual_inspection 字段，delivery 的
+`preview_page_coverage` 为 `0/0`；渲染预览仅供按需自查，不再作为交付强制项。
 
 ## 4. QA manifest
 
-完成逐页检查后调用 `pptx_tool.py qa-manifest`。必须传入原始 `--slide-spec`、
+调用 `pptx_tool.py qa-manifest`。必须传入原始 `--slide-spec`、
 `validate_slide_spec.py --output` 产生的 Slide Spec report，以及可选的
 `--package-report <validate --output 产物>`。manifest 会重新执行 schema/语义校验，并
 验证 Slide Spec/Spec report 的 SHA-256、PPTX 页数后自行写入
 `scenario_contract_passed=true`；命令行不再允许自报该布尔值。
-preview 数必须等于 slide 数。首个 candidate 通过时使用 `repair_cycles=0` 并记录具体
-`no_repair_needed_reason`；只有实际修改过才增加 repair cycle。manifest 自动写入最终
-PPTX、package report（若提供）和每个 preview 的 SHA-256，不得手写或复制旧 hash。
+`--preview` 与 `repair_cycles` 均为**可选**：只有实际渲染并逐页检查时才传 preview，
+manifest 才记录 preview/visual_inspection 字段；`repair_cycles` 是记录字段（0=无返工），
+不设下限。manifest 自动写入最终 PPTX、package report（若提供）和每个 preview 的
+SHA-256，不得手写或复制旧 hash。
 strict delivery check 复用 manifest 绑定的 package report。
 
 ## 5. Suite checks
 
 运行 `pptx_delivery_check.py --strict --json`。delivery command 显式传入 PPTX、notes、
-所有 preview、package report、已经存在的 QA manifest、style report、输出 report，
+可选的 preview、package report、已经存在的 QA manifest、输出 report，
 以及已确认的 PDF/teleprompter/revision manifest。禁止在 QA manifest 尚未生成时运行
 strict delivery。package report 必须使用 `openxml-sdk-plus-suite-semantic-v4` profile，
-且 `schema_validation.performed=true`、`error_count=0`；quality/style report 会分别校验
-Slide Spec/PPTX SHA-256，过期或手写报告不能通过。
+且 `schema_validation.performed=true`、`error_count=0`；quality report 会校验
+Slide Spec/PPTX SHA-256，过期或手写报告不能通过。未渲染时 preview 参数可省略。
 
 ## 6. Completion
 
-只有 package validation 通过、全部页面已检查、remaining blockers 为零、所有确认的
-deliverables 存在且 delivery check 通过时，状态才能进入 `complete`。最后的
-`transition --to complete` 必须同时传入当前 PPTX、QA manifest、package report 和严格
-delivery report；自报的 `remaining_blockers=0` 不能单独完成交付。
+package validation 通过、所有确认的 deliverables 存在且 delivery check 通过时，状态才能
+进入 `complete`。最后的 `transition --to complete` 必须同时传入当前 PPTX、QA manifest
+和严格 delivery report；package report 可选（完成门禁信任 delivery report）。
+
+QA 发现问题时**无需重置**：先 `transition --to producing --reason <blocker 摘要>` 返工，
+修改 generator 重建后 `transition --to qa`，再重新 qa-manifest 与 delivery check。
+只有确认无从修复时才使用 `reset` 回到 intake_pending 重新规划。

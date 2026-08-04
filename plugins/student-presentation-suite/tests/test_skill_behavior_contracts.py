@@ -39,9 +39,6 @@ class SkillBehaviorContractTests(unittest.TestCase):
         )
         entry = marketplace["plugins"][0]
         self.assertEqual("claude-personal", marketplace["name"])
-        # 版本一致性（不硬编码具体版本号）
-        self.assertEqual(manifest["version"], entry["version"],
-                         "manifest 和 marketplace 版本应一致")
         self.assertEqual(manifest["name"], entry["name"])
         self.assertEqual(
             [], manifest["dependencies"],
@@ -144,8 +141,6 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("Do not run environment checks", intake)
         self.assertIn("Delegation does NOT itself move the state", intake)
         self.assertIn("完整 Production Summary", ppt)
-        hooks = self.read("hooks/hooks.json")
-        self.assertIn("PreToolUse", hooks)
         self.assertIn("confirm --summary-file", ppt)
         self.assertIn("生产前必须具备", production)
 
@@ -292,9 +287,26 @@ class SkillBehaviorContractTests(unittest.TestCase):
         review = self.read("skills/student-presentation-review/SKILL.md")
         self.assertIn("目录→每页主张", planning)
         self.assertIn("analyze_presentation_spec.py", planning)
+        self.assertIn("build_support_outputs.py", planning)
         self.assertIn("support outputs", production)
         self.assertIn("create_revision_manifest.py", revision)
         self.assertIn("可能的问题", review)
+
+    def test_handoff_artifacts_and_completion_contract(self) -> None:
+        outline = self.read("skills/student-presentation/SKILL.md")
+        review = self.read("skills/student-presentation-review/SKILL.md")
+        ppt = self.read("skills/student-presentation-ppt/SKILL.md")
+        # outline 交接工件：转 PPTX 时必写 slide-spec.yaml 与 brief.yaml
+        self.assertIn("<topic>-slide-spec.yaml", outline)
+        self.assertIn("<topic>-brief.yaml", outline)
+        # review 报告文件名与编辑交接件
+        self.assertIn("<topic>-review.md", review)
+        self.assertIn("<topic>-slide-spec.yaml", review)
+        # review 状态词汇是结论标签，不写 workflow_guard 状态
+        self.assertIn("不调用 `workflow_guard.py`", review)
+        self.assertIn("评审结论标签", review)
+        # ppt 完成命令不再要求 --package-report
+        self.assertNotIn("--package-report", ppt)
 
 
 if __name__ == "__main__":

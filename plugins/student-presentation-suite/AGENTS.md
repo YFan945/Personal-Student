@@ -10,8 +10,7 @@ student-owned academic contexts.
 | Component | Location | Purpose |
 |-----------|----------|---------|
 | Skills (×3) | `skills/` | Auto-activating: planning, PPTX production, review |
-| Hooks | `hooks/hooks.json` | PreToolUse guard: blocks production commands before intake confirmed |
-| Shared modules | `shared/` | Python types, validation, runtime, quality, visual plan |
+| Shared modules | `shared/` | Python validation, runtime, quality |
 | Scripts | `scripts/` | CLI tools: workflow guard, validation, generation, QA |
 | References | `references/` | Canonical contracts: intake, brief, slide-spec, design tokens |
 | Tests | `tests/` | Python unittest suite |
@@ -36,14 +35,18 @@ See `references/shared-standards.md` for full intent routing rules.
 
 ```
 intake_pending → intake_confirmed → planned → producing → qa → complete
-     ↓                ↓                   ↓          ↓          ↓
-  blocked          blocked              blocked    blocked    blocked
-  incomplete       incomplete           incomplete incomplete incomplete
+                      ↓               ↓          ↓          ↓       ↓
+                    blocked         blocked    blocked    blocked   blocked
+                    incomplete      incomplete incomplete incomplete incomplete
+
+Terminal states (`blocked`/`incomplete`) may be entered from `intake_confirmed`
+onward, not from `intake_pending`.
+qa → producing is the rework edge; `incomplete → qa` is the recovery edge
+(`transition --reason <summary>`).
 ```
 
-- Mandatory full intake gate before any production command
-- State persisted via `scripts/workflow_guard.py`
-- `PreToolUse` hook enforces the gate server-side
+- Full intake gate is a workflow convention tracked by `scripts/workflow_guard.py`
+- `scripts/workflow_guard.py` persists and tracks the workflow state
 
 ## Key Constraints
 

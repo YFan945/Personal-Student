@@ -102,7 +102,7 @@ def fatal_slide_findings(part: str, root: ET.Element) -> list[Finding]:
             )
 
     # <p:overrideClrMapping> in a position the schema forbids.
-    for node in root.iter(_OVERRIDE_CLR_MAPPING):
+    for _node in root.iter(_OVERRIDE_CLR_MAPPING):
         findings.append(
             Finding(
                 "fatal-slide-override-clr-mapping",
@@ -128,6 +128,7 @@ def _local(tag: str) -> str:
 def _parent(root: ET.Element, node: ET.Element) -> ET.Element | None:
     """Return the direct parent of ``node`` within ``root`` (or None)."""
     for candidate in root.iter():
-        if node in list(candidate):
-            return candidate
+        for child in candidate:
+            if child is node:  # 身份比较：避免结构相同的兄弟节点被误判为父节点
+                return candidate
     return None

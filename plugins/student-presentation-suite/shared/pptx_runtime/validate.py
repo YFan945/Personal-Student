@@ -350,13 +350,13 @@ def _presentation_has_official_notes_order(root: Path) -> bool:
 
 def _validate_namespaces(root: Path, files: set[str], findings: list[Finding]) -> None:
     """Check mc:Ignorable prefixes are declared on the same element."""
-    MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc_ns = "http://schemas.openxmlformats.org/markup-compatibility/2006"
     for part in sorted(name for name in files if name.endswith(".xml")):
         xml_root = _parse(root / Path(part), part, findings)
         if xml_root is None:
             continue
         for node in xml_root.iter():
-            ignorable = node.attrib.get(f"{{{MC_NS}}}Ignorable", "")
+            ignorable = node.attrib.get(f"{{{mc_ns}}}Ignorable", "")
             if not ignorable:
                 continue
             declared = {prefix for prefix, _ in (node.nsmap or {}).items()} | {
@@ -579,7 +579,7 @@ def _validate_unreferenced_files(root: Path, files: set[str], findings: list[Fin
 
 def _validate_slides_fatal(root: Path, files: set[str], findings: list[Finding]) -> None:
     """Run the official slide-XML fatal defect denylist on every slide part."""
-    from .pptx_slide import is_slide_part, fatal_slide_findings
+    from .pptx_slide import fatal_slide_findings, is_slide_part
 
     for part in sorted(
         name for name in files if name.endswith(".xml") and is_slide_part(name)

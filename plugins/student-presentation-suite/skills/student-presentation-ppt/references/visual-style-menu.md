@@ -19,7 +19,7 @@ Treat the selected style file as executable generation control, not mood-board l
 
 Style files use approximate ratios rather than pixel-perfect templates. Interpret `60/40`, `2/3 + 1/3`, or similar values as composition guidance within the slide safe area.
 
-When the user is unsure about style, follow the two-step direction-first flow in `presentation-intake.md`: present the four style directions (academic rigorous, business professional, tech modern, creative humanistic), then show the 3–4 best styles in the chosen direction. Add short reasons to the top recommendations, for example: "Academic Rigorous — safest for defense and teacher-facing evaluation" or "Creative Student — better for campus life and product showcase topics." Keep the remaining styles reachable through the "show all 14 styles" shortcut, so the user can still make an informed choice.
+When the user is unsure about style, follow the two-step direction-first flow in `../../../references/presentation-intake.md`: present the four style directions (academic rigorous, business professional, tech modern, creative humanistic), then show the 3–4 best styles in the chosen direction. Add short reasons to the top recommendations, for example: "Academic Rigorous — safest for defense and teacher-facing evaluation" or "Creative Student — better for campus life and product showcase topics." Keep the remaining styles reachable through the "show all 14 styles" shortcut, so the user can still make an informed choice.
 
 ## Style Selection Menu
 

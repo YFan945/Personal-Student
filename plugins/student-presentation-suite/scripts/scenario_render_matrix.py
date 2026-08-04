@@ -226,7 +226,6 @@ def validate_scenario(
         raise RuntimeError(f"Scenario contract failed for {name}: {errors}")
     spec_path = work / f"{name}-slide-spec.json"
     spec_report = work / f"{name}-slide-spec-report.json"
-    visual_plan = work / f"{name}-visual-plan.json"
     spec_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     run_checked(
         [
@@ -239,18 +238,7 @@ def validate_scenario(
         ],
         f"{name}: Slide Spec validation",
     )
-    run_checked(
-        [
-            sys.executable,
-            str(ROOT / "scripts" / "compile_visual_plan.py"),
-            str(spec_path),
-            "--output",
-            str(visual_plan),
-            "--json",
-        ],
-        f"{name}: visual plan",
-    )
-    return spec_path, spec_report, visual_plan
+    return spec_path, spec_report
 
 
 def main() -> None:
@@ -268,7 +256,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="student-presentation-matrix-") as tmp:
         work = Path(tmp)
         for name, (scenario, language, roles) in MATRIX.items():
-            spec_path, spec_report, _visual_plan = validate_scenario(
+            spec_path, spec_report = validate_scenario(
                 work, name, scenario, language, roles
             )
             pptx = generate_deck(work, name, language, roles)

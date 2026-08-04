@@ -30,6 +30,26 @@ PYTHONPATH=. python -m unittest discover -s tests
 - JavaScript 代码使用 ESLint + Prettier（`npx eslint scripts/*.js`）
 - 提交前运行测试确保无回归
 
+## PPTX 运行时验收
+
+插件自主实现 PPTX 创建/编辑/渲染/校验（`scripts/pptx_tool.py` + `shared/pptx_runtime/`），
+不依赖外部 `document-skills` 或上游缓存路径；用户产物只能写入 `outputs/`。
+所有权与审计记录见
+`plugins/student-presentation-suite/references/pptx-runtime-provenance.md`。
+
+开发验收命令：
+
+```bash
+cd plugins/student-presentation-suite
+PYTHONPATH=. python -m unittest discover -s tests
+ruff check shared/ scripts/ tests/
+python scripts/smoke_pptx.py
+python scripts/scenario_render_matrix.py --require-render   # 9 场景全链路渲染
+python scripts/check_claude_pptx_env.py --json --strict
+python scripts/check_plugin_release.py --json
+claude plugin validate --strict ./plugins/student-presentation-suite
+```
+
 ## 工作流
 
 1. 从 `claude-code` 创建功能分支

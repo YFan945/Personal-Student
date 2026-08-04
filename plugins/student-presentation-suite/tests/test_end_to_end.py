@@ -80,12 +80,6 @@ class SmokeTests(unittest.TestCase):
             self.assertEqual(0, proc.returncode, msg=proc.stderr[:500])
             # 确认脚本不崩溃即可（输出可能写到 outputs/ 子目录）
 
-    def test_style_adherence_check_available(self) -> None:
-        """style_adherence_check 可正常输出帮助信息。"""
-        proc = self._run(str(SCRIPTS / "style_adherence_check.py"), "--help")
-        self.assertEqual(0, proc.returncode, msg=proc.stderr[:500])
-        self.assertIn("usage", proc.stdout.lower())
-
     def test_workflow_guard_help(self) -> None:
         """workflow_guard 可正常输出帮助信息。"""
         proc = self._run(str(SCRIPTS / "workflow_guard.py"), "--help")

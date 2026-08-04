@@ -4,7 +4,32 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
-## Unreleased
+## 0.5.0 — 2026-08-04
+
+### 全面修复：skill 衔接性与流程自洽
+
+- 交接链：outline 转 PPTX 时必写 `outputs/<topic>-brief.yaml` 与
+  `outputs/<topic>-slide-spec.yaml`；review 报告默认写 `outputs/<topic>-review.md`，
+  编辑交接写 `outputs/<topic>-slide-spec.yaml`（`review_findings` 字段与
+  `slide-spec.schema.json` 对齐为 severity/target/problem/fix）。
+- 流程自洽：`transition --to complete` 不再要求 `--package-report`（已废弃）；
+  新增 `incomplete → qa` 恢复边（补齐缺失门禁后可重入 QA，无需 reset）；
+  `production_mode` 在环境检查前确定；环境检查 `common_required` 补
+  jsonschema/PyYAML；移除 `pptx_delivery_check.py` 中 static-risk 死代码与
+  "style report"/"visual plan"/"style-adherence" 残留文档；修正 10 处相对路径。
+
+### 门禁删减
+
+- 移除 PreToolUse hook 与 `hooks/hooks.json`：`workflow_guard.py` 保留为显式
+  状态机命令（init/confirm/transition），不再对 Bash 命令自动拦截；状态由
+  SKILL 文本自律维护。
+- 删除 `shared/types.py`、`shared/visual_plan.py`、`shared/style_adherence.py` 与
+  `scripts/compile_visual_plan.py`、`scripts/style_adherence_check.py`，同步移除
+  对应文档与测试。
+- 清理发布/CI 冗余门禁：版本一致性收敛到 `check_marketplace_release.py`；
+  Release checks 移出 OS 矩阵单跑一次；smoke 冒烟仅 Windows 跑（Ubuntu 由
+  render-matrix 覆盖）；移除 `blocked`/`incomplete` 字面量与 `keywords≥5` 阈值；
+  `FORBIDDEN_PATH_PARTS` 不再一刀切禁止 `agents/`；删除未生效的 mypy 配置。
 
 ### PPTX 内嵌运行时适配
 
@@ -28,8 +53,6 @@ Codex 发行记录不在此维护。
   已存在输出或输入文件；发布检查同时拒绝必需文件“仅存在但未被 Git 跟踪”。
 - QA manifest 现在必须读取并重新验证原始 Slide Spec；严格交付同时验证完整 Open XML
   schema profile，并将 quality/style report 分别绑定到 Spec/PPTX SHA-256，阻断伪造或过期证据。
-- bridge 只编译一次并直接发布 visual plan，以紧凑摘要替代 prompt 中的整份重复 JSON；
-  visual plan 输出标准化 component payload，避免生成端手工展开 `visual.details`。
 - 图片组件改为等比包含并写入 alt text；图表数据契约要求完整 series，组件使用主题色和
   至少 18pt 的轴、图例与数据标签。场景矩阵联合覆盖全部 11 种可编辑布局家族。
 - 图表校验增加 plot axis cardinality、series idx/order、crossAx reciprocity、extLst、
@@ -47,20 +70,20 @@ Codex 发行记录不在此维护。
   禁止项、跨目录 CLI 测试、真实 PPTX 编辑测试及路径穿越测试。
 - 固定 ESLint/Prettier 开发依赖，避免 CI 临时安装最新版导致配置不兼容。
 - 修复共享标题安全区把标题框强制扩进内容区的问题，新增边界内 `footerArea` 和硬性
-  `assertTextFits`；PptxGenJS wrapper 在 candidate 原子落盘前执行静态布局门禁。
-- 静态重叠检查忽略卡片包含标签等预期组合，同时继续阻断部分相交；QA manifest 强制
-  绑定零 blocker static report，`complete` 强制绑定通过的 package/delivery report。
+  `assertTextFits`。
+- 静态重叠检查忽略卡片包含标签等预期组合，同时继续阻断部分相交；`complete` 强制
+  绑定通过的 package/delivery report。
 - 生成 helper 增加 `gridLayout`、受控通用文本框和页脚原语，把坐标、字号和 fit 约束
-  前移到首次生成；wrapper 自动保留 static report，QA/delivery 对未修改 PPTX 直接复用，
-  并取消首个 candidate 无问题时的强制修复循环。
-- 新增生成前 visual plan 编译门禁：严格模式要求内容页有意义视觉覆盖率不低于 70%、
-  同布局族不连续超过两页，并检查整套 deck 的布局族多样性；新增 11 个可编辑视觉布局
-  组件和原生可编辑 chart-with-takeaway，避免把流程、对比、数据和架构内容退化为纯文字卡片。
+  前移到首次生成；QA/delivery 对未修改 PPTX 直接复用 package report，并取消首个
+  candidate 无问题时的强制修复循环。
+- 新增 11 个可编辑视觉布局组件和原生可编辑 chart-with-takeaway，避免把流程、对比、
+  数据和架构内容退化为纯文字卡片。
 - generated-package normalization 会移除 PptxGenJS 4.0.1 在二维 chart 中写入但未声明的
   series-axis reference，确保原生可编辑图表通过 Open XML SDK schema validation。
-- QA manifest 改为绑定 Slide Spec validation report、visual plan、static report 和全部
-  preview 的 hash；移除可自报的 scenario contract 参数，并把 manifest 调整到 strict
-  delivery 之前。producing 阶段的 package report 在 PPTX 未变化时直接复用。
+- QA manifest 绑定 Slide Spec validation report、全部 preview 与 package report 的
+  hash；移除可自报的 scenario contract 参数（结果由 Slide Spec 重校验推导），并把
+  manifest 调整到 strict delivery 之前。producing 阶段的 package report 在 PPTX
+  未变化时直接复用。
 
 ## 0.4.2 — 2026-07-22
 

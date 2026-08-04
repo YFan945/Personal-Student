@@ -6,16 +6,30 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import yaml
+
+def _yaml() -> Any:
+    """Lazily import PyYAML with a friendly message when missing."""
+    try:
+        import yaml
+    except ImportError:
+        print(
+            "Missing dependency. Install plugin validation dependencies with: "
+            "python -m pip install -r requirements.txt",
+            file=sys.stderr,
+        )
+        raise SystemExit(3) from None
+    return yaml
 
 
 def load(path: Path) -> dict[str, Any]:
+    yaml_mod = _yaml()
     raw = path.read_text(encoding="utf-8")
-    value = json.loads(raw) if path.suffix.lower() == ".json" else yaml.safe_load(raw)
+    value = json.loads(raw) if path.suffix.lower() == ".json" else yaml_mod.safe_load(raw)
     if not isinstance(value, dict):
         raise ValueError(f"Expected an object in {path}")
     return value
@@ -72,7 +86,7 @@ def build_manifest(old_path: Path, new_path: Path, reason: str) -> dict[str, Any
     new_revision = new.get("revision") or {}
     return {
         "manifest_version": "1.0",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017  # 环境无 datetime.UTC
         "parent_revision": old_revision.get("revision_id") or old_path.stem,
         "revision_id": new_revision.get("revision_id") or new_path.stem,
         "reason": reason,
@@ -100,9 +114,10 @@ def main() -> None:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
+    yaml_mod = _yaml()
     try:
         manifest = build_manifest(args.old_spec, args.new_spec, args.reason)
-    except (OSError, ValueError, yaml.YAMLError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, yaml_mod.YAMLError, json.JSONDecodeError) as exc:
         print(json.dumps({"valid": False, "error": str(exc)}, ensure_ascii=False, indent=2))
         raise SystemExit(2) from exc
     text = json.dumps(manifest, ensure_ascii=False, indent=2)

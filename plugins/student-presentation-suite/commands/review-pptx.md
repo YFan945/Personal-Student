@@ -5,7 +5,7 @@ description: 审查已有 PPT/PPTX 文件。提供文件路径后按完整性、
 
 # 审查演示文稿
 
-加载 `skills/student-presentation-review/SKILL.md` 的工作流。
+加载 `../skills/student-presentation-review/SKILL.md` 的工作流。
 只读模式，不修改源文件。
 
 ## 用法

@@ -35,6 +35,7 @@ REQUIRED_FILES = [
     "skills/student-presentation-ppt/references/pptx-editing.md",
     "skills/student-presentation-ppt/references/pptx-qa.md",
     "skills/student-presentation-review/SKILL.md",
+    "skills/student-presentation-review/scripts/pptx_static_check.py",
     "scripts/check_claude_pptx_env.py",
     "scripts/pptx_tool.py",
     "scripts/run_with_pptxgenjs.js",
@@ -43,13 +44,20 @@ REQUIRED_FILES = [
     "scripts/validate_slide_spec.py",
     "scripts/validate_presentation_brief.py",
     "scripts/analyze_presentation_spec.py",
-    "scripts/compile_visual_plan.py",
     "scripts/pptx-helpers.js",
     "scripts/pptx-visuals.js",
     "scripts/create_revision_manifest.py",
     "scripts/build_support_outputs.py",
     "scripts/workflow_guard.py",
     "scripts/manage_versions.py",
+    "shared/__init__.py",
+    "shared/_import_helpers.py",
+    "shared/design_tokens.py",
+    "shared/presentation_quality.py",
+    "shared/pptx_static_core.py",
+    "shared/runtime_paths.py",
+    "shared/slide_spec_contract.py",
+    "shared/slide_spec_validation.py",
     "shared/pptx_runtime/__init__.py",
     "shared/pptx_runtime/charts.py",
     "shared/pptx_runtime/findings.py",
@@ -60,19 +68,18 @@ REQUIRED_FILES = [
     "shared/pptx_runtime/openxml_validator/OpenXmlValidator.csproj",
     "shared/pptx_runtime/openxml_validator/packages.lock.json",
     "shared/pptx_runtime/openxml_validator/Program.cs",
+    "shared/pptx_runtime/pptx_slide.py",
     "shared/pptx_runtime/validate.py",
     "shared/pptx_runtime/render.py",
     "shared/pptx_runtime/soffice.py",
     "shared/pptx_runtime/thumbnail.py",
     "shared/pptx_runtime/assets/lo_socket_shim.c",
-    "hooks/hooks.json",
     "tests/test_pptx_tool.py",
     "tests/test_pptx_runtime.py",
     "tests/test_runtime_paths.py",
 ]
 FORBIDDEN_PATH_PARTS = {
     ".codex-plugin",
-    "agents",
     "__pycache__",
     ".pytest_cache",
     "node_modules",
@@ -124,47 +131,26 @@ def check_structure(errors: list[str]) -> None:
             errors.append(f"缺少必需文件: {rel}")
 
 
-def _version_compare(versions: dict[str, str]) -> str | None:
-    """比较所有版本字段，返回不一致信息或 None。"""
-    unique = set(versions.values())
-    if len(unique) > 1:
-        return (
-            f"版本不一致: {json.dumps(versions, ensure_ascii=False)}"
-        )
-    return None
-
-
 def check_manifest(errors: list[str]) -> None:
     try:
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        errors.append(f"manifest/package.json 解析失败: {exc}")
+        errors.append(f"manifest 解析失败: {exc}")
         return
     if manifest.get("name") != "student-presentation-suite":
         errors.append("manifest name 必须为 student-presentation-suite")
-    # 验证版本号非空且符合 semver
-    version_fields = {
-        "manifest": manifest.get("version", ""),
-        "package.json": package.get("version", ""),
-    }
-    for source, ver in version_fields.items():
-        if not ver:
-            errors.append(f"{source} 的版本号为空，必须提供有效版本")
-        elif not _SEMVER_RE.fullmatch(ver):
-            errors.append(f"{source} 的版本号不是合法 semver: {ver}")
-    # 不硬编码版本号，只检查各文件一致性（空版本已在上面拦截）
-    version_error = _version_compare(version_fields)
-    if version_error:
-        errors.append(version_error)
+    # 版本号非空且符合 semver；版本一致性由 check_marketplace_release.py 权威校验
+    version = manifest.get("version", "")
+    if not version:
+        errors.append("manifest 的版本号为空，必须提供有效版本")
+    elif not _SEMVER_RE.fullmatch(version):
+        errors.append(f"manifest 的版本号不是合法 semver: {version}")
     author = manifest.get("author") if isinstance(manifest.get("author"), dict) else {}
     if author.get("name") in {None, "", "Local developer"}:
         errors.append("manifest author.name 必须提供发布者名称")
     for field in REQUIRED_METADATA:
         if not manifest.get(field):
             errors.append(f"manifest 缺少必要元数据: {field}")
-    if len(manifest.get("keywords", [])) < 5:
-        errors.append("manifest 应提供至少 5 个关键词")
 
 
 def check_runtime_contract(errors: list[str]) -> None:
@@ -184,8 +170,6 @@ def check_runtime_contract(errors: list[str]) -> None:
         "${CLAUDE_PLUGIN_ROOT}",
         "${CLAUDE_PROJECT_DIR}",
         "run_with_pptxgenjs.js",
-        "blocked",
-        "incomplete",
     ):
         if expected not in combined:
             errors.append(f"运行时契约缺失必要的引用: {expected}")
@@ -227,31 +211,6 @@ def check_embedded_runtime(errors: list[str]) -> None:
         errors.append("已移除的上游 pptx_skill runtime 不应出现在发布包中")
 
 
-def check_hooks(errors: list[str]) -> None:
-    """验证 hooks.json 格式及其指向的脚本存在。"""
-    hooks_path = ROOT / "hooks" / "hooks.json"
-    try:
-        hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        errors.append(f"hooks.json 解析失败: {exc}")
-        return
-    pre = hooks.get("hooks", {}).get("PreToolUse")
-    if not isinstance(pre, list) or not pre:
-        errors.append("hooks.json 缺少 PreToolUse 配置")
-        return
-    entry = pre[0]
-    if entry.get("matcher") != "Bash":
-        errors.append("hooks.json PreToolUse matcher 必须是 Bash")
-    commands = [h.get("command") for h in entry.get("hooks", []) if h.get("type") == "command"]
-    if not commands:
-        errors.append("hooks.json PreToolUse 中缺少 command 类型 hook")
-        return
-    for cmd in commands:
-        # The command references workflow_guard.py by path ending.
-        if "workflow_guard.py" not in cmd:
-            errors.append(f"hooks.json 命令未指向 workflow_guard.py: {cmd}")
-
-
 def check_tracked_files(errors: list[str]) -> None:
     files = tracked_files(errors)
     tracked = set(files)
@@ -282,7 +241,6 @@ def main() -> None:
     args = parse_args()
     errors: list[str] = []
     check_structure(errors)
-    check_hooks(errors)
     check_manifest(errors)
     check_runtime_contract(errors)
     check_embedded_runtime(errors)

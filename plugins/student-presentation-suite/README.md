@@ -65,9 +65,10 @@ Production follows:
 No environment, generation, rendering, or delivery command may run while the
 state is `intake_pending`.
 
-The plugin ships a `PreToolUse` hook and `workflow_guard.py`. Suite production
-commands are denied until an approved Production Summary hash moves the project
-state to `intake_confirmed`.
+The suite records this gate with `workflow_guard.py` state commands
+(init/confirm/transition); production runs follow the workflow convention
+maintained by SKILL text self-discipline — the PreToolUse hook is removed, so
+commands are no longer intercepted automatically.
 
 ## Structured Handoff
 
@@ -99,9 +100,7 @@ project's `outputs/` directory when the environment variable is unavailable:
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` or contact sheet
 - `<topic>-presentation-package-report.json` from suite validation and reused
-- `<topic>-visual-plan.json` (advisory layout rhythm and editable component mapping)
-- `<topic>-qa-manifest.json` bound to Slide Spec evidence, the delivered PPTX, and rendered previews
-- `<topic>-style-adherence-report.json` for the selected visual style
+- `<topic>-qa-manifest.json` bound to Slide Spec evidence and the delivered PPTX
 - `<topic>-delivery-report.json` with final gate evidence
 - `<topic>-change-summary.md` for existing-deck improvements
 - requested PDF, HTML teleprompter, training cards, references, quality report,
@@ -111,7 +110,7 @@ The plugin installation directory is read-only for user deliverables.
 
 ## Visual System
 
-The PPTX skill first reads `visual-style-menu.md`, recommends the strongest
+The PPTX skill first reads `skills/student-presentation-ppt/references/visual-style-menu.md`, recommends the strongest
 topic-fit choices, then loads exactly one style specification from
 `visual-styles/`. Each style defines color roles, typography, geometry, layout
 recipes, image treatment, density limits, and acceptance checks.
@@ -121,37 +120,38 @@ slide's function, and decorative visuals must not replace evidence or
 readability.
 
 `deck.js` is written as raw pptxgenjs following the official generation
-gotchas in `references/pptxgenjs-safety.md`. `pptx-helpers.js`/`pptx-visuals.js`
+gotchas in `skills/student-presentation-ppt/references/pptxgenjs-safety.md`. `pptx-helpers.js`/`pptx-visuals.js`
 are optional conveniences; `pptx-visuals.js` implements editable layout families
-(hero, process, timeline, comparison, chart, architecture, matrix, quote,
-summary, reference) with shapes, connectors, labels, contained images, accessible
-alt text, and projection-readable charts. A compiled visual plan may be published
-as an advisory reference but is not a production gate.
+(hero, visual-dominant, process-path, timeline, comparison, dashboard,
+architecture, matrix, quote, summary, reference) with shapes, connectors, labels,
+contained images, accessible alt text, and projection-readable charts.
 
 ## Quality Gates
 
 PPTX delivery requires:
 
 - environment compatibility check;
-- Slide Spec validation when supplied (visual-plan compilation is advisory);
+- Slide Spec validation when supplied;
 - editable PPTX generation (raw pptxgenjs following the official gotchas);
 - speaker notes;
-- text extraction sanity check;
-- LibreOffice rendering and Poppler page images;
-- one full visual inspection; repair and rerun only when the first candidate has a blocker;
-- a QA manifest that revalidates the source Slide Spec and matches its Slide Spec/PPTX/preview/package-report hashes,
-  full slide coverage, and zero blockers;
+- text extraction sanity check for edit/template-derived decks;
+- a QA manifest that revalidates the source Slide Spec and matches its Slide Spec/PPTX/package-report hashes;
 - a package report using the complete suite validation profile with successful Open XML schema validation;
-- requested quality/style reports bound to the source Slide Spec or current PPTX hash;
-- resolved design tokens and a style-adherence report when a standard visual style is selected;
+- requested quality reports bound to the source Slide Spec or current PPTX hash;
+- resolved design tokens when a standard visual style is selected;
 - strict delivery-check success;
 - separate change summary for an improved existing deck.
 
+Per-page render + visual inspection is optional (only when a layout issue is
+suspected); a QA blocker is fixed via the rework edge
+`workflow_guard.py transition --to producing --reason <blocker summary>` instead
+of resetting the whole pipeline.
+
 Results use `complete`, `incomplete`, or `blocked`. `complete` additionally
 requires `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest>
---package-report <package-report> --delivery-report <report>`. The PptxGenJS wrapper
+--delivery-report <report>`. The PptxGenJS wrapper
 normalizes the generated package and atomically publishes it; layout/overflow quality
-is caught by the QA visual inspection rather than a generation-time static gate.
+is caught by QA visual inspection and package validation.
 QA and delivery reuse the package report instead of revalidating an unchanged deck.
 Static XML findings alone are not proof of rendered clipping or readability.
 CI also creates and renders a temporary scenario matrix for coursework, English
@@ -179,7 +179,6 @@ python scripts/pptx_tool.py --help
 python scripts/validate_slide_spec.py path\to\spec.yaml --json
 python scripts/validate_presentation_brief.py path\to\brief.yaml --json
 python scripts/analyze_presentation_spec.py path\to\spec.yaml --strict --json
-python scripts/compile_visual_plan.py path\to\spec.yaml --output <project>\outputs\visual-plan.json --json
 python scripts/build_support_outputs.py path\to\spec.yaml --output-dir <project>\outputs --json
 python scripts/create_revision_manifest.py old.yaml new.yaml --strict
 python scripts/manage_versions.py snapshot --output-root <project>\outputs --revision-id r1 --file <deck>
@@ -195,7 +194,7 @@ The plugin relies on two environment variables automatically set by Claude Code:
 
 | Variable | Set by | Purpose |
 |----------|--------|---------|
-| `${CLAUDE_PLUGIN_ROOT}` | Plugin system | Plugin installation directory; used for hook commands and script references |
+| `${CLAUDE_PLUGIN_ROOT}` | Plugin system | Plugin installation directory; used for script references |
 | `${CLAUDE_PROJECT_DIR}` | Runtime | Active project directory; used as the output root for deliverables |
 
 User deliverables are always written under `${CLAUDE_PROJECT_DIR}/outputs`.

@@ -44,18 +44,20 @@ When requested, add a Training Card for each slide:
 - Avoid overstating:
 ```
 
-For each issue, include:
+For each issue, include exactly four fields, mapping 1:1 to the `review_findings` items in
+`../../references/slide-spec.schema.json` (`additionalProperties: false` — do not add extra keys):
 - severity (Critical / Major / Minor)
-- slide/page number when known
-- problem
-- why it matters
-- concrete fix
+- target — slide/page number when known (e.g. `Slide 4`)
+- problem — the issue and why it matters
+- fix — concrete fix
 
 Example:
 
 ```markdown
-- Major, Slide 4: The title "Analysis" does not tell the audience the conclusion.
-  Fix: Rename it to "Convenience is the main reason students choose short videos for news".
+- severity: Major
+  target: Slide 4
+  problem: The title "Analysis" does not tell the audience the conclusion; the header must carry the takeaway.
+  fix: Rename it to "Convenience is the main reason students choose short videos for news".
 ```
 
 Use `Edit Plan` only when the user asks to optimize, modify, regenerate, or directly improve a deck. Include:
