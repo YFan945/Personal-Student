@@ -13,5 +13,8 @@
   "devDependencies": {
     "eslint": "8.57.1",
     "prettier": "3.6.2"
+  },
+  "overrides": {
+    "brace-expansion": "^2.0.1"
   }
 }
