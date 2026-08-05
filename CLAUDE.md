@@ -1,5 +1,10 @@
 # Student Presentation Suite — Claude Code 插件
 
+## 分支约定
+
+本仓库的提交**一律在 `claude-code` 分支上进行，不要创建其他分支**。`main` 分支属于
+另一个项目（Codex 发行），不要改动或合并。本地与远程只保留 `claude-code` 和 `main`。
+
 ## 项目结构
 
 ```
