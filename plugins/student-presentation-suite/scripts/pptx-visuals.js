@@ -309,7 +309,8 @@ function addChartWithTakeaway(slide, data, area, tokens, lang) {
     title: data.title || data.measure || 'Key result',
     titleFontFace: H.fontFamily(tokens).title,
     titleFontSize: Math.max(20, H.fontSizeScale(tokens, lang).body),
-    chartColors: colors,
+    // 系列颜色已由 per-series `color` 提供；不传 chartColors——
+    // PptxGenJS 4.0.1 会因此把 per-point 的 c:dPt 写在 c:dLbls 之后，违反 schema。
     catAxisLabelFontFace: H.fontFamily(tokens).body,
     valAxisLabelFontFace: H.fontFamily(tokens).body,
     catAxisLabelFontSize: 18,
