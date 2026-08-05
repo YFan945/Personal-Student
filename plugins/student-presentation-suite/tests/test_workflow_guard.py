@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import tempfile
@@ -221,6 +222,101 @@ class StateTransitionTests(unittest.TestCase):
                 [],
                 module.validate_completion_manifest(manifest, pptx, delivery),
             )
+
+    def _ns(self, action: str, **kwargs: object) -> argparse.Namespace:
+        base: dict[str, object] = {
+            "action": action,
+            "state_file": None,
+            "topic": "test",
+            "summary_file": None,
+            "to": None,
+            "qa_manifest": None,
+            "pptx": None,
+            "delivery_report": None,
+            "reason": None,
+            "force": False,
+        }
+        base.update(kwargs)
+        return argparse.Namespace(**base)
+
+    def test_complete_rejects_changed_summary(self) -> None:
+        """轻量防线：confirm 后 summary 被改 → complete 被拒。"""
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state = root / "state.json"
+            summary = root / "summary.md"
+            summary.write_text("version 1", encoding="utf-8")
+            module.save_state(
+                state,
+                {
+                    "workflow_version": "1.0",
+                    "state": "qa",
+                    "topic": "t",
+                    "summary_file": str(summary),
+                    "summary_sha256": hashlib.sha256(summary.read_bytes()).hexdigest(),
+                },
+            )
+            summary.write_text("version 2", encoding="utf-8")  # 已变更
+            with self.assertRaises(SystemExit):
+                module.state_command(
+                    self._ns("transition", state_file=state, to="complete")
+                )
+
+    def test_complete_requires_confirmed_summary(self) -> None:
+        """轻量防线：从未 confirm 直接 complete → 被拒。"""
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state = root / "state.json"
+            module.save_state(
+                state, {"workflow_version": "1.0", "state": "qa", "topic": "t"}
+            )
+            with self.assertRaises(SystemExit):
+                module.state_command(
+                    self._ns("transition", state_file=state, to="complete")
+                )
+
+    def test_confirm_force_reconfirms_without_resetting(self) -> None:
+        """confirm --force 从非 intake_pending 状态重确认，保留当前进度。"""
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state = root / "state.json"
+            summary = root / "summary.md"
+            summary.write_text("revised", encoding="utf-8")
+            module.save_state(
+                state,
+                {"workflow_version": "1.0", "state": "producing", "topic": "t"},
+            )
+            module.state_command(
+                self._ns(
+                    "confirm", state_file=state, summary_file=summary, force=True
+                )
+            )
+            after = module.load_state(state)
+            self.assertEqual("producing", after["state"])
+            self.assertEqual(
+                hashlib.sha256(summary.read_bytes()).hexdigest(),
+                after["summary_sha256"],
+            )
+
+    def test_confirm_without_force_rejects_later_state(self) -> None:
+        """无 --force 时从 producing 状态 confirm → 被拒。"""
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state = root / "state.json"
+            summary = root / "summary.md"
+            summary.write_text("revised", encoding="utf-8")
+            module.save_state(
+                state,
+                {"workflow_version": "1.0", "state": "producing", "topic": "t"},
+            )
+            with self.assertRaises(SystemExit):
+                module.state_command(
+                    self._ns("confirm", state_file=state, summary_file=summary)
+                )
 
 
 class ProjectRootTests(unittest.TestCase):

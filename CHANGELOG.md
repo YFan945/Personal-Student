@@ -4,6 +4,34 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## 0.5.1 — 2026-08-05
+
+### 修复：PPT 生产功能缺陷与流程缺陷
+
+- **修复 ≥10 页渲染/缩略图页序错位**：`render.py`/`thumbnail.py` 改用数值页号排序，
+  不再把 `slide-10.png` 排在 `slide-2.png` 前（含隐藏页时预览内容错位、缩略图标签错配
+  此前会静默通过门禁）。
+- **统一 slide 计数口径**：`pptx_tool` 按 `presentation.xml sldIdLst` 注册页计数，
+  与 render 的 `slide_metadata` 一致；validate 把未注册的孤儿 slide part 升级为 error。
+- **visual QA 门禁死锁修复**：文档此前宣称"预览可选、0/0 不阻断 complete"，与交付
+  check 默认 `require_preview` 冲突，按文档执行会卡死 `complete`。现文档与门禁对齐：
+  未渲染时以 `--allow-missing-preview` 交付，状态为 `incomplete`，补渲染后经
+  `incomplete → qa` 恢复；`--allow-missing-notes` 同步文档化。
+- **视觉检查证据诚实化**：qa-manifest 仅在显式提供 `--no-repair-needed-reason` 且
+  blocker 为 0 时才写 `visual_inspection.completed=true`；delivery 校验讲稿非空。
+- **状态机轻量防线**：`transition --to complete` 重验 Production Summary hash（未确认
+  或 summary 被改则拒绝）；`confirm --force` 支持需求变更时保留进度的重新确认。
+- **production_mode 判定有据**：intake 增加 `source_deck`/`edit_intent` 收集；
+  env check 移至模式确定之后；`pptx-production.md` 补充模板新建/PDF 来源的裁决规则。
+- **env-check 修正**：`markitdown` 由 required 降为 recommended（仅 `inspect
+  --text-output` 需要）；note 与 B 门禁新语义对齐；`check-pptx-env.md` 提示默认
+  `--mode all` 对纯编辑任务过严。
+- **其他**：quality report 文档改为"仅绑定 Slide Spec"（规划期产物，不绑定 PPTX）；
+  `add_slide` 从布局新建时继承占位符；chart"有公式但无有效 workbook"升级为 error；
+  macOS soffice 路径与可配置渲染超时；死代码清理（`_local`/SHA/计数收拢、
+  `addNumberMarker` 参数、`EMU_PER_CM`、SKILL frontmatter 版本同步 0.5.0）。
+- CI `release-checks` 补跑 `check_claude_pptx_env.py --mode all --json` 冒烟。
+
 ## 0.5.0 — 2026-08-04
 
 ### 全面修复：skill 衔接性与流程自洽

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from defusedxml import ElementTree as ET
 
+from ._util import local as _local
 from .findings import Finding
 from .package import resolve_target
 
@@ -41,10 +42,6 @@ _CELL_RANGE = re.compile(
     r"\$?([A-Z]{1,3})\$?(\d+)(?::\$?([A-Z]{1,3})\$?(\d+))?$",
     re.IGNORECASE,
 )
-
-
-def _local(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
 
 
 def _parse(path: Path, part: str, findings: list[Finding]):
@@ -262,12 +259,13 @@ def _validate_chart_external_data(
             continue
         workbook_targets.add(target)
     if formulas and not workbook_targets:
+        # 公式引用了工作簿却无有效 embedded workbook，属于真实数据缺陷，阻断交付。
         findings.append(
             Finding(
                 "chart-workbook-missing",
                 part,
                 "chart contains worksheet formulas but has no valid embedded workbook",
-                "warning",
+                "error",
             )
         )
         return

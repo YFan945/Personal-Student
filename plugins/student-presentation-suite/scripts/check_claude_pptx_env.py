@@ -208,7 +208,6 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
     common_required = [
         "jsonschema",
         "PyYAML",
-        "markitdown",
         "Pillow",
         "defusedxml",
         "Open XML schema validator",
@@ -223,11 +222,12 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
         "rebuild_from_source": create_required,
     }
     required = required_by_mode[mode]
-    # LibreOffice 和 Poppler 为推荐项：缺失时警告但不阻断
+    # LibreOffice/Poppler/markitdown 为推荐项：缺失时警告但不阻断生成
     recommended = [
         "LibreOffice",
         "LibreOffice sandbox",
         "Poppler pdftoppm",
+        "markitdown",
     ]
     missing_required = [name for name in required if not checks[name]["ok"]]
     missing_recommended = [name for name in recommended if not checks[name]["ok"]]
@@ -255,10 +255,11 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
         "capabilities": capabilities,
         "note": (
             "规划和审查可在缺少部分工具的情况下运行。"
-            "候选 PPTX 创建需要 node/pptxgenjs；完整创建/编辑流程还需要文本提取、"
-            "Pillow、suite-owned runtime、defusedxml 和 Open XML schema validator。"
-            "LibreOffice/Poppler 缺失不阻止候选生成，"
-            "但无法完成视觉 QA，因此交付状态只能是 incomplete。"
+            "候选 PPTX 创建需要 node/pptxgenjs；完整创建/编辑流程还需要 Pillow、"
+            "suite-owned runtime、defusedxml 和 Open XML schema validator。"
+            "LibreOffice/Poppler 缺失不阻止候选生成，但无法完成视觉 QA；"
+            "未渲染时以 --allow-missing-preview 交付，状态只能是 incomplete。"
+            "markitdown 仅 inspect --text-output 需要，缺失时该项跳过。"
         ),
     }
 

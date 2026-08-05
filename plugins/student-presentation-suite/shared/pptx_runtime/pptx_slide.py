@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from defusedxml import ElementTree as ET
 
+from ._util import local as _local
 from .findings import Finding
 
 SLIDE_PART_PREFIXES = (
@@ -119,10 +120,6 @@ def fatal_slide_findings(part: str, root: ET.Element) -> list[Finding]:
             )
 
     return findings
-
-
-def _local(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
 
 
 def _parent(root: ET.Element, node: ET.Element) -> ET.Element | None:

@@ -38,6 +38,8 @@ Confirm every item before production:
 | Rubric/required sections | No supplied rubric; use standard academic structure | Controls scoring priorities |
 | Source material | User material plus stable general background | Controls evidence boundaries |
 | Template/branding | No required template, logo, or brand | Controls layout constraints |
+| Source deck (新建/改进) | No existing deck → create new | Decides `production_mode`: an editable `.pptx`/`.potx` source → `edit_ooxml`; a corrupt source or non-PPTX (PDF/preview) → `rebuild_from_source`/`create`; otherwise `create` |
+| Edit intent | None (new deck) | For improvements: `incremental` / `rebuild-clean-copy` / `fix-specific`; `rebuild-clean-copy` overrides the edit_ooxml default |
 | Image strategy | Diagram-only or generated abstract visuals; no web images | Controls sourcing and production |
 | Visual style | Recommend three topic-fit styles; choose one only after confirmation | Controls visual direction |
 | Deliverables | PPTX, speaker notes, preview/contact sheet; add change summary for edits | Controls completion criteria |

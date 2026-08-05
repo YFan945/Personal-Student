@@ -9,7 +9,6 @@
 
 // ── 单位常量 ──────────────────────────────────────────────
 
-const EMU_PER_CM = 360000;
 const CM_PER_INCH = 2.54;
 
 // 16:9 幻灯片默认尺寸（英寸）
@@ -508,7 +507,6 @@ function applyTokens(pptx, tokens, lang, opts) {
 
 module.exports = {
   // 常量
-  EMU_PER_CM,
   SLIDE_W_IN,
   SLIDE_H_IN,
 

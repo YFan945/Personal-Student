@@ -277,6 +277,21 @@ class SharedAssetRiskTests(unittest.TestCase):
 
 
 class RenderAlignmentTests(unittest.TestCase):
+    def test_page_files_sorted_numerically_not_lexicographically(self) -> None:
+        # 回归：≥10 页时字典序会把 slide-10.png 排在 slide-2.png 前导致预览错位
+        from shared.pptx_runtime.render import _page_number
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("slide-1.png", "slide-2.png", "slide-10.png", "slide-11.png"):
+                (root / name).touch()
+            pages = sorted(root.glob("slide-*.png"), key=_page_number)
+        self.assertEqual(
+            [p.name for p in pages],
+            ["slide-1.png", "slide-2.png", "slide-10.png", "slide-11.png"],
+        )
+        self.assertEqual([_page_number(p) for p in pages], [1, 2, 10, 11])
+
     def test_hidden_slide_placeholder_restores_original_order(self) -> None:
         from PIL import Image
 

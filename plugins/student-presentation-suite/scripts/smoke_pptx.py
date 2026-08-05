@@ -86,6 +86,8 @@ pptx.writeFile({ fileName: process.argv[2] });
                 + validation.stderr
             )
         notes.write_text("# Speaker notes\n\nSmoke test.", encoding="utf-8")
+        # 占位 preview：仅用于驱动 qa-manifest/delivery 的结构性冒烟（哈希、计数、门禁链路），
+        # 不构成真实视觉 QA 证据；真实渲染正确性由 CI 的 Ubuntu render-matrix 覆盖。
         image = Image.new("RGB", (640, 360), "white")
         image.paste((31, 78, 121), (0, 0, 640, 80))
         image.save(preview)

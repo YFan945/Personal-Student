@@ -111,8 +111,11 @@ def validate_completion_manifest(
     if inspection is not None:
         if not isinstance(inspection, dict):
             errors.append("QA manifest 的 visual_inspection 无效。")
-        elif inspection.get("completed") is True and inspection.get("remaining_blockers") != 0:
-            errors.append("QA manifest 仍有未解决 blocker。")
+        elif inspection.get("completed") is True:
+            if inspection.get("remaining_blockers") != 0:
+                errors.append("QA manifest 仍有未解决 blocker。")
+            if not inspection.get("no_repair_needed_reason"):
+                errors.append("QA manifest 声称视觉检查完成，但缺少 no_repair_needed_reason 证据。")
     if delivery_report_path is None:
         return errors
     try:
@@ -215,20 +218,26 @@ def state_command(args: argparse.Namespace) -> int:
         base = current or {"workflow_version": "1.0", "topic": args.topic}
         allowed_from = {None, "intake_pending"}
         if base.get("state") not in allowed_from:
-            raise SystemExit(
-                f"无法从 '{base.get('state')}' 状态确认。"
-                f"当前状态必须是 intake_pending 或未初始化。"
-                f"如需重新开始，请先运行 'reset'。"
+            if not args.force:
+                raise SystemExit(
+                    f"无法从 '{base.get('state')}' 状态确认。"
+                    f"当前状态必须是 intake_pending 或未初始化。"
+                    f"如需需求变更后重新确认（保留当前进度），请加 --force。"
+                )
+            base["summary_file"] = str(args.summary_file.resolve())
+            base["summary_sha256"] = summary_hash
+            save_state(state_path, base)
+            print(f"✅ 已重新确认 Production Summary（保留 {base.get('state')} 状态）→ {state_path}")
+        else:
+            base.update(
+                {
+                    "state": "intake_confirmed",
+                    "summary_file": str(args.summary_file.resolve()),
+                    "summary_sha256": summary_hash,
+                }
             )
-        base.update(
-            {
-                "state": "intake_confirmed",
-                "summary_file": str(args.summary_file.resolve()),
-                "summary_sha256": summary_hash,
-            }
-        )
-        save_state(state_path, base)
-        print(f"✅ 状态已确认（intake_confirmed）→ {state_path}")
+            save_state(state_path, base)
+            print(f"✅ 状态已确认（intake_confirmed）→ {state_path}")
 
     elif args.action == "transition":
         if not current:
@@ -255,6 +264,23 @@ def state_command(args: argparse.Namespace) -> int:
                 f"从 '{before}' 只能转换到: {', '.join(valid_next) if valid_next else '无法转换，请使用 reset'}"
             )
         if args.to == "complete":
+            # 轻量防线：complete 必须基于已确认且未变更的 Production Summary。
+            summary_file = current.get("summary_file")
+            summary_hash = current.get("summary_sha256")
+            if not summary_file or not summary_hash:
+                raise SystemExit(
+                    "转换到 complete 必须已确认 Production Summary（运行 "
+                    "'confirm --summary-file <summary>'）。"
+                )
+            current_summary = Path(str(summary_file))
+            if (
+                not current_summary.is_file()
+                or hashlib.sha256(current_summary.read_bytes()).hexdigest() != summary_hash
+            ):
+                raise SystemExit(
+                    "Production Summary 已变更或缺失，请重新运行 "
+                    "'confirm --summary-file <summary>'（需求变更可加 --force）后再 complete。"
+                )
             errors = validate_completion_manifest(
                 args.qa_manifest,
                 args.pptx,
@@ -305,6 +331,10 @@ def main() -> None:
     confirm.add_argument(
         "--summary-file", type=Path, required=True,
         help="Production Summary 文件路径",
+    )
+    confirm.add_argument(
+        "--force", action="store_true",
+        help="从非 intake_pending 状态强制重新确认（需求变更时保留当前进度）",
     )
 
     transition = sub.add_parser("transition", help="推进工作流状态")

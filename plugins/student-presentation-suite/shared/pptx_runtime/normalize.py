@@ -15,14 +15,11 @@ from pathlib import Path
 
 from defusedxml import ElementTree as ET
 
+from ._util import local as _local
 from .package import pack_directory, safe_extract_package
 
 C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 StdET.register_namespace("c", C_NS)
-
-
-def _local(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
 
 
 def normalize_unpacked(root: Path) -> list[str]:

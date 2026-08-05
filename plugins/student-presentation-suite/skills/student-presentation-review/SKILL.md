@@ -1,7 +1,7 @@
 ---
 name: student-presentation-review
 description: Use only for a clearly student-owned academic context when the user explicitly asks to review, audit, score, critique, compare, or diagnose an existing PPT/PPTX/PowerPoint deck or rendered export.
-version: 0.4.3
+version: 0.5.1
 ---
 
 # Student Presentation Review
@@ -40,6 +40,11 @@ version: 0.4.3
 5. 每次发现分级为 Critical / Major / Minor，记录 `target`（目标页面/页码）、`problem`（问题+影响）、`fix`（具体修复建议），与 `review_findings` schema 一致。
 6. 检查来源缺口、故事顺序、重复页面、结论支撑、时间、转场、开篇/收尾、可能的问题。有 Slide Spec 时运行 `analyze_presentation_spec.py`。
 7. 编辑请求时，写 `outputs/<topic>-slide-spec.yaml`（含 `source_deck`、`edit_intent`、`review_findings`（`severity`/`target`/`problem`/`fix`）、`preserve`、`change_summary_required`，按 `../../references/slide-spec.schema.json` 校验），再进入 `student-presentation-ppt`。
+
+交接说明：编辑交接件 `slide-spec.yaml` 即已确认的规划产物。进入
+`student-presentation-ppt` 后，ppt skill 应直接以该 spec 为规划基准，**跳过重复的
+Production Summary 确认**（需求变更除外），并豁免 Presentation Brief 要求（见
+`references/presentation-intake.md` 与 ppt SKILL 第 3 步）。
 
 ## 评审结论标签
 

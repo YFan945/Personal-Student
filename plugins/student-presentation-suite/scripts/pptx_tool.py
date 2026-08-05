@@ -28,6 +28,7 @@ from shared.pptx_runtime import (  # noqa: E402
     validate_pptx,
 )
 from shared.pptx_runtime.normalize import normalize_generated_package  # noqa: E402
+from shared.pptx_runtime.package import count_registered_slides  # noqa: E402
 from shared.pptx_runtime.render import align_rendered_pages, render_pptx  # noqa: E402
 from shared.pptx_runtime.thumbnail import create_thumbnail_grids, slide_metadata  # noqa: E402
 from shared.slide_spec_contract import validate_slide_spec  # noqa: E402
@@ -77,14 +78,8 @@ def _sha256(path: Path) -> str:
 
 
 def _slide_count(path: Path) -> int:
-    with zipfile.ZipFile(path) as archive:
-        return sum(
-            1
-            for name in archive.namelist()
-            if name.startswith("ppt/slides/slide")
-            and name.endswith(".xml")
-            and "/_rels/" not in name
-        )
+    """按 presentation.xml sldIdLst 的注册页数计数（与 render 的 slide_metadata 口径一致）。"""
+    return count_registered_slides(path) or 0
 
 
 def _ensure_separate_output(source: Path, output: Path) -> None:
@@ -113,7 +108,7 @@ def command_inspect(args: argparse.Namespace) -> int:
         slides = []
         metadata_error = str(exc)
     result: dict[str, Any] = {
-        "ok": True,
+        "ok": metadata_error is None,
         "path": str(path),
         "sha256": _sha256(path),
         "slide_count": slide_count,
@@ -272,6 +267,8 @@ def command_validate(args: argparse.Namespace) -> int:
     if not path.is_file():
         print(json.dumps({"ok": False, "findings": [{"code": "input", "part": str(path), "severity": "error", "detail": "validate requires a packed PPTX"}]}))
         return 1
+    if original is not None and original.resolve() == path.resolve():
+        raise SystemExit("--original 与输入为同一文件；差分去重会把全部 findings 误删，请提供原始源包")
     result = {
         **validate_pptx(path, original),
         "input": str(path),
@@ -295,7 +292,12 @@ def command_validate(args: argparse.Namespace) -> int:
 
 
 def command_normalize_generated(args: argparse.Namespace) -> int:
-    changed = normalize_generated_package(args.input, args.output)
+    try:
+        changed = normalize_generated_package(args.input, args.output)
+    except FileExistsError as exc:
+        raise SystemExit(f"输出已存在，拒绝覆盖: {exc}") from exc
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"归一化失败: {exc}") from exc
     print(
         json.dumps(
             {
@@ -343,7 +345,11 @@ def command_render(args: argparse.Namespace) -> int:
     except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as exc:
         print(json.dumps({"ok": False, "stage": "render", "error": str(exc)}, ensure_ascii=False))
         return 1
-    metadata = slide_metadata(source)
+    try:
+        metadata = slide_metadata(source)
+    except Exception as exc:  # 半损坏包：转成干净错误而非 traceback
+        print(json.dumps({"ok": False, "stage": "metadata", "error": str(exc)}, ensure_ascii=False))
+        return 1
     try:
         pages, hidden_placeholders = align_rendered_pages(
             pages, metadata, output_dir, args.prefix, args.format
@@ -444,8 +450,11 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
     }
     if previews:
         # 视觉检查仅在实际渲染后记录；无 preview 时跳过（视觉检查可选）。
+        # completed=True 必须由人工 attestation 支撑：显式提供 --no-repair-needed-reason
+        # 且 --remaining-blockers==0；否则不得声称"检查完成"。
+        inspection_completed = bool(args.no_repair_needed_reason) and args.remaining_blockers == 0
         payload["visual_inspection"] = {
-            "completed": True,
+            "completed": inspection_completed,
             "inspected_pages": list(range(1, slide_count + 1)),
             "repair_cycles": args.repair_cycles,
             "no_repair_needed_reason": args.no_repair_needed_reason,

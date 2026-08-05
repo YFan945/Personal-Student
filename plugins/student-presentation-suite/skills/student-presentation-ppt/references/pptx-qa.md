@@ -44,8 +44,11 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" render <pptx> \
 只有发现问题时才修改 generator 并整包重建；修改后重新执行 package、render 和全部页面
 检查，不能复用旧 PDF 或 preview。
 
-未做渲染时，QA manifest 不写 preview/visual_inspection 字段，delivery 的
-`preview_page_coverage` 为 `0/0`；渲染预览仅供按需自查，不再作为交付强制项。
+未做渲染时，`pptx_delivery_check.py` 默认仍要求 preview，须显式加
+`--allow-missing-preview` 豁免；此时 QA manifest 不写 preview/visual_inspection 字段，
+delivery 的 `preview_page_coverage` 为 `0/0`，交付状态为 `incomplete`——没有视觉 QA
+证据，**不能** `transition --to complete`。补渲染后可走 `incomplete → qa` 恢复边重入
+QA。用户明确不需要讲稿时同理用 `--allow-missing-notes`。
 
 ## 4. QA manifest
 
@@ -66,8 +69,10 @@ strict delivery check 复用 manifest 绑定的 package report。
 可选的 preview、package report、已经存在的 QA manifest、输出 report，
 以及已确认的 PDF/teleprompter/revision manifest。禁止在 QA manifest 尚未生成时运行
 strict delivery。package report 必须使用 `openxml-sdk-plus-suite-semantic-v4` profile，
-且 `schema_validation.performed=true`、`error_count=0`；quality report 会校验
-Slide Spec/PPTX SHA-256，过期或手写报告不能通过。未渲染时 preview 参数可省略。
+且 `schema_validation.performed=true`、`error_count=0`；quality report
+（`analyze_presentation_spec.py` 的规划期产物，针对 Slide Spec 内容质量）会校验
+Slide Spec SHA-256，过期或手写报告不能通过；它不绑定最终 PPTX。未渲染时以
+`--allow-missing-preview` 运行 delivery，交付为 incomplete（见第 3 节）。
 
 ## 6. Completion
 

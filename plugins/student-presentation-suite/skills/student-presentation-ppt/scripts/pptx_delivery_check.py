@@ -319,7 +319,11 @@ def inspect_delivery(
     missing = []
     if not pptx_info or not pptx_info["exists"]:
         missing.append("pptx")
-    if require_notes and (notes is None or not notes.is_file()):
+    if require_notes and (
+        notes is None
+        or not notes.is_file()
+        or (notes.is_file() and notes.stat().st_size == 0)
+    ):
         missing.append("notes")
     if require_preview and not any(info and info["exists"] for info in preview_infos):
         missing.append("preview")

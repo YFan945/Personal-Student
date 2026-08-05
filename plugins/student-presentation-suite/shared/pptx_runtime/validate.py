@@ -10,6 +10,7 @@ from pathlib import Path
 
 from defusedxml import ElementTree as ET
 
+from ._util import local as _local
 from .charts import validate_charts
 from .findings import Finding
 from .openxml import OPENXML_SDK_VERSION, validate_openxml
@@ -28,8 +29,6 @@ P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 CHART_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 CHARTEX_NS = "http://schemas.microsoft.com/office/drawing/2014/chartex"
 DRAWING_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
-def _local(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
 
 
 def _parse(path: Path, part: str, findings: list[Finding]):
@@ -173,15 +172,26 @@ def _validate_content_types(root: Path, files: set[str], findings: list[Finding]
         )
 
 
-def _validate_presentation(root: Path, relationships: dict[str, dict[str, str]], findings: list[Finding]) -> None:
+def _validate_presentation(
+    root: Path,
+    relationships: dict[str, dict[str, str]],
+    findings: list[Finding],
+    files: set[str],
+) -> None:
     part = "ppt/presentation.xml"
     presentation = _parse(root / part, part, findings)
     if presentation is None:
         return
     seen_ids: set[str] = set()
     seen_rids: set[str] = set()
+    registered_parts: set[str] = set()
     rels = relationships.get(part, {})
-    for slide in presentation.findall(f".//{{{P_NS}}}sldId"):
+    # 只统计主 sldIdLst 的直接 sldId 子元素；custShow 等嵌套 sldId 不计入注册页。
+    sld_id_lst = presentation.find(f"{{{P_NS}}}sldIdLst")
+    slide_nodes = list(sld_id_lst) if sld_id_lst is not None else []
+    for slide in slide_nodes:
+        if slide.tag != f"{{{P_NS}}}sldId":
+            continue
         slide_id = slide.attrib.get("id", "")
         rid = slide.attrib.get(f"{{{R_NS}}}id", "")
         if not slide_id or slide_id in seen_ids:
@@ -193,8 +203,24 @@ def _validate_presentation(root: Path, relationships: dict[str, dict[str, str]],
         target = rels.get(rid)
         if not target or not target.startswith("ppt/slides/slide"):
             findings.append(Finding("slide-relationship", part, f"{rid} is not a registered slide"))
+        else:
+            registered_parts.add(target)
     if not seen_rids:
         findings.append(Finding("presentation-empty", part, "presentation contains no slides"))
+    # 孤儿 slide 部件（存在但未注册到 sldIdLst）：升级为 error，避免
+    # "文件数" 与 "注册页数" 计数口径不一致导致 qa-manifest 校验误判。
+    slide_files = {
+        name for name in files if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+    }
+    for orphan in sorted(slide_files - registered_parts):
+        findings.append(
+            Finding(
+                "slide-orphan",
+                orphan,
+                "slide part is present but not registered in presentation sldIdLst",
+                "error",
+            )
+        )
 
 
 def _validate_part_roots(root: Path, files: set[str], findings: list[Finding]) -> None:
@@ -603,7 +629,7 @@ def _validate_unpacked(root: Path) -> list[Finding]:
     if "[Content_Types].xml" in files:
         _validate_content_types(root, files, findings)
     if "ppt/presentation.xml" in files:
-        _validate_presentation(root, relationships, findings)
+        _validate_presentation(root, relationships, findings, files)
     _validate_part_roots(root, files, findings)
     _validate_notes(root, files, findings)
     _validate_master_themes(root, files, findings)

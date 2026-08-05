@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -12,7 +13,24 @@ from .soffice import soffice_environment
 COMMON_SOFFICE = (
     Path(r"C:\Program Files\LibreOffice\program\soffice.exe"),
     Path(r"C:\Program Files (x86)\LibreOffice\program\soffice.exe"),
+    Path("/Applications/LibreOffice.app/Contents/MacOS/soffice"),
 )
+
+
+def _render_timeout() -> int:
+    """Render subprocess timeout in seconds; overridable via PPTX_RENDER_TIMEOUT."""
+    try:
+        return max(1, int(os.environ.get("PPTX_RENDER_TIMEOUT", "120")))
+    except ValueError:
+        return 120
+
+
+def _page_number(path: Path) -> int:
+    """Trailing page number from a ``prefix-N.png`` filename (N is not zero-padded)."""
+    try:
+        return int(Path(path).stem.rsplit("-", 1)[-1])
+    except (ValueError, IndexError):
+        return -1
 
 
 def find_soffice() -> str | None:
@@ -79,7 +97,7 @@ def render_pptx(
             encoding="utf-8",
             errors="replace",
             env=environment,
-            timeout=120,
+            timeout=_render_timeout(),
         )
     if converted.returncode or not generated.is_file():
         raise RuntimeError((converted.stderr or converted.stdout or "LibreOffice conversion failed").strip())
@@ -95,11 +113,13 @@ def render_pptx(
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=120,
+        timeout=_render_timeout(),
     )
     if rendered.returncode:
         raise RuntimeError((rendered.stderr or rendered.stdout or "Poppler render failed").strip())
-    pages = sorted(output_dir.glob(f"{prefix}-*.{image_format}"))
+    # pdftoppm 产出 prefix-1..N.png（不补零），必须按数值页号而非字典序排序，
+    # 否则 ≥10 页时 prefix-10.png 会排在 prefix-2.png 前导致预览/缩略图错位。
+    pages = sorted(output_dir.glob(f"{prefix}-*.{image_format}"), key=_page_number)
     return pdf, pages, [*sandbox_messages, converted.stdout.strip(), rendered.stderr.strip()]
 
 

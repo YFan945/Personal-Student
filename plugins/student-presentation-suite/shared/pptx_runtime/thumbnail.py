@@ -9,6 +9,7 @@ from pathlib import Path
 
 from defusedxml import ElementTree as ET
 
+from ._util import local as _local
 from .package import resolve_target
 from .render import render_pptx
 
@@ -18,10 +19,6 @@ DRAWING_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 SLIDE_LAYOUT_REL = f"{R_NS}/slideLayout"
 NOTES_SLIDE_REL = f"{R_NS}/notesSlide"
 CHART_REL = f"{R_NS}/chart"
-
-
-def _local(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
 
 
 def _part_relationships(archive: zipfile.ZipFile, part: str) -> list[dict[str, str]]:

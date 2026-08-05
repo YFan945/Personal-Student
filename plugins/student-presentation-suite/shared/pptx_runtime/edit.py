@@ -17,6 +17,37 @@ REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 OFFICE_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 SLIDE_REL = f"{OFFICE_REL_NS}/slide"
 LAYOUT_REL = f"{OFFICE_REL_NS}/slideLayout"
+P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+
+def _layout_placeholder_xml(layout_path: Path) -> list[str]:
+    """Return ``<p:sp>`` placeholder stubs mirroring the referenced slide layout.
+
+    A slide inherits a layout placeholder (title/body/…) by declaring an empty
+    ``<p:sp>`` whose ``<p:ph>`` matches the layout's type/idx. Without these the
+    new slide renders blank.
+    """
+    stubs: list[str] = []
+    try:
+        root = ET.parse(layout_path).getroot()
+    except (OSError, ET.ParseError):
+        return stubs
+    sp_id = 2
+    for sp in root.iter(f"{{{P_NS}}}sp"):
+        ph = sp.find(f"{{{P_NS}}}nvSpPr/{{{P_NS}}}nvPr/{{{P_NS}}}ph")
+        if ph is None:
+            continue
+        ph_type = ph.attrib.get("type", "")
+        ph_idx = ph.attrib.get("idx", "")
+        attrs = f' type="{ph_type}"' if ph_type else ""
+        if ph_idx:
+            attrs += f' idx="{ph_idx}"'
+        stubs.append(
+            f'<p:sp><p:nvSpPr><p:cNvPr id="{sp_id}" name="{ph_type or "placeholder"}"/>'
+            f"<p:cNvSpPr/><p:nvPr><p:ph{attrs}/></p:nvPr></p:nvSpPr><p:spPr/></p:sp>"
+        )
+        sp_id += 1
+    return stubs
 CLONED_REL_TYPES = {
     f"{OFFICE_REL_NS}/notesSlide",
     f"{OFFICE_REL_NS}/comments",
@@ -254,13 +285,18 @@ def add_slide(root: Path, source: str, after: str | None = None) -> str:
         layout = layouts / source
         if not layout.is_file() or not re.fullmatch(r"slideLayout\d+\.xml", source):
             raise ValueError(f"source must be an existing slideN.xml or slideLayoutN.xml: {source}")
+        ph_stubs = _layout_placeholder_xml(layout)
+        sp_tree = (
+            '<p:nvGrpSpPr><p:cNvPr id="1" name=""/>'
+            '<p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>'
+            + "".join(ph_stubs)
+        )
         destination.write_text(
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
             'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
             'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
-            '<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/>'
-            '<p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>'
+            f'<p:cSld><p:spTree>{sp_tree}</p:spTree></p:cSld>'
             '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>',
             encoding="utf-8",
         )

@@ -7,6 +7,7 @@ import shutil
 import stat
 import zipfile
 from pathlib import Path, PurePosixPath
+from xml.etree import ElementTree as ET
 
 MAX_PACKAGE_MEMBERS = 10_000
 MAX_MEMBER_BYTES = 256 * 1024 * 1024
@@ -119,3 +120,32 @@ def resolve_target(source: str | None, target: str) -> str:
     if resolved == ".." or resolved.startswith("../"):
         raise ValueError(f"relationship target escapes package: {target}")
     return resolved
+
+
+PRESENTATION_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+
+def count_registered_slides(package: Path) -> int | None:
+    """Return the number of slides registered in ``presentation.xml sldIdLst``.
+
+    Counts the direct ``<p:sldId>`` children of the main ``<p:sldIdLst>`` only
+    (custom-show ``sldId`` entries are excluded). Returns ``None`` when the
+    presentation part is missing or unreadable.
+    """
+    try:
+        with zipfile.ZipFile(package) as archive, archive.open("ppt/presentation.xml") as stream:
+            text = stream.read()
+    except (KeyError, zipfile.BadZipFile, OSError):
+        return None
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return None
+    lst = root.find(f"{{{PRESENTATION_NS}}}sldIdLst")
+    if lst is None:
+        return 0
+    return sum(
+        1
+        for child in lst
+        if child.tag == f"{{{PRESENTATION_NS}}}sldId"
+    )

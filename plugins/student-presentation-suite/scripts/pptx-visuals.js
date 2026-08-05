@@ -75,7 +75,7 @@ function addLabel(slide, text, box, tokens, lang, options) {
   });
 }
 
-function addNumberMarker(slide, _value, box, tokens) {
+function addNumberMarker(slide, box, tokens) {
   const p = palette(tokens);
   slide.addShape(SHAPE.ellipse, {
     ...box,
@@ -178,7 +178,7 @@ function addTimeline(slide, data, area, tokens, lang) {
   });
   stages.forEach((stage, index) => {
     const centerX = area.x + stepW * (index + 0.5);
-    addNumberMarker(slide, index + 1, { x: centerX - 0.2, y: axisY - 0.2, w: 0.4, h: 0.4 }, tokens);
+    addNumberMarker(slide, { x: centerX - 0.2, y: axisY - 0.2, w: 0.4, h: 0.4 }, tokens);
     const above = index % 2 === 0;
     addLabel(
       slide,

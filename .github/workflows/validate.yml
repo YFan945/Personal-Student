@@ -76,6 +76,7 @@ jobs:
           git diff --check
           python plugins/student-presentation-suite/scripts/check_plugin_release.py
           python scripts/check_marketplace_release.py
+          python plugins/student-presentation-suite/scripts/check_claude_pptx_env.py --mode all --json
 
   claude-manifest:
     runs-on: ubuntu-latest

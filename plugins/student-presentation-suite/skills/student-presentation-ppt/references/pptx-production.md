@@ -10,13 +10,20 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
 
 | Mode | 使用条件 | 生产机制 |
 | --- | --- | --- |
-| `create` | 没有 source deck | pptxgenjs + suite helper |
-| `edit_ooxml` | 要保留模板、布局或已有内容 | 解包、结构修改、内容修改、clean、pack |
+| `create` | 没有 source deck，或 source 为 PDF/preview 等非 PPTX（未损坏） | pptxgenjs + suite helper |
+| `edit_ooxml` | 要保留模板、布局或已有内容（含"用这个 PPTX 模板做新 deck"）；source 必须是可解包的 `.pptx`/`.potx` | 解包、结构修改、内容修改、clean、pack |
 | `rebuild_from_source` | 原文件损坏或重建更安全，且理由已记录 | 读取原文件后新建，不声称原位编辑 |
 
 `source_deck`、`edit_intent`、`review_findings`、`preserve` 和
-`change_summary_required` 是 Slide Spec 顶层字段。存在 source deck 时默认
-`edit_ooxml`；不得因为新建更方便而静默改为 rebuild。
+`change_summary_required` 是 Slide Spec 顶层字段。判定规则（intake 收集 `source_deck`
+与 `edit_intent`，模式由 `slide_spec_to_pptx_brief.py` 推导并复核）：
+
+- 存在可解包的 PPTX/POTX 模板 → `edit_ooxml`（即使目标内容全新也要保留模板）；
+  不得因为新建更方便而静默改为 rebuild。
+- source 为 PDF/preview 等非 PPTX → **不能** `edit_ooxml`（无法解包）；源文件损坏走
+  `rebuild_from_source`，否则 `create`。
+- `edit_intent: "rebuild-clean-copy"`（review 交接）优先于"默认 edit_ooxml"，走
+  `rebuild_from_source` 并记录理由。
 
 ## Shared invariants
 

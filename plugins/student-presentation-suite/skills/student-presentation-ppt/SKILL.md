@@ -1,7 +1,7 @@
 ---
 name: student-presentation-ppt
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.4.3
+version: 0.5.1
 ---
 
 # Student Presentation PPT
@@ -43,11 +43,15 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" init
 ## Workflow
 
 1. 完成完整 intake；用户说“你决定”只表示采用推荐值，仍需展示并确认最终摘要。
-2. 确认后先确定唯一 `production_mode`（`create` / `edit_ooxml` / `rebuild_from_source`），
-   再运行 `check_claude_pptx_env.py --mode <production_mode> --json --strict`。创建能力缺失或本次编辑能力
-   缺失时转 `blocked`；只缺渲染能力可生成候选文件，但最终只能是 `incomplete`。
-3. 验证 Presentation Brief 和 Slide Spec，运行 `analyze_presentation_spec.py`；
-   `slide_spec_to_pptx_brief.py` 生成 production brief。转为 `planned`。
+2. 确认后根据 intake 收集的 `source_deck`/`edit_intent` 确定唯一 `production_mode`
+   （`create` / `edit_ooxml` / `rebuild_from_source`），判定规则见 `references/pptx-production.md`。
+3. 验证 Presentation Brief 和 Slide Spec（review 编辑交接分支可跳过 brief，以已确认的
+   `slide-spec.yaml` 为准），运行 `analyze_presentation_spec.py`；
+   `slide_spec_to_pptx_brief.py` 生成 production brief（工具推导并复核 mode，以 intake 的
+   `source_deck`/`edit_intent` 为准）。随后运行
+   `check_claude_pptx_env.py --mode <production_mode> --json --strict`（env check 必须在
+   mode 确定之后）。创建能力缺失或本次编辑能力缺失时转 `blocked`；只缺渲染能力可生成候选文件，
+   但未渲染时只能以 `--allow-missing-preview` 交付 `incomplete`。转为 `planned`。
 4. 转为 `producing`，按 `references/pptx-production.md` 的对应分支生产。`create` 执行 deck.js；
    `edit_ooxml` 使用 `pptx_tool.py` 解包、结构修改、内容修改、clean、pack；
    `rebuild_from_source` 必须记录明确理由。所有模式都输出新文件，禁止覆盖 source deck。
@@ -58,7 +62,8 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" init
 6. 编辑任务生成 change summary 和 revision manifest；版本快照必须传入完整参数。
 7. 只有最终 PPTX、QA manifest 和严格 delivery report 全部绑定且 blocker 为零时，才可调用
    `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --delivery-report <report>`。
-   预览渲染可选：未渲染时 delivery 的 `preview_page_coverage` 为 `0/0`，不阻断 complete。
+   预览渲染可选：未渲染时须用 `--allow-missing-preview` 运行 delivery，交付状态为
+   `incomplete`（无视觉 QA 证据，不能转 complete）；补渲染后经 `incomplete → qa` 恢复边重入 QA。
 
 ## Output contract
 
