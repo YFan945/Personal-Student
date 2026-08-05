@@ -1,3 +1,6 @@
-# Normalize line endings for text files on check-in.
-# On Windows, Git will convert LF to CRLF on checkout; on Unix, LF is preserved.
-* text=auto
+# Normalize line endings for text files on check-in AND check-out.
+# 与 .editorconfig 的 `end_of_line = lf` 保持一致：所有文本文件按 LF 检出，
+# 否则 Windows 上 prettier --check（期望 LF）会因 CRLF 失败。
+# .bat 保留 CRLF。
+* text eol=lf
+*.bat text eol=crlf
