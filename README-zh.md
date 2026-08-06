@@ -249,13 +249,16 @@ validation profile 且 Open XML schema 校验通过的 package report、会重�
 Slide Spec 并与当前 PPTX 和渲染预览 hash 绑定的 QA manifest，以及通过的严格
 delivery report。按需生成的 quality report 也必须分别绑定原始 Spec 或当前
 PPTX，不能只凭文件名通过。
-`deck.js` 按 `skills/student-presentation-ppt/references/pptxgenjs-safety.md` 中的
-官方 gotchas 写成裸 pptxgenjs；wrapper 只做 normalize 后原子落盘，不做生成期静态
+`deck.js` 遵守官方 PptxGenJS gotchas，并默认使用 suite-owned 共享版式、helper 和 visual
+库；wrapper 只做 normalize 后原子落盘，不做生成期静态
 门禁，布局/溢出问题由 QA 逐页视觉检查与 package validation 发现。
 QA 和 delivery 复用 package report，不重复校验未修改的 deck。
-11 类可编辑布局组件（`pptx-visuals.js`，可选）直接提供 hero、visual-dominant、
+11 类可编辑视觉组件（`pptx-visuals.js`）直接提供 hero、visual-dominant、
 process-path、时间线、对比、指标、架构、矩阵、引文、总结和参考资料结构，避免生成后逐页修补。
-标准视觉风格还会解析为 palette、间距、字体和线条 token。
+14 种标准视觉风格会解析为 palette、间距、字体、线条 token 和可执行 style DNA，并共享
+36 套按内容可行性、风格偏好、密度及连续轮廓选择的页面版式。页面配方是可调整的默认方向，
+不是逐页模板；叙事适配、可读性和来源安全优先，深色页会整体切换 palette，而不是只换背景。
+统一 smoke 工具会生成 14×6 风格 gallery 和独立 36 版式 gallery。
 发布工作流还会在 Linux 上临时渲染课程汇报、英语课堂、答辩、竞赛、社团展示、研究展示、软件项目、数据调查和学校模板编辑场景矩阵。
 
 ## 更新与卸载

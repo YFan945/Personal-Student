@@ -41,10 +41,9 @@ version: 0.5.1
 6. 检查来源缺口、故事顺序、重复页面、结论支撑、时间、转场、开篇/收尾、可能的问题。有 Slide Spec 时运行 `analyze_presentation_spec.py`。
 7. 编辑请求时，写 `outputs/<topic>-slide-spec.yaml`（含 `source_deck`、`edit_intent`、`review_findings`（`severity`/`target`/`problem`/`fix`）、`preserve`、`change_summary_required`，按 `../../references/slide-spec.schema.json` 校验），再进入 `sp-deck`。
 
-交接说明：编辑交接件 `slide-spec.yaml` 即已确认的规划产物。进入
-`sp-deck` 后，ppt skill 应直接以该 spec 为规划基准，**跳过重复的
-Production Summary 确认**（需求变更除外），并豁免 Presentation Brief 要求（见
-`references/presentation-intake.md` 与 ppt SKILL 第 3 步）。
+交接说明：编辑交接件 `slide-spec.yaml` 是诊断与编辑意图的结构化输入，不等于生产授权。
+进入 `sp-deck` 后复用所有已知事实，不重复询问，但仍须展示一次完整 Production Summary
+并记录确认 hash；review 交接可豁免单独 Presentation Brief 文件，不能豁免确认门禁。
 
 ## 评审结论标签
 

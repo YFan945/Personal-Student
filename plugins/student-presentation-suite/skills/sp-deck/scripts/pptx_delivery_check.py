@@ -49,7 +49,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--allow-missing-preview",
         action="store_true",
-        help="Do not require a preview/contact sheet; visual QA must then be reported as incomplete",
+        help="Publish an incomplete report without preview evidence; never qualifies for complete",
     )
     parser.add_argument(
         "--strict",
@@ -380,7 +380,7 @@ def inspect_delivery(
     required_files_valid = not missing
     pptx_readable = pptx_info is not None and pptx_info["exists"] and slide_error is None
     render_qa_valid = all(item["valid"] for item in preview_checks)
-    ok = bool(
+    complete_ready = bool(
         required_files_valid
         and pptx_readable
         and slide_count and slide_count > 0
@@ -388,12 +388,15 @@ def inspect_delivery(
         and qa_summary["valid"]
         and quality_summary["valid"] is not False
         and package_summary["valid"] is not False
+        and preview_checks
+        and isinstance(qa_summary.get("manifest", {}).get("visual_inspection"), dict)
+        and qa_summary["manifest"]["visual_inspection"].get("completed") is True
     )
 
     inspection = qa_summary.get("manifest", {}).get("visual_inspection", {}) if qa_summary.get("valid") else {}
     delivery_report = {
-        "ok": ok,
-        "status": "complete" if ok else "incomplete",
+        "ok": complete_ready,
+        "status": "complete" if complete_ready else "incomplete",
         "pptx_sha256": sha256_file(pptx) if pptx.is_file() else None,
         "qa_manifest_sha256": (
             sha256_file(qa_manifest) if qa_manifest is not None and qa_manifest.is_file() else None
@@ -430,7 +433,7 @@ def inspect_delivery(
         "quality_report": quality_summary,
         "package_validation": package_summary,
         "missing_expected_files": missing,
-        "ok": ok,
+        "ok": complete_ready,
         "delivery_report": delivery_report,
         "requirements": {
             "notes_required": require_notes,

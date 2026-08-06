@@ -99,7 +99,7 @@ class SkillBehaviorContractTests(unittest.TestCase):
         )
         qa = self.read("skills/sp-deck/references/pptx-qa.md")
         self.assertIn("pptxgenjs-safety.md", production)
-        self.assertIn("裸 pptxgenjs", production)
+        self.assertIn('require("pptx-layouts")', production)
         self.assertIn("H.safeArea", production)
         self.assertIn("QA 和 delivery 绑定", production)
         self.assertIn("package validation", qa)
@@ -288,7 +288,7 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("目录→每页主张", planning)
         self.assertIn("analyze_presentation_spec.py", planning)
         self.assertIn("build_support_outputs.py", planning)
-        self.assertIn("support outputs", production)
+        self.assertIn("build_support_outputs.py", production)
         self.assertIn("create_revision_manifest.py", revision)
         self.assertIn("可能的问题", review)
 

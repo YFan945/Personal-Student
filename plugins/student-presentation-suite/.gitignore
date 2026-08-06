@@ -1,6 +1,5 @@
 .claude/settings.local.json
 outputs/*
-!outputs/.gitkeep
 *.pptx
 *.png
 __pycache__/

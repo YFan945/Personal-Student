@@ -117,6 +117,10 @@ jobs:
           PYTHONPATH: "${{ github.workspace }}/plugins/student-presentation-suite"
           PPTX_RUNTIME_FORCE_AF_UNIX_SHIM: "1"
         run: python plugins/student-presentation-suite/scripts/scenario_render_matrix.py --require-render
+      - name: Render visual system galleries
+        env:
+          PYTHONPATH: "${{ github.workspace }}/plugins/student-presentation-suite"
+        run: python plugins/student-presentation-suite/scripts/visual_system_smoke_gallery.py --gallery all --require-render
 
   security-scan:
     runs-on: ubuntu-latest

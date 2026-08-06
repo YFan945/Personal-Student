@@ -69,6 +69,25 @@ class RuntimePathTests(unittest.TestCase):
                 ):
                     self.assertEqual("global", module.resolve_pptxgenjs(Path("P:/project"))["module_source"])
 
+    def test_env_modes_report_distinct_workflow_capabilities(self) -> None:
+        module = load_env_checker()
+        with mock.patch.object(module, "build_openxml_validator", side_effect=RuntimeError("skip")):
+            outline = module.inspect_environment(Path.cwd(), "outline")
+            review = module.inspect_environment(Path.cwd(), "review")
+        for name in (
+            "outline_ready",
+            "review_static_ready",
+            "review_visual_ready",
+            "create_ready",
+            "edit_ready",
+            "package_validation_ready",
+            "visual_qa_ready",
+        ):
+            self.assertIn(name, outline["capabilities"])
+        self.assertEqual(["jsonschema", "PyYAML"], outline["active_requirements"])
+        self.assertNotIn("node", review["active_requirements"])
+        self.assertEqual("optional-unknown", review["checks"]["External image generation"]["status"])
+
     def test_bridge_runs_from_space_path_and_targets_project_outputs(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Claude Project ") as project_tmp:
             project = Path(project_tmp)

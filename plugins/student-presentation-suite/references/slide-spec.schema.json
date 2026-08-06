@@ -46,7 +46,7 @@
           "type": "array",
           "uniqueItems": true,
           "items": {
-            "enum": ["pptx", "pdf", "speaker-notes", "preview", "teleprompter", "quality-report", "revision-manifest"]
+            "enum": ["outline", "slide-spec", "pptx", "pdf", "speaker-notes", "preview", "teleprompter", "training-cards", "references", "change-summary", "full-script", "contact-sheet", "quality-report", "revision-manifest"]
           }
         },
         "versioning": { "type": "boolean" },
@@ -67,6 +67,7 @@
             "user-assets",
             "web-search",
             "generated",
+            "hybrid-adaptive",
             "diagram-only",
             "text-only",
             "ask-before-web-search"
@@ -75,7 +76,9 @@
         "visual_style": { "type": "string", "minLength": 1 },
         "deliverables": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "enum": ["outline", "slide-spec", "pptx", "pdf", "speaker-notes", "preview", "teleprompter", "training-cards", "references", "change-summary", "full-script", "contact-sheet", "quality-report", "revision-manifest"]
+          },
           "minItems": 1,
           "uniqueItems": true
         },

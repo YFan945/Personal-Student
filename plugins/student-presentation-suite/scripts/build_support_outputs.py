@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build local teleprompter, training-card, and references outputs from Slide Spec."""
+"""Build confirmed support outputs from a validated Slide Spec."""
 
 from __future__ import annotations
 
@@ -10,9 +10,24 @@ import sys
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.slide_spec_contract import validate_slide_spec
+
+SUPPORTED = {
+    "speaker-notes",
+    "full-script",
+    "teleprompter",
+    "training-cards",
+    "references",
+}
+
 
 def load_optional_dependencies():
     try:
+        import jsonschema  # noqa: F401
         import yaml  # noqa: F401
     except ImportError as exc:
         print(
@@ -115,30 +130,78 @@ def references_markdown(data: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def speaker_notes_markdown(data: dict[str, Any]) -> str:
+    lines = ["# Speaker Notes", ""]
+    for slide in data.get("slides", []):
+        if not isinstance(slide, dict):
+            continue
+        lines.extend(
+            [
+                f"## Slide {slide.get('id')}: {slide.get('title', '')}",
+                str(slide.get("speaker_notes") or slide.get("note_goal") or ""),
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def full_script_markdown(data: dict[str, Any]) -> str:
+    lines = ["# Full Presentation Script", ""]
+    for slide in data.get("slides", []):
+        if not isinstance(slide, dict):
+            continue
+        script = slide.get("speaker_notes") or slide.get("note_goal") or slide.get("claim") or ""
+        lines.extend([f"## Slide {slide.get('id')}: {slide.get('title', '')}", str(script)])
+        if slide.get("transition"):
+            lines.append(f"Transition: {slide['transition']}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def main() -> None:
     load_optional_dependencies()
     parser = argparse.ArgumentParser(description="Build support outputs from Slide Spec")
     parser.add_argument("spec", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--prefix")
+    parser.add_argument(
+        "--only",
+        action="append",
+        choices=sorted(SUPPORTED),
+        help="Generate only this support output; repeat for multiple outputs",
+    )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
     try:
-        data = load_spec(args.spec)
+        data, errors, _ = validate_slide_spec(
+            args.spec, ROOT / "references" / "slide-spec.schema.json"
+        )
+        if errors:
+            raise ValueError(
+                "Slide Spec validation failed: "
+                + "; ".join(f"{error['path']}: {error['message']}" for error in errors)
+            )
     except Exception as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
         raise SystemExit(2) from exc
     prefix = args.prefix or (data.get("meta") or {}).get("output_prefix") or args.spec.stem
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    confirmed = set((data.get("meta") or {}).get("deliverables") or [])
+    selected = set(args.only or []) if args.only else confirmed & SUPPORTED
+    renderers = {
+        "speaker-notes": (f"{prefix}-speaker-notes.md", speaker_notes_markdown),
+        "full-script": (f"{prefix}-full-script.md", full_script_markdown),
+        "teleprompter": (f"{prefix}-teleprompter.html", teleprompter_html),
+        "training-cards": (f"{prefix}-training-cards.md", training_cards),
+        "references": (f"{prefix}-references.md", references_markdown),
+    }
     outputs = {
-        "teleprompter": args.output_dir / f"{prefix}-teleprompter.html",
-        "training_cards": args.output_dir / f"{prefix}-training-cards.md",
-        "references": args.output_dir / f"{prefix}-references.md",
+        name: args.output_dir / renderers[name][0]
+        for name in sorted(selected)
     }
     try:
-        outputs["teleprompter"].write_text(teleprompter_html(data), encoding="utf-8")
-        outputs["training_cards"].write_text(training_cards(data), encoding="utf-8")
-        outputs["references"].write_text(references_markdown(data), encoding="utf-8")
+        for name, path in outputs.items():
+            path.write_text(renderers[name][1](data), encoding="utf-8")
     except (OSError, ValueError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
         raise SystemExit(1) from exc

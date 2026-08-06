@@ -90,6 +90,7 @@
         "user-assets",
         "web-search",
         "generated",
+        "hybrid-adaptive",
         "diagram-only",
         "text-only",
         "ask-before-web-search"
@@ -100,7 +101,7 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": {
-        "enum": ["outline", "slide-spec", "pptx", "pdf", "speaker-notes", "preview", "teleprompter", "change-summary", "full-script", "contact-sheet", "quality-report", "revision-manifest"]
+        "enum": ["outline", "slide-spec", "pptx", "pdf", "speaker-notes", "preview", "teleprompter", "training-cards", "references", "change-summary", "full-script", "contact-sheet", "quality-report", "revision-manifest"]
       }
     },
     "output_prefix": {

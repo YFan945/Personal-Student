@@ -57,6 +57,17 @@ class ScenarioRenderMatrixTests(unittest.TestCase):
             },
             families,
         )
+        source = SCRIPT.read_text(encoding="utf-8")
+        for scenario in (
+            "outline-handoff",
+            "review-static-only",
+            "review-rendered",
+            "review-to-deck",
+            "missing-render-incomplete",
+            "rebuild",
+        ):
+            self.assertIn(scenario, source)
+        self.assertIn("exercise_school_template_edit", source)
 
 
 if __name__ == "__main__":

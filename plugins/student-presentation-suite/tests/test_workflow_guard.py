@@ -194,8 +194,8 @@ class StateTransitionTests(unittest.TestCase):
             errors = module.validate_completion_manifest(manifest, pptx)
             self.assertTrue(any("blocker" in e.lower() for e in errors))
 
-    def test_complete_allows_missing_visual_inspection(self) -> None:
-        """视觉检查为可选：无 visual_inspection 的 manifest 在 delivery 通过时仍可 complete。"""
+    def test_complete_rejects_missing_visual_inspection(self) -> None:
+        """没有逐页渲染证据时不能 complete。"""
         module = self.module
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -218,10 +218,9 @@ class StateTransitionTests(unittest.TestCase):
                 "package_validation_passed": True,
                 "preview_page_coverage": "0/0",
             }), encoding="utf-8")
-            self.assertEqual(
-                [],
-                module.validate_completion_manifest(manifest, pptx, delivery),
-            )
+            errors = module.validate_completion_manifest(manifest, pptx, delivery)
+            self.assertTrue(any("visual_inspection" in error for error in errors))
+            self.assertTrue(any("渲染页面" in error for error in errors))
 
     def test_complete_allows_completed_inspection_without_repair_reason(self) -> None:
         """no_repair_needed_reason 为可选：completed + remaining_blockers=0 即可 complete。"""
@@ -308,8 +307,8 @@ class StateTransitionTests(unittest.TestCase):
                     self._ns("transition", state_file=state, to="complete")
                 )
 
-    def test_confirm_force_reconfirms_without_resetting(self) -> None:
-        """confirm --force 从非 intake_pending 状态重确认，保留当前进度。"""
+    def test_confirm_force_changed_summary_invalidates_progress(self) -> None:
+        """confirm --force 修改摘要后回退到 intake_confirmed。"""
         module = self.module
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -318,7 +317,13 @@ class StateTransitionTests(unittest.TestCase):
             summary.write_text("revised", encoding="utf-8")
             module.save_state(
                 state,
-                {"workflow_version": "1.0", "state": "producing", "topic": "t"},
+                {
+                    "workflow_version": "1.0",
+                    "state": "producing",
+                    "topic": "t",
+                    "summary_sha256": "old",
+                    "rework_count": 2,
+                },
             )
             module.state_command(
                 self._ns(
@@ -326,7 +331,8 @@ class StateTransitionTests(unittest.TestCase):
                 )
             )
             after = module.load_state(state)
-            self.assertEqual("producing", after["state"])
+            self.assertEqual("intake_confirmed", after["state"])
+            self.assertNotIn("rework_count", after)
             self.assertEqual(
                 hashlib.sha256(summary.read_bytes()).hexdigest(),
                 after["summary_sha256"],

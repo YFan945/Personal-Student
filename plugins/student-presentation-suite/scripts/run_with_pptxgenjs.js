@@ -5,6 +5,13 @@ const { randomUUID } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const Module = require('node:module');
+const USAGE =
+  'Usage: run_with_pptxgenjs.js --output <new-deck.pptx> <deck-script.js> [deck-args...]';
+
+if (['--help', '-h'].includes(process.argv[2])) {
+  process.stdout.write(`${USAGE}\n`);
+  process.exit(0);
+}
 
 function npmGlobalRoot() {
   // On Windows, Node 20+ blocks direct spawn of .cmd/.bat. Use a fixed cmd.exe
@@ -83,9 +90,7 @@ const script = outputFlag >= 0 ? process.argv[outputFlag + 2] : '';
 const deckArgs = outputFlag >= 0 ? process.argv.slice(outputFlag + 3) : [];
 if (!script || !fs.existsSync(script) || !fs.statSync(script).isFile()) {
   // eslint-disable-next-line no-console
-  console.error(
-    'Usage: run_with_pptxgenjs.js --output <new-deck.pptx> <deck-script.js> [deck-args...]',
-  );
+  console.error(USAGE);
   process.exit(2);
 }
 if (!output || !/\.(pptx|potx)$/i.test(output)) {

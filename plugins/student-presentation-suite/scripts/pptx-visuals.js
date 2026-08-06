@@ -292,10 +292,13 @@ function addMetricDashboard(slide, data, area, tokens, lang) {
 function addChartWithTakeaway(slide, data, area, tokens, lang) {
   const p = palette(tokens);
   const colors = [p.accent, p.accent2, p.muted];
-  const series = items(data.series).map((entry, index) => ({
-    ...entry,
-    color: entry.color || colors[index % colors.length],
-  }));
+  const rawSeries = items(data.series);
+  const chartColors = rawSeries.map((entry, index) => entry.color || colors[index % colors.length]);
+  const series = rawSeries.map((entry) => {
+    const normalized = { ...entry };
+    delete normalized.color;
+    return normalized;
+  });
   if (!series.length) {
     throw new RangeError('addChartWithTakeaway requires editable chart series.');
   }
@@ -309,8 +312,9 @@ function addChartWithTakeaway(slide, data, area, tokens, lang) {
     title: data.title || data.measure || 'Key result',
     titleFontFace: H.fontFamily(tokens).title,
     titleFontSize: Math.max(20, H.fontSizeScale(tokens, lang).body),
-    // 系列颜色已由 per-series `color` 提供；不传 chartColors——
-    // PptxGenJS 4.0.1 会因此把 per-point 的 c:dPt 写在 c:dLbls 之后，违反 schema。
+    // PptxGenJS ignores a `color` property on series data. Supplying one color per
+    // series through chartColors writes c:ser/c:spPr and keeps style tokens visible.
+    chartColors,
     catAxisLabelFontFace: H.fontFamily(tokens).body,
     valAxisLabelFontFace: H.fontFamily(tokens).body,
     catAxisLabelFontSize: 18,

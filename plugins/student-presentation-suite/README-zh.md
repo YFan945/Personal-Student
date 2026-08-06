@@ -102,11 +102,20 @@ PPTX skill 先读取 `skills/sp-deck/references/visual-style-menu.md`，推荐�
 `visual-styles/` 下的具体风格规范。每个风格都包含颜色角色、字体、几何、
 页面配方、图片处理、密度限制和验收检查。
 
-风格是生成方向，不是固定模板。页面布局必须服务于内容功能，装饰不能代替
-证据、层级和可读性。
+风格是自适应生成方向，不是固定模板。硬约束只保护可读性、证据真实性、来源边界和
+内容适配；页面配方、比例、母题和常规密度范围均可根据叙事任务调整。没有合适视觉素材时
+允许排版主导页，不能用无意义图标、卡片或引文填空。
 
-`deck.js` 按 `skills/sp-deck/references/pptxgenjs-safety.md` 中的官方 gotchas 写成裸 pptxgenjs 脚本；
-`pptx-helpers.js`/`pptx-visuals.js`/`pptx-icons.js` 是可选工具库（`pptx-icons.js` 提供约 30 个随 token 着色的矢量图标）。`pptx-visuals.js` 用可编辑形状、
+深色页使用 `H.paletteMode(tokens, "dark")`，让 canvas、surface、文字和强调色整体切换。
+14 种风格还通过可执行 `style_dna` 区分构图、几何、字体处理、图像处理、图表语法、母题及
+三档表现强度；风格偏好不能绕过容量、来源或对比度规则。
+
+所有风格共享 `layout-library.json` 中的 36 套可执行页面版式，由 `pptx-layouts.js` 先按内容
+可行性过滤，再结合风格、密度和连续轮廓排序。`scripts/visual_system_smoke_gallery.py` 会生成
+14×6 风格 gallery 和独立 36 版式 gallery，并在 LibreOffice/Poppler 可用时渲染。
+
+`deck.js` 遵守 `skills/sp-deck/references/pptxgenjs-safety.md` 中的官方 gotchas，并默认使用
+`pptx-layouts.js`、`pptx-helpers.js` 与 `pptx-visuals.js`；`pptx-icons.js` 提供约 30 个随 token 着色的矢量图标。`pptx-visuals.js` 用可编辑形状、
 连接线、标签和图片/图表结构实现 hero/visual-dominant/process-path/timeline/comparison/
 dashboard/architecture/matrix/quote/summary/reference 等布局族。图片默认等比包含并写入 alt text，
 图表使用投影可读字号。

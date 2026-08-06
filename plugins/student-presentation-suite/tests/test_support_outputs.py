@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -40,6 +44,65 @@ class SupportOutputTests(unittest.TestCase):
         self.assertIn("Explain it.", teleprompter)
         self.assertIn("Likely question", cards)
         self.assertIn("https://example.test", references)
+
+    def test_cli_generates_only_confirmed_or_explicit_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            spec = root / "spec.json"
+            spec.write_text(
+                json.dumps(
+                    {
+                        "meta": {
+                            "topic": "Demo",
+                            "output_prefix": "demo",
+                            "deliverables": ["speaker-notes", "references"],
+                        },
+                        "slides": [
+                            {
+                                "id": 1,
+                                "title": "Claim",
+                                "layout": "claim-focus",
+                                "content": "Evidence",
+                                "timing_sec": 30,
+                                "owner": "A",
+                                "speaker_notes": "Explain the evidence.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            output = root / "outputs"
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), str(spec), "--output-dir", str(output), "--json"],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual({"speaker-notes", "references"}, set(payload["outputs"]))
+            self.assertFalse((output / "demo-teleprompter.html").exists())
+
+            only = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    str(spec),
+                    "--output-dir",
+                    str(output),
+                    "--only",
+                    "teleprompter",
+                    "--json",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(0, only.returncode, only.stdout + only.stderr)
+            self.assertEqual({"teleprompter"}, set(json.loads(only.stdout)["outputs"]))
 
 
 if __name__ == "__main__":

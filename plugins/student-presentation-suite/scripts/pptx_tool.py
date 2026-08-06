@@ -123,8 +123,20 @@ def command_inspect(args: argparse.Namespace) -> int:
         output.parent.mkdir(parents=True, exist_ok=True)
         command = shutil.which("markitdown")
         if not command:
-            result["ok"] = False
-            result["text_extraction"] = "markitdown is unavailable"
+            lines = ["# PPTX text extraction", ""]
+            for slide in slides:
+                lines.extend(
+                    [
+                        f"## Slide {slide['index']}: {slide.get('title') or '(untitled)'}",
+                        "",
+                        str(slide.get("text_preview") or ""),
+                        "",
+                    ]
+                )
+            output.write_text("\n".join(lines), encoding="utf-8")
+            result["text_output"] = str(output)
+            result["text_extraction"] = "suite-ooxml-fallback"
+            result["text_extraction_warning"] = "markitdown is unavailable"
         else:
             completed = subprocess.run(
                 [command, str(path), "-o", str(output)],
@@ -137,8 +149,21 @@ def command_inspect(args: argparse.Namespace) -> int:
             result["text_output"] = str(output)
             result["text_extraction_returncode"] = completed.returncode
             if completed.returncode != 0:
-                result["ok"] = False
-                result["text_extraction"] = completed.stderr.strip()
+                lines = ["# PPTX text extraction", ""]
+                for slide in slides:
+                    lines.extend(
+                        [
+                            f"## Slide {slide['index']}: {slide.get('title') or '(untitled)'}",
+                            "",
+                            str(slide.get("text_preview") or ""),
+                            "",
+                        ]
+                    )
+                output.write_text("\n".join(lines), encoding="utf-8")
+                result["text_extraction"] = "suite-ooxml-fallback"
+                result["text_extraction_warning"] = completed.stderr.strip()
+            else:
+                result["text_extraction"] = "markitdown"
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["ok"] else 1
 

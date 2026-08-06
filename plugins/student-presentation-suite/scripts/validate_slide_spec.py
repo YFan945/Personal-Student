@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from shared.handoff_validation import handoff_errors
 from shared.slide_spec_contract import validate_slide_spec
 
 
@@ -40,6 +41,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON result")
     parser.add_argument("--output", type=Path, help="Write a reusable validation report")
+    parser.add_argument(
+        "--brief",
+        type=Path,
+        help="Optional validated Presentation Brief to check against the Slide Spec",
+    )
     return parser.parse_args()
 
 
@@ -47,7 +53,24 @@ def main() -> None:
     args = parse_args()
     jsonschema, yaml = load_optional_dependencies()
     try:
-        _, errors, spec_hash = validate_slide_spec(args.spec, args.schema)
+        data, errors, spec_hash = validate_slide_spec(args.spec, args.schema)
+        if not errors and args.brief:
+            raw = args.brief.read_text(encoding="utf-8")
+            brief = json.loads(raw) if args.brief.suffix.lower() == ".json" else yaml.safe_load(raw)
+            brief_schema = json.loads(
+                (ROOT / "references" / "presentation-brief.schema.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            validator = jsonschema.Draft202012Validator(brief_schema)
+            for error in sorted(
+                validator.iter_errors(brief),
+                key=lambda item: tuple(str(part) for part in item.path),
+            ):
+                location = ".brief" + "".join(f"[{part!r}]" for part in error.path)
+                errors.append({"path": location, "message": error.message})
+            if not errors:
+                errors.extend(handoff_errors(brief, data))
     except (OSError, json.JSONDecodeError, yaml.YAMLError, jsonschema.SchemaError) as exc:
         result = {"valid": False, "error": str(exc), "errors": []}
         if args.json:
@@ -62,6 +85,7 @@ def main() -> None:
         "errors": errors,
         "slide_spec": str(args.spec.resolve()),
         "slide_spec_sha256": spec_hash,
+        "presentation_brief": str(args.brief.resolve()) if args.brief else None,
     }
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

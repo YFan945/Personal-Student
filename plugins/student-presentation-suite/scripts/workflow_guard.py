@@ -103,19 +103,15 @@ def validate_completion_manifest(
     if slide_count is None or manifest.get("slide_count") != slide_count:
         errors.append("QA manifest 的 slide_count 与 PPTX 不一致。")
     rendered = manifest.get("rendered_page_count")
-    if rendered and rendered != slide_count:
+    if rendered != slide_count:
         errors.append("QA manifest 的 rendered_page_count 与 PPTX 不一致。")
     if manifest.get("scenario_contract_passed") is not True:
         errors.append("QA manifest 未通过 scenario contract。")
     inspection = manifest.get("visual_inspection")
-    if inspection is not None:
-        if not isinstance(inspection, dict):
-            errors.append("QA manifest 的 visual_inspection 无效。")
-        elif (
-            inspection.get("completed") is True
-            and inspection.get("remaining_blockers") != 0
-        ):
-            errors.append("QA manifest 仍有未解决 blocker。")
+    if not isinstance(inspection, dict) or inspection.get("completed") is not True:
+        errors.append("转换到 complete 必须完成逐页 visual_inspection。")
+    elif inspection.get("remaining_blockers") != 0:
+        errors.append("QA manifest 仍有未解决 blocker。")
     if delivery_report_path is None:
         return errors
     try:
@@ -137,7 +133,7 @@ def validate_completion_manifest(
     if delivery.get("package_validation_passed") is not True:
         errors.append("严格交付报告未通过 PPTX package validation。")
     coverage = delivery.get("preview_page_coverage")
-    if coverage and coverage not in ("0/0", "") and coverage != f"{slide_count}/{slide_count}":
+    if coverage != f"{slide_count}/{slide_count}":
         errors.append("严格交付报告未覆盖全部渲染页面。")
     return errors
 
@@ -224,10 +220,22 @@ def state_command(args: argparse.Namespace) -> int:
                     f"当前状态必须是 intake_pending 或未初始化。"
                     f"如需需求变更后重新确认（保留当前进度），请加 --force。"
                 )
+            changed = base.get("summary_sha256") != summary_hash
             base["summary_file"] = str(args.summary_file.resolve())
             base["summary_sha256"] = summary_hash
+            if changed:
+                base["state"] = "intake_confirmed"
+                for key in (
+                    "rework_count",
+                    "last_rework_reason",
+                    "pptx_sha256",
+                    "qa_manifest_sha256",
+                    "delivery_report_sha256",
+                ):
+                    base.pop(key, None)
             save_state(state_path, base)
-            print(f"✅ 已重新确认 Production Summary（保留 {base.get('state')} 状态）→ {state_path}")
+            action = "回退到 intake_confirmed" if changed else f"保留 {base.get('state')} 状态"
+            print(f"✅ 已重新确认 Production Summary（{action}）→ {state_path}")
         else:
             base.update(
                 {
@@ -334,7 +342,7 @@ def main() -> None:
     )
     confirm.add_argument(
         "--force", action="store_true",
-        help="从非 intake_pending 状态强制重新确认（需求变更时保留当前进度）",
+        help="从非 intake_pending 状态重新确认；摘要变化时回退到 intake_confirmed",
     )
 
     transition = sub.add_parser("transition", help="推进工作流状态")

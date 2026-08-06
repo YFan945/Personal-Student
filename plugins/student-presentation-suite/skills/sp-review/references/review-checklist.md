@@ -201,18 +201,6 @@ Use `--strict` only for automated validation where a failed scan should fail the
 
 ## Suggested Output
 
-For each issue, include exactly four fields, mapping 1:1 to the `review_findings` items in
-`../../references/slide-spec.schema.json` (`additionalProperties: false` — do not add extra keys):
-- severity (Critical / Major / Minor)
-- target — slide/page number when known (e.g. `Slide 4`)
-- problem — the issue and why it matters
-- fix — concrete fix
-
-Example:
-
-```markdown
-- severity: Major
-  target: Slide 4
-  problem: The title "Analysis" does not tell the audience the conclusion; the header must carry the takeaway.
-  fix: Rename it to "Convenience is the main reason students choose short videos for news".
-```
+Use `review-output-format.md` as the single source for the four-field `review_findings`
+contract, examples, edit plan, and change-summary handoff. This checklist only determines
+what to inspect and how to classify the evidence.

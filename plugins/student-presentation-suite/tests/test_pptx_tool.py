@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -9,8 +10,12 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
+
+from test_helpers import load_module
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "scripts" / "pptx_tool.py"
@@ -62,6 +67,22 @@ class PptxToolTests(unittest.TestCase):
             result = self.run_tool("--help", cwd=Path(tmp))
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("qa-manifest", result.stdout)
+
+    def test_inspect_text_uses_ooxml_fallback_without_markitdown(self) -> None:
+        module = load_module(TOOL)
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "minimal.pptx"
+            output = Path(tmp) / "text.md"
+            write_minimal_package(pptx)
+            stream = io.StringIO()
+            with mock.patch.object(module.shutil, "which", return_value=None), redirect_stdout(stream):
+                returncode = module.command_inspect(
+                    SimpleNamespace(input=pptx, text_output=output)
+                )
+            payload = json.loads(stream.getvalue())
+            self.assertEqual(0, returncode)
+            self.assertEqual("suite-ooxml-fallback", payload["text_extraction"])
+            self.assertTrue(output.is_file())
 
     def test_shared_geometry_keeps_title_content_and_footer_disjoint(self) -> None:
         if not shutil.which("node"):

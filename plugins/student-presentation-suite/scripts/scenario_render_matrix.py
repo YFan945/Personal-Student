@@ -8,6 +8,7 @@ Generated artifacts remain in a temporary directory.  CI should invoke this with
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -187,6 +188,49 @@ pptx.writeFile({{ fileName: process.argv[2] }});
     return pptx
 
 
+def exercise_school_template_edit(work: Path, tool: Path, source: Path) -> tuple[Path, str]:
+    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+    text_output = work / "school-template-source-text.md"
+    run_checked(
+        [sys.executable, str(tool), "inspect", str(source), "--text-output", str(text_output)],
+        "school-template-edit: inspect",
+    )
+    run_checked(
+        [
+            sys.executable,
+            str(tool),
+            "thumbnail",
+            str(source),
+            "--output-prefix",
+            str(work / "school-template-source-thumb"),
+        ],
+        "school-template-edit: thumbnail",
+    )
+    unpacked = work / "school-template-unpacked"
+    run_checked(
+        [sys.executable, str(tool), "unpack", str(source), "--output", str(unpacked)],
+        "school-template-edit: unpack",
+    )
+    slide_xml = unpacked / "ppt" / "slides" / "slide1.xml"
+    original_xml = slide_xml.read_text(encoding="utf-8")
+    edited_xml = original_xml.replace("background", "background edited", 1)
+    if edited_xml == original_xml:
+        raise RuntimeError("school-template-edit: fixture title was not found in slide XML")
+    slide_xml.write_text(edited_xml, encoding="utf-8")
+    run_checked(
+        [sys.executable, str(tool), "clean", str(unpacked)],
+        "school-template-edit: clean",
+    )
+    target = work / "school-template-edit-edited-presentation.pptx"
+    run_checked(
+        [sys.executable, str(tool), "pack", str(unpacked), "--output", str(target)],
+        "school-template-edit: pack",
+    )
+    if hashlib.sha256(source.read_bytes()).hexdigest() != source_hash:
+        raise RuntimeError("school-template-edit: source deck changed during edit workflow")
+    return target, source_hash
+
+
 def validate_scenario(
     work: Path,
     name: str,
@@ -241,6 +285,75 @@ def validate_scenario(
     return spec_path, spec_report
 
 
+def exercise_cross_workflow_contracts(
+    work: Path,
+    tool: Path,
+    delivery: Path,
+    pptx: Path,
+    package_report: Path,
+    spec_path: Path,
+    spec_report: Path,
+    notes: Path,
+) -> list[str]:
+    completed = ["outline-handoff", "create"]
+    static_check = ROOT / "skills" / "sp-review" / "scripts" / "pptx_static_check.py"
+    run_checked(
+        [sys.executable, str(static_check), str(pptx), "--json"],
+        "review-static-only",
+    )
+    completed.append("review-static-only")
+
+    summary = work / "review-to-deck-summary.md"
+    summary.write_text("# Production Summary\n\nReview findings will be applied to a new output.", encoding="utf-8")
+    state = work / "review-to-deck-state.json"
+    guard = ROOT / "scripts" / "workflow_guard.py"
+    run_checked([sys.executable, str(guard), "init", "--state-file", str(state)], "review-to-deck: init")
+    run_checked(
+        [sys.executable, str(guard), "confirm", "--state-file", str(state), "--summary-file", str(summary)],
+        "review-to-deck: confirm",
+    )
+    run_checked(
+        [sys.executable, str(guard), "transition", "--state-file", str(state), "--to", "planned"],
+        "review-to-deck: plan",
+    )
+    if json.loads(state.read_text(encoding="utf-8"))["state"] != "planned":
+        raise RuntimeError("review-to-deck: Production Summary confirmation was not enforced")
+    completed.append("review-to-deck")
+
+    no_preview_manifest = work / "missing-render-qa-manifest.json"
+    run_checked(
+        [
+            sys.executable, str(tool), "qa-manifest", "--pptx", str(pptx),
+            "--slide-spec", str(spec_path), "--slide-spec-report", str(spec_report),
+            "--package-report", str(package_report), "--output", str(no_preview_manifest),
+        ],
+        "missing-render-incomplete: manifest",
+    )
+    incomplete_report = work / "missing-render-delivery-report.json"
+    run_checked(
+        [
+            sys.executable, str(delivery), "--pptx", str(pptx), "--notes", str(notes),
+            "--qa-manifest", str(no_preview_manifest), "--package-report", str(package_report),
+            "--allow-missing-preview", "--output", str(incomplete_report), "--json",
+        ],
+        "missing-render-incomplete: delivery",
+    )
+    if json.loads(incomplete_report.read_text(encoding="utf-8"))["status"] != "incomplete":
+        raise RuntimeError("missing-render-incomplete: delivery did not remain incomplete")
+    completed.append("missing-render-incomplete")
+
+    source_hash = hashlib.sha256(pptx.read_bytes()).hexdigest()
+    rebuilt = generate_deck(work, "rebuild-contract", "Chinese", ["problem", "method", "result"])
+    run_checked(
+        [sys.executable, str(tool), "validate", str(rebuilt), "--original", str(pptx), "--json"],
+        "rebuild",
+    )
+    if rebuilt.resolve() == pptx.resolve() or hashlib.sha256(pptx.read_bytes()).hexdigest() != source_hash:
+        raise RuntimeError("rebuild: source was overwritten or output was not independent")
+    completed.append("rebuild")
+    return completed
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run temporary rendered PPTX scenario matrix")
     parser.add_argument("--require-render", action="store_true")
@@ -253,18 +366,32 @@ def main() -> None:
     delivery = ROOT / "skills" / "sp-deck" / "scripts" / "pptx_delivery_check.py"
     tool = ROOT / "scripts" / "pptx_tool.py"
     completed = []
+    workflow_scenarios: list[str] = []
     with tempfile.TemporaryDirectory(prefix="sp-outline-matrix-") as tmp:
         work = Path(tmp)
         for name, (scenario, language, roles) in MATRIX.items():
             spec_path, spec_report = validate_scenario(
                 work, name, scenario, language, roles
             )
-            pptx = generate_deck(work, name, language, roles)
+            source = generate_deck(work, name, language, roles)
+            original = None
+            if name == "school-template-edit":
+                pptx, source_hash = exercise_school_template_edit(work, tool, source)
+                original = source
+            else:
+                pptx = source
+                source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
             notes = work / f"{name}-speaker-notes.md"
             notes.write_text("# Matrix notes\n", encoding="utf-8")
             package_report = work / f"{name}-package-report.json"
+            validate_command = [
+                sys.executable, str(tool), "validate", str(pptx),
+                "--output", str(package_report), "--json",
+            ]
+            if original:
+                validate_command.extend(["--original", str(original)])
             run_checked(
-                [sys.executable, str(tool), "validate", str(pptx), "--output", str(package_report), "--json"],
+                validate_command,
                 f"{name}: package validation",
             )
             render_dir = work / f"{name}-render"
@@ -321,8 +448,31 @@ def main() -> None:
             for page in pages:
                 delivery_command.extend(["--preview", str(page)])
             run_checked(delivery_command, f"{name}: strict delivery")
+            if name == "coursework-zh":
+                workflow_scenarios = exercise_cross_workflow_contracts(
+                    work,
+                    tool,
+                    delivery,
+                    pptx,
+                    package_report,
+                    spec_path,
+                    spec_report,
+                    notes,
+                )
+                workflow_scenarios.append("review-rendered")
+            if hashlib.sha256(source.read_bytes()).hexdigest() != source_hash:
+                raise RuntimeError(f"{name}: source hash changed during scenario")
             completed.append(name)
-    print(json.dumps({"ok": True, "rendered_scenarios": completed}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "rendered_scenarios": completed,
+                "workflow_scenarios": workflow_scenarios,
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 if __name__ == "__main__":

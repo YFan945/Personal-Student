@@ -34,11 +34,13 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
 - 坐标必须落在画布内；标题、正文、页脚区与安全边距保持一致。禁止用
   `slideH - 常量` 自算页脚坐标。可用可选 helper 的 `H.safeArea`/`H.gridLayout` 降低
   手算坐标出错率。
-- 按 `pptxgenjs-safety.md` 直接写裸 pptxgenjs 脚本，**默认一致使用**
+- 按 `pptxgenjs-safety.md` 编写 pptxgenjs 脚本，**默认一致使用**
+  `pptx-layouts.js`（`getLayout`/`selectLayouts`/`resolveLayout`）、
   `pptx-helpers.js`（`H.safeArea`/`H.gridLayout`/`H.addTitle` 等）与 `pptx-visuals.js`
   （`V.renderVisual` 组件）划分版面，避免手写每页坐标导致重叠/溢出；确需裸写时遵循
   "Visual design" 节的设计原则。每页用 `slide.background` 设置背景（canvas 角色），
-  深色封面/浅色内容对比。
+  深色页先用 `H.paletteMode(tokens, "dark")` 得到整套页面 token，再把同一份页面
+  token 传给背景、标题、页脚和视觉组件；不得只切换 canvas 而继续使用浅色文字角色。
 - 使用 resolved design tokens；不得另选本 reference 之外的 palette。
 - 所有最终 candidate 都必须通过 `pptx_tool.py validate`。
 
@@ -46,21 +48,23 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
 
 把"每页手写坐标"作为兜底而非首选。每页都按这些原则设计，从源头减少视觉返工：
 
-- **主导色而非平均用力**：一个主导色占 60-70% 视觉权重，配 1-2 个支撑色、1 个强调色；
-  不要给所有颜色相等权重。
+- **按角色用色**：canvas/surface 承担阅读底色，primary/secondary text 承担文字，accent
+  只承担重点、状态或导航；不要平均使用全部色彩，也不要把高饱和强调色当普通正文色。
 - **深/浅对比（sandwich）**：默认封面与结论页用深色背景、内容页用浅色，或整体走深色高级风；
   **仅定义了 `dark_palette` 的样式（Midnight Business / Ocean Tech）强制深色封面/结论**，
   其余样式深色页需校验对比度。
-- **一个贯穿全 deck 的视觉母题（motif）**：如圆角图框、图标圆点等，重复出现在每一页。
+- **一个可识别但克制的视觉母题（motif）**：在封面、章节、代表性内容页和结尾重复；
+  数据页、长图页、引文页可采用更适合内容的轮廓，不要求逐页出现。
 - **禁止 AI 痕迹**：标题下划线、装饰性色条/强调条/单侧边框都禁用；用留白、背景色或图标
   区分卡片。
 - **安全字体**：正文/任何需要判断文字适配的元素只用 Arial、Calibri、Cambria、Times New
   Roman、Courier New 等（LibreOffice 渲染与 Office 一致）；标题可衬线×正文无衬线组合；
   默认禁止 Aptos。
-- **字号**：标题 36-44pt、小节 20-24pt、正文 14-16pt、说明 10-12pt（再叠加本插件
-  `design-tokens` 的 CJK 下限）。
+- **字号**：标题通常 36-44pt，正文中文通常 ≥22pt、英文通常 ≥20pt，说明 10-12pt；
+  shared design tokens 的下限为硬底线。放不下时依次压缩文案、调整容器、更换构图、拆页。
 - **间距**：0.5" 最小边距、0.3-0.5" 内容块间距；不要让卡片几乎相碰或某侧空一大片。
-- **每页必须有视觉元素**（图/表/图标/形状），禁止纯文字页；避免低对比文字、文字溢出。
+- **视觉服务内容**：内容页优先采用能解释、比较、举证或组织信息的视觉结构；允许经过
+  设计的文字主导页，禁止为达成视觉配额强塞图标、卡片或无关图片。始终避免低对比和溢出。
 - **每页的布局选项、数据展示、视觉润色、字号表、间距与 Avoid 清单**见
   `visual-style-menu.md` 的 "Per-Slide Design Ideas"（与 document-skills pptx skill 一致）。
 
@@ -68,10 +72,12 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
 
 1. 按 Slide Spec 创建 `outputs/.pptx-work/<work-id>/deck.js`。
 2. 加载 `pptxgenjs-safety.md`，按官方 gotchas 写 pptxgenjs 脚本；**默认**
-   `require("pptx-helpers")` + `require("pptx-visuals")`：用 `H.safeArea` 划分
+   `require("pptx-layouts")` + `require("pptx-helpers")` + `require("pptx-visuals")`：
+   先按内容可行性选共享版式，再用 `H.safeArea` 划分
    title/content/footer 三层，内容视觉用 `V.renderVisual` 组件（或至少
    `H.addTitle`/`H.gridLayout`），遵循上方 "Visual design" 原则。每页设
-   `slide.background`（canvas 角色），深色封面/浅色内容对比。不得先写文字后补救坐标。
+   `slide.background`（canvas 角色）。深色页统一使用 `H.paletteMode(tokens, "dark")`
+   返回的页面 token；不得只切背景，也不得先写文字后补救坐标。
 3. deck.js 从 `process.argv[2]` 接收输出路径；每个输出只创建一个 pptxgen 实例。
 4. 执行：
 
@@ -101,7 +107,7 @@ source 的 vendor CLI。
 
 ## Transition to QA
 
-生产完成只代表获得 candidate。构建 support outputs（讲稿 `<topic>-speaker-notes.md` 从
-Slide Spec 的 `speaker_notes`/`note_goal` 逐页导出；预览/contact sheet 与 PDF 用渲染产物，
-可复用 `build_support_outputs.py`）后转为 `qa`，再执行 `pptx-qa.md`；此时不得提前对用户
+生产完成只代表获得 candidate。`build_support_outputs.py` 仅按已确认 deliverables 生成
+speaker notes、full script、teleprompter、training cards 和 references；preview、contact sheet
+与 PDF 统一由 render/export 流程生成。完成这些产物后转为 `qa`，再执行 `pptx-qa.md`；此时不得提前对用户
 声称文件 ready-to-present。

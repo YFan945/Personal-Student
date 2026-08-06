@@ -40,7 +40,7 @@ Confirm every item before production:
 | Template/branding | No required template, logo, or brand | Controls layout constraints |
 | Source deck (新建/改进) | No existing deck → create new | Decides `production_mode`: an editable `.pptx`/`.potx` source → `edit_ooxml`; a corrupt source or non-PPTX (PDF/preview) → `rebuild_from_source`/`create`; otherwise `create` |
 | Edit intent | None (new deck) | For improvements: `incremental` / `rebuild-clean-copy` / `fix-specific`; `rebuild-clean-copy` overrides the edit_ooxml default |
-| Image strategy | imagegen 关键插图（封面/背景）+ SVG/原生形状结构图；仅图表为安全后备 | Controls sourcing and production |
+| Image strategy | `hybrid-adaptive`：生成能力可用且获准时制作关键插图，否则采用确定性图表/形状 | Controls sourcing and production |
 | Visual style | Recommend three topic-fit styles; choose one only after confirmation | Controls visual direction |
 | Deliverables | PPTX, speaker notes, preview/contact sheet; add change summary for edits | Controls completion criteria |
 | Interaction/quality mode | Beginner + high-score | Controls guidance, evidence, and rehearsal depth |
@@ -126,7 +126,7 @@ Basic）。`Citation style` 不再询问：默认 `Classroom/课堂引用`，内
   - Step A 必须根据 topic 推荐最匹配的方向作为第一个选项 `（推荐）`，而不是机械按固定顺序
   - 若用户在 Step B 中看到上方带 `*` 的跨方向样式，标注为"也适用于 [另一方向]"
 - `Image strategy` → options:
-  - `生图+SVG/原生形状结合（推荐）` → 封面/背景等必要插图用内置生图 skill（imagegen）生成，方法链条/结构图用 SVG 或原生形状渲染；视觉丰富，需联网+生图环境
+  - `自适应混合（推荐）` → 生成能力可用且获准时制作关键插图；否则自动采用图表、原生形状或文字构图，不因缺少外部生图工具阻断生产
   - `内置生图 skill 生成插图` → 全部插图（含封面/背景/概念图）由 imagegen 生成
   - `Diagram-only/仅图表` → 仅图表与原生形状，无外部依赖，最安全最快
   - `Web image/联网图片` → 真实人物/地点/产品等先确认是否允许联网搜图

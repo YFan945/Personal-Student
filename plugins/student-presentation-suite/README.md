@@ -117,13 +117,25 @@ topic-fit choices, then loads exactly one style specification from
 `visual-styles/`. Each style defines color roles, typography, geometry, layout
 recipes, image treatment, density limits, and acceptance checks.
 
-Styles are directions rather than fixed templates. Layout must follow the
-slide's function, and decorative visuals must not replace evidence or
-readability.
+Styles are adaptive directions rather than fixed templates. Hard guardrails
+protect readability, truthful evidence, source boundaries, and fit; layout
+recipes, ratios, motifs, and normal density ranges remain adjustable to the
+slide's narrative job. Typography-led pages are valid when no meaningful visual
+is available, and filler icons, cards, or quotations are not acceptable.
 
-`deck.js` is written as raw pptxgenjs following the official generation
-gotchas in `skills/sp-deck/references/pptxgenjs-safety.md`. `pptx-helpers.js`/`pptx-visuals.js`/`pptx-icons.js`
-are optional conveniences; `pptx-visuals.js` implements editable layout families
+Dark pages use `H.paletteMode(tokens, "dark")` so canvas, surfaces, text, and
+accents switch together. The 14 styles also expose executable `style_dna` for
+composition, geometry, typography, image treatment, chart grammar, motif, and
+three intensity levels; style preferences never override capacity or evidence rules.
+
+All styles share 36 executable page layouts in `layout-library.json` through
+`pptx-layouts.js`. Selection filters by content feasibility before scoring style,
+density, and recent silhouettes. `scripts/visual_system_smoke_gallery.py` produces
+six-page galleries for all styles and a separate 36-layout gallery, with optional rendering.
+
+`deck.js` follows the official generation gotchas in
+`skills/sp-deck/references/pptxgenjs-safety.md` and uses `pptx-layouts.js`,
+`pptx-helpers.js`, and `pptx-visuals.js` by default. `pptx-visuals.js` implements editable visual families
 (hero, visual-dominant, process-path, timeline, comparison, dashboard,
 architecture, matrix, quote, summary, reference) with shapes, connectors, labels,
 contained images, accessible alt text, and projection-readable charts.
@@ -204,8 +216,8 @@ User deliverables are always written under `${CLAUDE_PROJECT_DIR}/outputs`.
 When `${CLAUDE_PROJECT_DIR}` is unavailable, the plugin falls back to the
 current working directory.
 
-A minimal `.env.example` is included for reference; these variables are
-injected at runtime and do not normally need manual configuration.
+No dotenv loader or `.env.example` is shipped. These variables are injected by
+Claude Code; diagnose them through `sp-check-env` rather than copying a local env file.
 
 ## Package Boundary
 

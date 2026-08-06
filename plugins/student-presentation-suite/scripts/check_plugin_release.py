@@ -34,6 +34,7 @@ REQUIRED_FILES = [
     "skills/sp-deck/references/pptxgenjs-safety.md",
     "skills/sp-deck/references/pptx-editing.md",
     "skills/sp-deck/references/pptx-qa.md",
+    "skills/sp-deck/references/layout-library.json",
     "skills/sp-review/SKILL.md",
     "skills/sp-review/scripts/pptx_static_check.py",
     "scripts/check_claude_pptx_env.py",
@@ -45,7 +46,9 @@ REQUIRED_FILES = [
     "scripts/validate_presentation_brief.py",
     "scripts/analyze_presentation_spec.py",
     "scripts/pptx-helpers.js",
+    "scripts/pptx-layouts.js",
     "scripts/pptx-visuals.js",
+    "scripts/visual_system_smoke_gallery.py",
     "scripts/create_revision_manifest.py",
     "scripts/build_support_outputs.py",
     "scripts/workflow_guard.py",
@@ -53,6 +56,7 @@ REQUIRED_FILES = [
     "shared/__init__.py",
     "shared/_import_helpers.py",
     "shared/design_tokens.py",
+    "shared/handoff_validation.py",
     "shared/presentation_quality.py",
     "shared/pptx_static_core.py",
     "shared/runtime_paths.py",
@@ -98,6 +102,11 @@ _SEMVER_RE = re.compile(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="检查 Claude Code 插件结构")
     parser.add_argument("--json", action="store_true", help="输出 JSON 格式")
+    parser.add_argument(
+        "--allow-untracked",
+        action="store_true",
+        help="仅用于提交前验证；允许磁盘上存在但尚未纳入 Git 的新增必需文件",
+    )
     return parser.parse_args()
 
 
@@ -151,6 +160,47 @@ def check_manifest(errors: list[str]) -> None:
     for field in REQUIRED_METADATA:
         if not manifest.get(field):
             errors.append(f"manifest 缺少必要元数据: {field}")
+    if "tree/claude-code" not in str(manifest.get("homepage")):
+        errors.append("manifest homepage 必须指向 claude-code 分支")
+    if "tree/claude-code" not in str(manifest.get("repository")):
+        errors.append("manifest repository 必须指向 claude-code 分支")
+
+
+def check_script_reference_graph(errors: list[str]) -> dict[str, list[str]]:
+    retention_reasons = {
+        "check_plugin_release.py": "repository CI invokes this package release gate",
+    }
+    searchable = []
+    for root_name in ("skills", "commands", "tests", "references", "scripts"):
+        root = ROOT / root_name
+        if not root.exists():
+            continue
+        searchable.extend(
+            path
+            for path in root.rglob("*")
+            if path.is_file() and path.suffix.lower() in {".md", ".py", ".js", ".json"}
+        )
+    searchable.extend(path for path in (ROOT / "README.md", ROOT / "README-zh.md") if path.is_file())
+    graph: dict[str, list[str]] = {}
+    for script in sorted((ROOT / "scripts").glob("*")):
+        if not script.is_file() or script.suffix.lower() not in {".py", ".js"}:
+            continue
+        references = []
+        for candidate in searchable:
+            if candidate == script:
+                continue
+            try:
+                text = candidate.read_text(encoding="utf-8", errors="ignore")
+                if script.name in text or script.stem in text:
+                    references.append(str(candidate.relative_to(ROOT)).replace("\\", "/"))
+            except OSError:
+                continue
+        graph[script.name] = references
+        if not references and script.name in retention_reasons:
+            references.append(f"retained: {retention_reasons[script.name]}")
+        if not references:
+            errors.append(f"发布脚本没有入口引用或保留理由: scripts/{script.name}")
+    return graph
 
 
 def check_runtime_contract(errors: list[str]) -> None:
@@ -211,12 +261,14 @@ def check_embedded_runtime(errors: list[str]) -> None:
         errors.append("已移除的上游 pptx_skill runtime 不应出现在发布包中")
 
 
-def check_tracked_files(errors: list[str]) -> None:
+def check_tracked_files(errors: list[str], *, allow_untracked: bool = False) -> None:
     files = tracked_files(errors)
     tracked = set(files)
     for rel in REQUIRED_FILES:
         repository_path = f"plugins/student-presentation-suite/{rel}"
-        if repository_path not in tracked:
+        if repository_path not in tracked and not (
+            allow_untracked and (ROOT / rel).is_file()
+        ):
             errors.append(f"必需发布文件尚未被 Git 跟踪: {rel}")
     folded: dict[str, str] = {}
     for rel in files:
@@ -242,10 +294,17 @@ def main() -> None:
     errors: list[str] = []
     check_structure(errors)
     check_manifest(errors)
+    reference_graph = check_script_reference_graph(errors)
     check_runtime_contract(errors)
     check_embedded_runtime(errors)
-    check_tracked_files(errors)
-    result = {"ok": not errors, "error_count": len(errors), "errors": errors}
+    check_tracked_files(errors, allow_untracked=args.allow_untracked)
+    result = {
+        "ok": not errors,
+        "error_count": len(errors),
+        "errors": errors,
+        "script_reference_graph": reference_graph,
+        "allow_untracked": args.allow_untracked,
+    }
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif errors:

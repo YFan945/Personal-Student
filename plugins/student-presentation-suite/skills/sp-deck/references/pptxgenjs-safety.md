@@ -1,9 +1,9 @@
 # pptxgenjs Generation Rules
 
-本文件是生成 deck.js 的权威约束，对齐官方 pptx skill 的 gotchas。模型直接写裸
-pptxgenjs 脚本；`pptx-helpers.js`/`pptx-visuals.js` 是可选工具库，不是必须依赖。
-生成后的正确性由 QA 阶段的 `pptx_tool.py validate` 兜底；逐页渲染视觉检查可选，仅在
-怀疑布局问题时做。wrapper 只在生成后做 `normalize-generated`（修复类），不做静态门禁。
+本文件只维护生成 deck.js 时的 PptxGenJS gotchas。页面视觉、共享版式和 QA 分别以
+`visual-style-menu.md`、`layout-library.json` 和 `pptx-qa.md` 为准。创建/重建默认加载
+`pptx-layouts.js`、`pptx-helpers.js` 和 `pptx-visuals.js`；逐页渲染检查是 complete 交付
+的必要证据。wrapper 只在生成后做 `normalize-generated`（修复类），不做静态门禁。
 
 ## 布局与坐标
 
@@ -32,8 +32,7 @@ pptxgenjs 脚本；`pptx-helpers.js`/`pptx-visuals.js` 是可选工具库，不�
    除最后一项外设 `breakLine: true`。段间距用 `paraSpaceAfter`，不要用 `lineSpacing`
    （会产生巨大间隙）。
 10. 文本框有内建内边距——文字要与形状/线条/图标对齐到同一 x 时设 `margin: 0`。
-11. 字号建议：Slide title 36-44pt bold、Section header 20-24pt bold、Body 14-16pt、
-    Captions 10-12pt muted。中文正文不低于 22pt，英文正文不低于 20pt（沿用 suite 下限）。
+11. 字号下限由共享 design tokens 决定；不得为了适配而在脚本中静默突破。
 
 ## 实例与输出
 
@@ -91,22 +90,9 @@ pptxgenjs 脚本；`pptx-helpers.js`/`pptx-visuals.js` 是可选工具库，不�
 - **绝不默认 Aptos**：Office 2023+ 默认字体在此无 metric 兼容替换、老 Office 又缺失，
   两端都不可靠。
 
-## 设计规范（禁止项）
+## Runtime helper 使用守则
 
-- 每页要有视觉元素（图/表/图标/形状），拒绝纯 title+bullets 页。
-- 深色背景用于封面/总结页，浅色用于内容页（"三明治"结构）；每页用
-  `slide.background`（canvas 角色）设置，深色页用 `dark_palette.canvas`。
-- 正文左对齐，只居中标题。
-- **禁止**：标题下划线、装饰性色条/强调条/单侧边框、默认奶油色背景
-  （`F5F5DC` 等）、默认蓝色、低对比文字。
-- 一页只实现一个主视觉结构，不叠放完整流程 + 长段正文 + 第二套卡片；需要更多解释拆页
-  或放 speaker notes。
-- 不要每页重复同一布局；视觉母题选一个（圆角图片框、编号块、图标圆）全篇重复。
-
-## 可选 helper 使用守则
-
-- 可用 `H.safeArea`/`H.gridLayout`/`H.color`/`H.addBackground` 降低算坐标出错率，
-  但必须同时满足上述全部 gotchas。
+- 默认用 `L.selectLayouts`/`L.resolveLayout`、`H.safeArea`/`H.gridLayout`/`H.color`/
+  `H.addBackground` 和 `V.renderVisual` 降低手算坐标与组件契约错误。
 - `H.assertTextFits` 只 `console.warn` 不阻断生成；溢出靠 QA 逐页视觉检查兜底。
-- `pptx-visuals.js` 组件（hero/process/timeline/chart 等）可选；用它们也要满足 gotchas。
-- 这些规则不授权绕开本文件；helper 内部已对齐官方规范。
+- 组件库无法表达的页面可自定义构图，但仍须满足本文件 gotchas、版式容量和视觉 QA。

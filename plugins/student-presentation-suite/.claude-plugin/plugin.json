@@ -4,9 +4,9 @@
   "author": {
     "name": "YFan945"
   },
-  "version": "0.5.1",
-  "homepage": "https://github.com/YFan945/Personal-Student",
-  "repository": "https://github.com/YFan945/Personal-Student/tree/main/plugins/student-presentation-suite",
+  "version": "0.6.0",
+  "homepage": "https://github.com/YFan945/Personal-Student/tree/claude-code",
+  "repository": "https://github.com/YFan945/Personal-Student/tree/claude-code/plugins/student-presentation-suite",
   "license": "MIT",
   "keywords": [
     "presentation",

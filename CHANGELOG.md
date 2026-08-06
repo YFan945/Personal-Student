@@ -4,6 +4,36 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## Unreleased
+
+## 0.6.0 — 2026-08-06
+
+### 重构：视觉系统、工作流契约与运行时完备性
+
+- 新增 36 套机器可读共享版式及 `pptx-layouts.js` 选择/解析接口；先做素材与容量过滤，
+  再按风格 DNA、密度和连续页面轮廓稳定排序。
+- 为 14 种风格增加可执行 `style_dna` 与 restrained/standard/expressive 强度，六个视觉维度
+  至少三项互异；统一 gallery 扩展为 14×6 风格页和 36 版式页。
+- 统一 outline/review/deck/env 边界、Brief/Slide Spec 交接校验、显式 production mode 与
+  Production Summary 重确认回退；无完整逐页预览和视觉检查证据时只能 incomplete。
+- env check 增加 outline/review 能力，OOXML 文本提取增加无 markitdown fallback，support
+  outputs 改为只按确认 deliverables 生成，学校模板场景执行真实 OOXML 编辑链路。
+- 删除误导性的 `.env.example` 与插件内 `outputs/.gitkeep`，收敛 review findings、视觉规则和
+  脚本引用图，并修正 manifest 链接到 `claude-code` 分支。
+
+### 精修：14 套自适应视觉风格与可执行约束
+
+- 移除 14 个风格文件重复的通用尾注，将共享优先级、硬/软约束、字号、视觉结构和
+  组件上限统一收敛到 visual style menu 与 PPTX production reference。
+- 把逐页强制图片、引文、流程、旅程或卡片改为按页面叙事任务选择；补齐缺图、缺数据、
+  长内容和组件不适配时的 fallback，允许有明确焦点的排版主导页。
+- 修正 Coral Energy、Creative Student、Sage Calm 与 Midnight Business 的浅底可读色，
+  删除未建模的 orange/mint 色，并新增 `H.paletteMode()` 以整套切换深色页面角色。
+- 修复 editable chart 忽略 series `color` 后回落为默认红色的问题，改由 `chartColors`
+  写入 token 驱动的系列颜色，并通过 package schema 与渲染复核。
+- 加强视觉风格字段顺序、token 一致性、组件引用、WCAG 对比度与深色 palette 测试；新增
+  `visual_system_smoke_gallery.py`，覆盖 14 种风格的六类页面和独立 36 版式 gallery。
+
 ## 0.5.1 — 2026-08-05
 
 ### 修复：PPT 生产功能缺陷与流程缺陷

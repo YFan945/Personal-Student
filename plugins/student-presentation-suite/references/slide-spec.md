@@ -47,7 +47,7 @@ Meta field rules:
 - `format`: `"individual" | "group"`
 - `duration_min`: number of minutes
 - `slide_count`: integer target slide count
-- `image_source`: `"user-assets" | "web-search" | "generated" | "diagram-only" | "text-only" | "ask-before-web-search"`
+- `image_source`: `"user-assets" | "web-search" | "generated" | "hybrid-adaptive" | "diagram-only" | "text-only" | "ask-before-web-search"`
 - `source_material`: a short evidence-boundary description or a list of supplied sources
 - `visual_style`: confirmed style name from the style menu or a user-defined direction
 - `quality_level: high-score` and `visual_text_ratio: balanced|visual-led` require a
@@ -57,10 +57,8 @@ Meta field rules:
   cycle needs 3+ steps, matrix needs 2+ items, and annotated-image needs an asset.
 - `visual.layout_family` is one of `hero`, `visual-dominant`, `process-path`, `timeline`,
   `comparison`, `dashboard`, `architecture`, `matrix`, `quote`, `summary`, or `reference`.
-- `deliverables`: confirmed output names among `"pptx"`, `"pdf"`, `"speaker-notes"`,
-  `"preview"`, `"teleprompter"`, `"quality-report"`, `"revision-manifest"`
-  (subset of `meta.export_formats`). `change-summary` 由 `change_summary_required: true`
-  表达，`full-script` 由讲稿覆盖，均非独立导出格式。
+- `deliverables`: 与 Presentation Brief 共用确认后的输出名称集合；`export_formats`
+  仅记录实际文件导出格式。编辑任务仍以 `change_summary_required: true` 强制 change summary。
 - Use short ASCII-safe `output_prefix` when a later PPTX output filename needs a stable slug.
 - For PPTX work, populate meta from the explicitly confirmed Production Summary
   defined in `presentation-intake.md`; do not turn unconfirmed recommendations

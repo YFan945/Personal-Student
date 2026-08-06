@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--project-root", type=Path, help="Override the active Claude project root")
     parser.add_argument(
         "--mode",
-        choices=("all", "create", "edit_ooxml", "rebuild_from_source"),
+        choices=("all", "outline", "review", "create", "edit_ooxml", "rebuild_from_source"),
         default="all",
         help="Evaluate required capabilities for one production mode",
     )
@@ -204,6 +204,11 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
         },
         "jsonschema": {"ok": python_module("jsonschema"), "module": "jsonschema"},
         "PyYAML": {"ok": python_module("yaml"), "module": "yaml"},
+        "External image generation": {
+            "ok": None,
+            "status": "optional-unknown",
+            "detail": "No vendor-specific image generator is bundled by this suite.",
+        },
     }
     common_required = [
         "jsonschema",
@@ -215,8 +220,12 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
     ]
     create_required = ["node", "pptxgenjs", *common_required]
     edit_required = list(common_required)
+    outline_required = ["jsonschema", "PyYAML"]
+    review_required = ["PPTX runtime", "defusedxml"]
     required_by_mode = {
         "all": sorted(set(create_required + edit_required)),
+        "outline": outline_required,
+        "review": review_required,
         "create": create_required,
         "edit_ooxml": edit_required,
         "rebuild_from_source": create_required,
@@ -232,6 +241,18 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
     missing_required = [name for name in required if not checks[name]["ok"]]
     missing_recommended = [name for name in recommended if not checks[name]["ok"]]
     capabilities = {
+        "outline_ready": all(checks[name]["ok"] for name in outline_required),
+        "review_static_ready": all(checks[name]["ok"] for name in review_required),
+        "review_visual_ready": all(
+            checks[name]["ok"]
+            for name in (
+                *review_required,
+                "LibreOffice",
+                "LibreOffice sandbox",
+                "Poppler pdftoppm",
+                "Pillow",
+            )
+        ),
         "create_ready": all(checks[name]["ok"] for name in create_required),
         "edit_ready": all(checks[name]["ok"] for name in edit_required),
         "package_validation_ready": all(
@@ -251,6 +272,7 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
         "mode": mode,
         "missing_required": missing_required,
         "missing_recommended": missing_recommended,
+        "active_requirements": required,
         "checks": checks,
         "capabilities": capabilities,
         "note": (
@@ -259,7 +281,8 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
             "suite-owned runtime、defusedxml 和 Open XML schema validator。"
             "LibreOffice/Poppler 缺失不阻止候选生成，但无法完成视觉 QA；"
             "未渲染时以 --allow-missing-preview 交付，状态只能是 incomplete。"
-            "markitdown 仅 inspect --text-output 需要，缺失时该项跳过。"
+            "inspect --text-output 在 markitdown 缺失时使用 suite-owned OOXML fallback。"
+            "外部生图能力为 optional-unknown，不作为已安装能力。"
         ),
     }
 
@@ -271,8 +294,16 @@ def main() -> None:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         print(result["note"])
+        visible = set(result["active_requirements"]) | {
+            "LibreOffice", "LibreOffice sandbox", "Poppler pdftoppm", "markitdown",
+            "External image generation",
+        }
         for name, check in result["checks"].items():
+            if args.mode != "all" and name not in visible:
+                continue
             status = "ok" if check["ok"] else "缺失"
+            if check.get("status") == "optional-unknown":
+                status = "optional/unknown"
             extra = ""
             if name in ("LibreOffice", "Poppler pdftoppm") and not check["ok"]:
                 extra = "（不阻止候选 PPTX 生成，但阻止 complete 视觉验收）"

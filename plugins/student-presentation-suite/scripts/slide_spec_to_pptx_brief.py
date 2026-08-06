@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from shared.design_tokens import resolve_design_tokens
+from shared.handoff_validation import handoff_errors
 from shared.runtime_paths import output_root
 from shared.slide_spec_validation import semantic_errors
 
@@ -44,6 +46,16 @@ def parse_args() -> argparse.Namespace:
         help="JSON Schema path",
     )
     parser.add_argument("--output", type=Path, help="Markdown brief output path")
+    parser.add_argument(
+        "--brief",
+        type=Path,
+        help="Optional Presentation Brief to validate against the Slide Spec",
+    )
+    parser.add_argument(
+        "--production-mode",
+        choices=("create", "edit_ooxml", "rebuild_from_source"),
+        help="Explicit production mode selected after source inspection",
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -106,6 +118,39 @@ def meta_value(meta: dict[str, Any], key: str, default: str = "not specified") -
     if value in (None, "", []):
         return default
     return value
+
+
+def derive_production_mode(data: dict[str, Any], requested: str | None = None) -> str:
+    """Derive and validate the production mode without treating every finding as an edit."""
+    source_value = data.get("source_deck")
+    source = Path(str(source_value)).expanduser() if source_value else None
+    suffix = source.suffix.casefold() if source else ""
+    editable = suffix in {".pptx", ".potx"}
+    view_only = suffix in {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
+    intent = data.get("edit_intent")
+
+    if requested:
+        if requested == "edit_ooxml" and not editable:
+            raise ValueError("edit_ooxml requires source_deck ending in .pptx or .potx")
+        if requested == "edit_ooxml" and source and source.exists() and not zipfile.is_zipfile(source):
+            raise ValueError("edit_ooxml source_deck is not a readable PPTX/POTX package")
+        if requested == "create" and editable and intent:
+            raise ValueError("create cannot silently replace an editable source deck; use edit_ooxml or rebuild_from_source")
+        if requested == "rebuild_from_source" and not source:
+            raise ValueError("rebuild_from_source requires source_deck")
+        return requested
+
+    if intent == "rebuild-clean-copy":
+        if not source:
+            raise ValueError("rebuild-clean-copy requires source_deck")
+        return "rebuild_from_source"
+    if editable:
+        if source and source.exists() and not zipfile.is_zipfile(source):
+            return "rebuild_from_source"
+        return "edit_ooxml"
+    if view_only or not source:
+        return "create"
+    return "rebuild_from_source"
 
 
 def _estimate_slide_text_fit(
@@ -174,6 +219,7 @@ def build_brief(
     data: dict[str, Any],
     source: Path,
     deliverable_dir: Path | None = None,
+    production_mode: str | None = None,
 ) -> str:
     meta = data.get("meta") or {}
     slides = data["slides"]
@@ -199,12 +245,7 @@ def build_brief(
         or data.get("change_summary_required")
         or data.get("revision_operation")
     )
-    if data.get("edit_intent") == "rebuild-clean-copy":
-        production_mode = "rebuild_from_source"
-    elif is_improvement:
-        production_mode = "edit_ooxml"
-    else:
-        production_mode = "create"
+    production_mode = derive_production_mode(data, production_mode)
     design_tokens = resolve_design_tokens(meta.get("visual_style"))
 
     lines = [
@@ -223,8 +264,8 @@ def build_brief(
         "",
         "## Runtime Contract",
         "",
-        "Create/rebuild mode writes a raw pptxgenjs `deck.js` following `pptxgenjs-safety.md`;",
-        "`pptx-helpers.js`/`pptx-visuals.js` are optional conveniences, not required. Edit",
+        "Create/rebuild mode writes a pptxgenjs `deck.js` following `pptxgenjs-safety.md`;",
+        "use `pptx-layouts.js`, `pptx-helpers.js`, and `pptx-visuals.js` by default. Edit",
         "mode uses only `pptx_tool.py` and must preserve the source package. Do not duplicate",
         "runtime implementation or helper documentation inside this data brief.",
         "",
@@ -445,10 +486,10 @@ def build_brief(
             "",
             "## Required QA",
             f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/scripts/analyze_presentation_spec.py\" <spec> --output \"{quality_report_path}\" --strict --json` before final production.",
-            "- Reuse the validated Slide Spec/deck.js as content evidence for create mode; run `pptx_tool.py inspect --text-output` only for edits, template-derived decks, or suspicious content.",
+            "- Run `pptx_tool.py inspect --text-output` for every final candidate and compare the extracted text, order, and placeholders with the validated Slide Spec.",
             "- Reuse the producing-stage package report when its PPTX hash still matches; otherwise run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" validate <pptx> --output <package-report.json> --json`. Source-derived decks add `--original <source>`.",
             "- 视觉 QA（渲染能力可用时，以 `check_claude_pptx_env.py` 判定）：Run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" render <pptx> --output-dir <render-dir> --prefix <topic>`, then inspect every rendered page once. Repair and rerun only when the first candidate has a blocker.",
-            "- 无渲染能力时跳过渲染，delivery 以 `--allow-missing-preview` 运行，交付状态为 `incomplete`（不能转 complete）；补渲染后经 `incomplete → qa` 恢复边重入 QA。",
+            "- 无渲染能力时 delivery 以 `--allow-missing-preview` 生成 `incomplete` 报告；不能转 complete，补渲染后经 `incomplete → qa` 恢复边重入 QA。",
             "- Run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" qa-manifest --pptx <pptx> [--preview <page.png> ...] --slide-spec <spec> --slide-spec-report <slide-spec-report.json> --package-report <package-report.json> --output <manifest>`; it revalidates the source spec, derives the scenario contract result, and binds the package report. `--preview` is optional and must be passed only when pages were actually rendered and inspected.",
             f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/skills/sp-deck/scripts/pptx_delivery_check.py\" --pptx <pptx> --notes <notes> [--preview <preview>] --package-report <package-report.json> --qa-manifest <manifest> --output \"{delivery_report_path}\" --strict --json` (add `--allow-missing-preview` when render was skipped).",
             f"- Transition to complete only with `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --delivery-report \"{delivery_report_path}\"`.",
@@ -467,7 +508,25 @@ def main() -> None:
     try:
         data = load_spec(args.spec, yaml)
         errors = validate_spec(data, args.schema, jsonschema)
-    except (OSError, json.JSONDecodeError, yaml.YAMLError, jsonschema.SchemaError) as exc:
+        if not errors and args.brief:
+            brief_data = load_spec(args.brief, yaml)
+            brief_schema = json.loads(
+                (ROOT / "references" / "presentation-brief.schema.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            brief_validator = jsonschema.Draft202012Validator(brief_schema)
+            for error in sorted(
+                brief_validator.iter_errors(brief_data),
+                key=lambda item: tuple(str(part) for part in item.path),
+            ):
+                location = ".brief" + "".join(f"[{part!r}]" for part in error.path)
+                errors.append({"path": location, "message": error.message})
+            if not errors:
+                errors.extend(handoff_errors(brief_data, data))
+        if not errors:
+            derive_production_mode(data, args.production_mode)
+    except (OSError, ValueError, json.JSONDecodeError, yaml.YAMLError, jsonschema.SchemaError) as exc:
         result = {"valid": False, "error": str(exc), "errors": []}
         if args.json:
             print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -486,13 +545,14 @@ def main() -> None:
         raise SystemExit(1)
 
     deliverable_dir = output_root(args.output_dir)
-    brief = build_brief(data, args.spec, deliverable_dir)
+    brief = build_brief(data, args.spec, deliverable_dir, args.production_mode)
     result = {
         "valid": True,
         "slide_count": len(data["slides"]),
         "output_dir": str(deliverable_dir),
         "output": str(args.output) if args.output else None,
         "brief": brief,
+        "production_mode": derive_production_mode(data, args.production_mode),
     }
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -265,16 +265,21 @@ successful Open XML schema evidence, a QA manifest that revalidates and binds
 the source Slide Spec to the current PPTX and rendered previews, and a passing
 strict delivery report. Requested quality reports are hash-bound to the
 source spec or current PPTX instead of being accepted by filename alone.
-`deck.js` is written as raw pptxgenjs following the official generation gotchas
-in `skills/student-presentation-ppt/references/pptxgenjs-safety.md`; the wrapper
+`deck.js` follows the official PptxGenJS gotchas and uses the suite-owned shared
+layout, helper, and visual libraries by default; the wrapper
 normalizes and atomically publishes the deck, and layout/overflow quality is
 caught by QA visual inspection and package validation. QA and delivery reuse the
 package report instead of revalidating an unchanged deck.
-Eleven editable layout families (pptx-visuals.js, optional) provide hero,
+Eleven editable visual families (`pptx-visuals.js`) provide hero,
 visual-dominant, process-path, timeline, comparison, dashboard, architecture,
 matrix, quote, summary, and reference structures without post-generation patch
-loops. Standard visual styles
-resolve to tokenized palette, spacing, typography, and line constraints.
+loops. All 14 styles resolve to tokenized palette, spacing, typography, line
+constraints, and executable style DNA. They share 36 page layouts selected by
+content feasibility, style affinity, density, and silhouette history. Recipes are adaptive defaults rather
+than per-slide templates: narrative fit, readability, and source safety take
+priority, and dark pages switch the complete palette instead of only changing
+the background. A unified smoke tool builds six-page galleries for all 14 styles plus a
+separate 36-layout gallery.
 The release workflow also renders a temporary scenario matrix on Linux for
 coursework, English-classroom, defense, competition, club-showcase, research,
 software projects, data surveys, and school-template editing.

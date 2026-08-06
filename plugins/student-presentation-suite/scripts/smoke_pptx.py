@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -14,7 +15,16 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate and validate a temporary PPTX through the suite runtime"
+    )
+    parser.add_argument("--json", action="store_true", help="Emit compact JSON")
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
     with tempfile.TemporaryDirectory(prefix="sp-outline-smoke-") as tmp:
         work = Path(tmp)
         pptx = work / "smoke-presentation.pptx"
@@ -192,7 +202,8 @@ pptx.writeFile({ fileName: process.argv[2] });
             )
         if result.get("slide_count") != 1 or not result.get("ok") or not delivery_report.is_file():
             raise SystemExit(f"Unexpected smoke result: {result}")
-        print(json.dumps({"ok": True, "slide_count": 1}, indent=2))
+        result = {"ok": True, "slide_count": 1}
+        print(json.dumps(result, indent=None if args.json else 2))
 
 
 if __name__ == "__main__":
