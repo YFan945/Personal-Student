@@ -80,6 +80,9 @@ Slide Spec YAML 将确认后的规划传入 PPTX 生成。`meta` 可记录主题
 Slide Spec v2 还可以携带场景、受众深度、结构模式、质量控制、分层文案和讲稿、
 Evidence Ledger 引用、锁定页面及 revision 元数据；旧版 Slide Spec 仍兼容。
 
+提供 Presentation Brief 时，所有已确认且需要镜像的字段都必须在 Slide Spec 中存在并一致；
+字段缺失属于交接错误，不能按隐式默认值放行。support outputs 可以缩小、不能扩大已确认的交付物集合。
+
 ## 输出文件
 
 交付物写入 `${CLAUDE_PROJECT_DIR}/outputs`；环境变量不可用时，回退到当前
@@ -110,12 +113,16 @@ PPTX skill 先读取 `skills/sp-deck/references/visual-style-menu.md`，推荐�
 14 种风格还通过可执行 `style_dna` 区分构图、几何、字体处理、图像处理、图表语法、母题及
 三档表现强度；风格偏好不能绕过容量、来源或对比度规则。
 
-所有风格共享 `layout-library.json` 中的 36 套可执行页面版式，由 `pptx-layouts.js` 先按内容
-可行性过滤，再结合风格、密度和连续轮廓排序。`scripts/visual_system_smoke_gallery.py` 会生成
-14×6 风格 gallery 和独立 36 版式 gallery，并在 LibreOffice/Poppler 可用时渲染。
+所有风格共享 `layout-library.json` 中的 36 套可执行页面版式。`pptx-layouts.js` 会映射 Slide Spec
+原生 kind/visual 值，先按素材、数据、项目数量、禁用条件、声明容量和标题区几何容量过滤，
+缺输入时沿明确且可行的 fallback 链处理，再结合风格、密度和连续轮廓排序。
+`scripts/visual_system_smoke_gallery.py` 会生成 14×8 风格 gallery、独立 36 版式 gallery
+和 14 页 SVG atlas，并在 LibreOffice/Poppler 可用时渲染。14 套风格的八维 Style DNA
+任意两套至少五项不同。
 
 `deck.js` 遵守 `skills/sp-deck/references/pptxgenjs-safety.md` 中的官方 gotchas，并默认使用
-`pptx-layouts.js`、`pptx-helpers.js` 与 `pptx-visuals.js`；`pptx-icons.js` 提供约 30 个随 token 着色的矢量图标。`pptx-visuals.js` 用可编辑形状、
+`pptx-composer.js`、`pptx-layouts.js`、`pptx-helpers.js`、`pptx-shapes.js`、
+`pptx-svg-library.js` 与 `pptx-visuals.js`；`pptx-icons.js` 提供约 30 个随 token 着色的矢量图标。composer 先完成全 deck preflight，再用可编辑形状、
 连接线、标签和图片/图表结构实现 hero/visual-dominant/process-path/timeline/comparison/
 dashboard/architecture/matrix/quote/summary/reference 等布局族。图片默认等比包含并写入 alt text，
 图表使用投影可读字号。
@@ -137,7 +144,10 @@ PPTX 交付要求：
 - 严格 delivery check 通过；
 - 已有 deck 改进提供独立 change summary。
 
-`complete` 还额外要求执行 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --delivery-report <report>`。PptxGenJS wrapper 在原子落盘前只做 `normalize-generated`，不做静态门禁；逐页渲染视觉检查为默认单次快循环（渲染全部 → 目检 → 只修有问题的页 → 只重渲染变更页）。QA 发现 blocker 时通过返工边 `transition --to producing --reason <摘要>` 重建，无需 reset 全流程重跑。QA 和 delivery 复用生成阶段的 package report，不重复校验未修改的 deck。CI 也会为 coursework、英语课堂汇报、答辩、竞赛、社团展示、研究展示、软件项目、数据调研和学校模板编辑等场景创建并渲染临时矩阵；不会把生成 deck 或预览提交到仓库。
+MarkItDown 不可用时，suite-owned OOXML fallback 会提取完整的幻灯片、讲稿备注和图表文本，
+不会停用内容 QA，也不会截断长页文本。
+
+`complete` 还额外要求执行 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --delivery-report <report>`。PptxGenJS wrapper 在原子落盘前只做 `normalize-generated`；QA 必须绑定 content QA、asset manifest、package report、整套预览和显式逐页 visual inspection。发现 blocker 时最多允许一次“修 spec/composer/generator → 重建整份 candidate → 重新执行全部 QA”；仍有 blocker 则交付 `incomplete`。CI 也会为 coursework、英语课堂汇报、答辩、竞赛、社团展示、研究展示、软件项目、数据调研和学校模板编辑等场景创建并渲染临时矩阵；不会把生成 deck 或预览提交到仓库。
 
 ## Runtime
 

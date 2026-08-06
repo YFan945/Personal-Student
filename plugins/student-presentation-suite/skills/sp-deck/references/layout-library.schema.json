@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://student-presentation-suite.local/layout-library.schema.json",
+  "title": "Student Presentation Suite layout registry",
+  "type": "object",
+  "required": ["version", "coordinate_system", "layouts"],
+  "properties": {
+    "version": {"type": "string"},
+    "coordinate_system": {"const": "normalized-safe-area"},
+    "layouts": {
+      "type": "array",
+      "minItems": 36,
+      "maxItems": 36,
+      "items": {"$ref": "#/$defs/layout"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "zone": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "number", "minimum": 0, "maximum": 1},
+        {"type": "number", "minimum": 0, "maximum": 1},
+        {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+      ],
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "layout": {
+      "type": "object",
+      "required": ["id", "family", "silhouette", "eligible_kinds", "visual_families", "requirements", "capacity", "density", "zones", "style_tags", "fallback"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]+$"},
+        "family": {"enum": ["cover", "section", "claim-text", "visual-image", "data", "comparison", "process-system", "quote-reference-closing"]},
+        "silhouette": {"type": "string"},
+        "eligible_kinds": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "visual_families": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "requirements": {"type": "object"},
+        "capacity": {"type": "object"},
+        "density": {"enum": ["low", "medium", "high"]},
+        "zones": {"type": "object", "required": ["title", "body", "visual"], "additionalProperties": {"$ref": "#/$defs/zone"}},
+        "optional_zones": {"type": "array", "items": {"type": "string"}},
+        "overlap_policy": {"type": "string"},
+        "style_tags": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "contraindications": {"type": "array", "items": {"type": "string"}},
+        "fallback": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

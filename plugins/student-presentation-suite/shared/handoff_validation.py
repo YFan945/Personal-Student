@@ -35,7 +35,7 @@ def handoff_errors(brief: Any, spec: Any) -> list[dict[str, str]]:
     for brief_key, meta_key in scalar_map.items():
         brief_value = brief.get(brief_key)
         meta_value = meta.get(meta_key)
-        if brief_value is not None and meta_value is not None and brief_value != meta_value:
+        if brief_value is not None and meta_value != brief_value:
             errors.append(
                 _error(
                     f".meta.{meta_key}",
@@ -48,7 +48,7 @@ def handoff_errors(brief: Any, spec: Any) -> list[dict[str, str]]:
         for brief_key, meta_key in (("type", "audience_type"), ("depth", "audience_depth")):
             brief_value = audience.get(brief_key)
             meta_value = meta.get(meta_key)
-            if brief_value is not None and meta_value is not None and brief_value != meta_value:
+            if brief_value is not None and meta_value != brief_value:
                 errors.append(
                     _error(
                         f".meta.{meta_key}",
@@ -71,7 +71,7 @@ def handoff_errors(brief: Any, spec: Any) -> list[dict[str, str]]:
         for brief_key, meta_key in control_map.items():
             brief_value = controls.get(brief_key)
             meta_value = meta.get(meta_key)
-            if brief_value is not None and meta_value is not None and brief_value != meta_value:
+            if brief_value is not None and meta_value != brief_value:
                 errors.append(
                     _error(
                         f".meta.{meta_key}",
@@ -82,7 +82,7 @@ def handoff_errors(brief: Any, spec: Any) -> list[dict[str, str]]:
 
     brief_deliverables = set(brief.get("deliverables") or [])
     spec_deliverables = set(meta.get("deliverables") or [])
-    if brief_deliverables and spec_deliverables and brief_deliverables != spec_deliverables:
+    if brief_deliverables and brief_deliverables != spec_deliverables:
         errors.append(
             _error(
                 ".meta.deliverables",

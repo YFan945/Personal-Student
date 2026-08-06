@@ -30,7 +30,7 @@
       "required": ["type", "depth"],
       "properties": {
         "type": {
-          "enum": ["teacher", "classmates", "judges", "non-specialists", "mixed"]
+          "enum": ["teacher", "classmates", "teacher+classmates", "judges", "non-specialists", "mixed"]
         },
         "depth": { "enum": ["introductory", "standard", "expert"] },
         "knowledge_notes": { "type": "string" }

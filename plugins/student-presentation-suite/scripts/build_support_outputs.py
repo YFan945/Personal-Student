@@ -187,7 +187,22 @@ def main() -> None:
     prefix = args.prefix or (data.get("meta") or {}).get("output_prefix") or args.spec.stem
     args.output_dir.mkdir(parents=True, exist_ok=True)
     confirmed = set((data.get("meta") or {}).get("deliverables") or [])
-    selected = set(args.only or []) if args.only else confirmed & SUPPORTED
+    requested = set(args.only or [])
+    unconfirmed = requested - confirmed
+    if unconfirmed:
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": "--only requested unconfirmed deliverables: "
+                    + ", ".join(sorted(unconfirmed)),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        raise SystemExit(2)
+    selected = requested if requested else confirmed & SUPPORTED
     renderers = {
         "speaker-notes": (f"{prefix}-speaker-notes.md", speaker_notes_markdown),
         "full-script": (f"{prefix}-full-script.md", full_script_markdown),

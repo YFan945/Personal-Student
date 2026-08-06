@@ -134,7 +134,7 @@ def derive_production_mode(data: dict[str, Any], requested: str | None = None) -
             raise ValueError("edit_ooxml requires source_deck ending in .pptx or .potx")
         if requested == "edit_ooxml" and source and source.exists() and not zipfile.is_zipfile(source):
             raise ValueError("edit_ooxml source_deck is not a readable PPTX/POTX package")
-        if requested == "create" and editable and intent:
+        if requested == "create" and editable:
             raise ValueError("create cannot silently replace an editable source deck; use edit_ooxml or rebuild_from_source")
         if requested == "rebuild_from_source" and not source:
             raise ValueError("rebuild_from_source requires source_deck")
@@ -151,6 +151,20 @@ def derive_production_mode(data: dict[str, Any], requested: str | None = None) -
     if view_only or not source:
         return "create"
     return "rebuild_from_source"
+
+
+def validate_production_source(data: dict[str, Any], mode: str) -> None:
+    """Require a readable local source whenever production consumes one."""
+    source_value = data.get("source_deck")
+    if mode not in {"edit_ooxml", "rebuild_from_source"}:
+        return
+    if not source_value:
+        raise ValueError(f"{mode} requires source_deck")
+    source = Path(str(source_value)).expanduser()
+    if not source.is_file():
+        raise ValueError(f"{mode} source_deck is not a readable local file: {source}")
+    if mode == "edit_ooxml" and not zipfile.is_zipfile(source):
+        raise ValueError("edit_ooxml source_deck is not a readable PPTX/POTX package")
 
 
 def _estimate_slide_text_fit(
@@ -490,7 +504,7 @@ def build_brief(
             "- Reuse the producing-stage package report when its PPTX hash still matches; otherwise run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" validate <pptx> --output <package-report.json> --json`. Source-derived decks add `--original <source>`.",
             "- 视觉 QA（渲染能力可用时，以 `check_claude_pptx_env.py` 判定）：Run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" render <pptx> --output-dir <render-dir> --prefix <topic>`, then inspect every rendered page once. Repair and rerun only when the first candidate has a blocker.",
             "- 无渲染能力时 delivery 以 `--allow-missing-preview` 生成 `incomplete` 报告；不能转 complete，补渲染后经 `incomplete → qa` 恢复边重入 QA。",
-            "- Run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" qa-manifest --pptx <pptx> [--preview <page.png> ...] --slide-spec <spec> --slide-spec-report <slide-spec-report.json> --package-report <package-report.json> --output <manifest>`; it revalidates the source spec, derives the scenario contract result, and binds the package report. `--preview` is optional and must be passed only when pages were actually rendered and inspected.",
+            "- Run content-qa, validate-asset-manifest, full render, and visual-inspection first. Then run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" qa-manifest --pptx <pptx> [--preview <page.png> ...] --slide-spec <spec> --slide-spec-report <slide-spec-report.json> --package-report <package-report.json> --content-qa <content-qa.json> --visual-inspection <visual-inspection.json> --asset-manifest <asset-manifest.json> --asset-manifest-report <asset-report.json> --output <manifest>`; rendered QA is accepted only when all evidence binds the current PPTX and previews.",
             f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/skills/sp-deck/scripts/pptx_delivery_check.py\" --pptx <pptx> --notes <notes> [--preview <preview>] --package-report <package-report.json> --qa-manifest <manifest> --output \"{delivery_report_path}\" --strict --json` (add `--allow-missing-preview` when render was skipped).",
             f"- Transition to complete only with `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --delivery-report \"{delivery_report_path}\"`.",
             f"- For existing deck improvements, verify `{change_summary_path}` lists kept content, changed slides, unresolved risks, and QA results.",
@@ -525,7 +539,8 @@ def main() -> None:
             if not errors:
                 errors.extend(handoff_errors(brief_data, data))
         if not errors:
-            derive_production_mode(data, args.production_mode)
+            production_mode = derive_production_mode(data, args.production_mode)
+            validate_production_source(data, production_mode)
     except (OSError, ValueError, json.JSONDecodeError, yaml.YAMLError, jsonschema.SchemaError) as exc:
         result = {"valid": False, "error": str(exc), "errors": []}
         if args.json:

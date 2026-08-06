@@ -39,6 +39,7 @@ FILES_TO_UPDATE = [
         lambda data, ver: _set_key(data, "version", ver),
     ),
 ]
+SKILL_FILES = sorted((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
 
 
 def _set_key(data: dict, key: str, value: str) -> dict:
@@ -65,6 +66,20 @@ def write_json(path: Path, data: dict) -> None:
         json.dumps(data, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def update_skill_version(path: Path, version: str, *, dry_run: bool = False) -> None:
+    text = path.read_text(encoding="utf-8")
+    updated, count = re.subn(
+        r"(?m)^version:\s*[^\r\n]+$",
+        f"version: {version}",
+        text,
+        count=1,
+    )
+    if count != 1:
+        raise ValueError(f"{path} 缺少唯一的 skill frontmatter version")
+    if not dry_run:
+        path.write_text(updated, encoding="utf-8")
 
 
 def current_version() -> str:
@@ -108,6 +123,13 @@ def bump(target: str, dry_run: bool = False) -> int:
         for path, desc, updater, data in loaded:
             new_data = updater(data, target)
             print(f"  [dry-run] {path.name} {desc}: {_extract_version(new_data, desc)}")
+        for path in SKILL_FILES:
+            try:
+                update_skill_version(path, target, dry_run=True)
+            except (OSError, ValueError) as exc:
+                print(f"✗ 无法检查 {path}: {exc}", file=sys.stderr)
+                return 1
+            print(f"  [dry-run] {path.parent.name}/SKILL.md version: {target}")
         print(f"\n[dry-run] 版本升级完成: {old_version} → {target}")
         return 0
 
@@ -156,6 +178,13 @@ def bump(target: str, dry_run: bool = False) -> int:
         updated = updater(data, target)
         write_json(path, updated)
         print(f"  ✓ {path.name} {desc}: {target}")
+    for path in SKILL_FILES:
+        try:
+            update_skill_version(path, target)
+        except (OSError, ValueError) as exc:
+            print(f"✗ 无法更新 {path}: {exc}", file=sys.stderr)
+            return 1
+        print(f"  ✓ {path.parent.name}/SKILL.md version: {target}")
 
     print(f"\n版本升级完成: {old_version} → {target}")
     return 0

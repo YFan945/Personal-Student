@@ -22,7 +22,7 @@ TOOL = ROOT / "scripts" / "pptx_tool.py"
 NODE_WRAPPER = ROOT / "scripts" / "run_with_pptxgenjs.js"
 
 
-def write_minimal_package(path: Path) -> None:
+def write_minimal_package(path: Path, slide_xml: str = "<slide/>") -> None:
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(
             "[Content_Types].xml",
@@ -43,7 +43,7 @@ def write_minimal_package(path: Path) -> None:
             '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>'
             "</Relationships>",
         )
-        archive.writestr("ppt/slides/slide1.xml", "<slide/>")
+        archive.writestr("ppt/slides/slide1.xml", slide_xml)
 
 
 class PptxToolTests(unittest.TestCase):
@@ -83,6 +83,30 @@ class PptxToolTests(unittest.TestCase):
             self.assertEqual(0, returncode)
             self.assertEqual("suite-ooxml-fallback", payload["text_extraction"])
             self.assertTrue(output.is_file())
+
+    def test_ooxml_text_fallback_does_not_truncate_long_slide_text(self) -> None:
+        module = load_module(TOOL)
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "long.pptx"
+            output = Path(tmp) / "text.md"
+            long_text = "前" * 700 + "TAIL-MARKER"
+            write_minimal_package(
+                pptx,
+                '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+                'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+                f"<p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>{long_text}</a:t>"
+                "</a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
+            )
+            with mock.patch.object(module.shutil, "which", return_value=None), redirect_stdout(
+                io.StringIO()
+            ):
+                returncode = module.command_inspect(
+                    SimpleNamespace(input=pptx, text_output=output)
+                )
+            self.assertEqual(0, returncode)
+            extracted = output.read_text(encoding="utf-8")
+            self.assertIn("TAIL-MARKER", extracted)
+            self.assertGreater(len(extracted), 700)
 
     def test_shared_geometry_keeps_title_content_and_footer_disjoint(self) -> None:
         if not shutil.which("node"):
@@ -379,6 +403,10 @@ class PptxToolTests(unittest.TestCase):
             preview = root / "slide-1.png"
             output = root / "qa.json"
             package_report = root / "deck-package-report.json"
+            content_report = root / "content-qa.json"
+            visual_report = root / "visual-inspection.json"
+            asset_manifest = root / "asset-manifest.json"
+            asset_report = root / "asset-report.json"
             write_minimal_package(source)
             preview.write_bytes(b"preview")
             package_report.write_text(
@@ -416,6 +444,28 @@ class PptxToolTests(unittest.TestCase):
                 json.dumps({"valid": True, "slide_spec_sha256": spec_hash}),
                 encoding="utf-8",
             )
+            pptx_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            content_report.write_text(
+                json.dumps({"ok": True, "report_type": "content-qa-v1", "pptx_sha256": pptx_hash, "blocker_count": 0}),
+                encoding="utf-8",
+            )
+            visual_report.write_text(
+                json.dumps({
+                    "ok": True,
+                    "report_type": "visual-inspection-v1",
+                    "pptx_sha256": pptx_hash,
+                    "checked_page_count": 1,
+                    "repair_cycle": 0,
+                    "blocker_count": 0,
+                    "pages": [{"slide": 1, "preview_sha256": hashlib.sha256(preview.read_bytes()).hexdigest()}],
+                }),
+                encoding="utf-8",
+            )
+            asset_manifest.write_text(json.dumps({"deck": str(source), "assets": []}), encoding="utf-8")
+            asset_report.write_text(
+                json.dumps({"ok": True, "manifest_sha256": hashlib.sha256(asset_manifest.read_bytes()).hexdigest()}),
+                encoding="utf-8",
+            )
             result = self.run_tool(
                 "qa-manifest",
                 "--pptx",
@@ -432,6 +482,14 @@ class PptxToolTests(unittest.TestCase):
                 str(spec),
                 "--package-report",
                 str(package_report),
+                "--content-qa",
+                str(content_report),
+                "--visual-inspection",
+                str(visual_report),
+                "--asset-manifest",
+                str(asset_manifest),
+                "--asset-manifest-report",
+                str(asset_report),
             )
             self.assertEqual(0, result.returncode, result.stderr)
             payload = json.loads(output.read_text(encoding="utf-8"))
@@ -440,6 +498,77 @@ class PptxToolTests(unittest.TestCase):
         self.assertTrue(payload["scenario_contract_passed"])
         self.assertEqual(spec_hash, payload["slide_spec_sha256"])
         self.assertEqual(str(package_report), payload["package_report"])
+
+    def test_asset_manifest_rejects_missing_alt_text_and_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = root / "asset-manifest.json"
+            report = root / "asset-report.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "version": "1.0",
+                        "assets": [
+                            {
+                                "slide": 1,
+                                "purpose": "evidence",
+                                "source": "generated",
+                                "permission": "suite-owned",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = self.run_tool(
+                "validate-asset-manifest",
+                str(manifest),
+                "--output",
+                str(report),
+            )
+            payload = json.loads(report.read_text(encoding="utf-8"))
+        self.assertNotEqual(0, result.returncode)
+        self.assertFalse(payload["ok"])
+
+    def test_visual_inspection_rejects_unchecked_page(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            preview = root / "slide-1.png"
+            findings = root / "findings.json"
+            report = root / "visual-inspection.json"
+            write_minimal_package(pptx)
+            preview.write_bytes(b"preview")
+            findings.write_text(
+                json.dumps(
+                    {
+                        "pages": [
+                            {
+                                "slide": 1,
+                                "checked": False,
+                                "blockers": [],
+                                "warnings": [],
+                                "notes": "not inspected",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = self.run_tool(
+                "visual-inspection",
+                "--pptx",
+                str(pptx),
+                "--preview",
+                str(preview),
+                "--findings",
+                str(findings),
+                "--output",
+                str(report),
+            )
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("was not explicitly checked", result.stderr)
+        self.assertFalse(report.exists())
 
     def test_real_package_edit_preserves_source_and_validates_against_original(self) -> None:
         if not shutil.which("node"):

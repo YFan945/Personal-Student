@@ -67,6 +67,10 @@ function fontSizeScale(tokens, lang) {
   return {
     title: t.title_min_pt || 24,
     body: isCJK ? t.body_cjk_min_pt || 22 : t.body_latin_min_pt || 20,
+    titleMax: t.title_max_pt || 44,
+    bodyMax: t.body_max_pt || (isCJK ? 26 : 24),
+    label: t.label_min_pt || 14,
+    caption: t.caption_min_pt || 10,
   };
 }
 
@@ -238,6 +242,121 @@ function assertTextFits(text, boxW, boxH, fontSize, isCJK, label) {
   return fit;
 }
 
+function rolePolicy(tokens, lang, role, options = {}) {
+  const sizes = fontSizeScale(tokens, lang);
+  const normalized = String(role || 'body');
+  const table = {
+    title: {
+      min: sizes.title,
+      max: sizes.titleMax,
+      align: options.titleAlign || 'left',
+      valign: 'mid',
+      margin: 0,
+    },
+    body: { min: sizes.body, max: sizes.bodyMax, align: 'left', valign: 'top' },
+    list: { min: sizes.body, max: sizes.bodyMax, align: 'left', valign: 'top' },
+    reference: { min: sizes.caption, max: 12, align: 'left', valign: 'top' },
+    caption: { min: sizes.caption, max: 12, align: 'left', valign: 'mid' },
+    source: { min: sizes.caption, max: 12, align: 'left', valign: 'mid' },
+    label: { min: sizes.label, max: 20, align: 'center', valign: 'mid', maxFillRatio: 0.85 },
+    node: {
+      min: Math.max(16, sizes.label),
+      max: 21,
+      align: 'center',
+      valign: 'mid',
+      maxFillRatio: 0.85,
+    },
+    kpi: {
+      min: Math.max(16, sizes.label),
+      max: 24,
+      align: 'center',
+      valign: 'mid',
+      maxFillRatio: 0.85,
+    },
+    quote: {
+      min: Math.max(18, sizes.label),
+      max: 30,
+      align: options.analysis ? 'left' : 'center',
+      valign: 'mid',
+    },
+  };
+  return { ...(table[normalized] || table.body), ...options, role: normalized };
+}
+
+/** Choose the largest readable size that fits. Never shrinks below the role floor. */
+function fitText(text, box, policy = {}) {
+  const min = Number(policy.min || policy.minFontSize || 10);
+  const max = Math.max(min, Number(policy.max || policy.maxFontSize || min));
+  const margin = policy.margin === undefined ? 8 : policy.margin;
+  const margins = Array.isArray(margin) ? margin : [margin, margin, margin, margin];
+  const usableW = box.w - ((margins[1] || 0) + (margins[3] || 0)) / 72;
+  const usableH = box.h - ((margins[0] || 0) + (margins[2] || 0)) / 72;
+  const plain = plainText(text);
+  const isCJK = policy.isCJK ?? /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/u.test(plain);
+  const maxFillRatio = Number(policy.maxFillRatio || 0.85);
+  for (let size = max; size >= min; size -= 1) {
+    const fit = estimateTextFit(plain, usableW, usableH, size, isCJK);
+    if (fit.fillRatio <= maxFillRatio)
+      return { ...fit, overflow: false, fits: true, fontSize: size, margin: margins };
+  }
+  const fit = estimateTextFit(plain, usableW, usableH, min, isCJK);
+  return { ...fit, fits: false, fontSize: min, margin: margins };
+}
+
+function preflightText(text, box, tokens, lang, role, options = {}) {
+  const policy = rolePolicy(tokens, lang, role, options);
+  const fit = fitText(text, box, policy);
+  return {
+    ok: fit.fits,
+    role: policy.role,
+    box: { ...box },
+    fontSize: fit.fontSize,
+    lines: fit.lines,
+    fillRatio: fit.fillRatio,
+    resolution: fit.fits ? 'render' : 'expand-change-layout-compress-or-split',
+  };
+}
+
+function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
+  const policy = rolePolicy(tokens, lang, role, options);
+  const fit = fitText(text, box, policy);
+  if (!fit.fits) {
+    throw new RangeError(
+      `${options.label || policy.role} cannot fit at ${fit.fontSize}pt; expand the region, change the layout, compress the copy, or split the slide.`,
+    );
+  }
+  const shortReadingText = ['body', 'list'].includes(policy.role) && fit.fillRatio <= 0.45;
+  const fonts = fontFamily(tokens);
+  const pptxOptions = { ...options };
+  for (const key of [
+    'min',
+    'max',
+    'minFontSize',
+    'maxFontSize',
+    'label',
+    'colorRole',
+    'titleAlign',
+    'analysis',
+    'isCJK',
+    'maxFillRatio',
+  ]) {
+    delete pptxOptions[key];
+  }
+  return slide.addText(text, {
+    ...pptxOptions,
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: box.h,
+    fontSize: fit.fontSize,
+    fontFace: pptxOptions.fontFace || (policy.role === 'title' ? fonts.title : fonts.body),
+    color: pptxOptions.color || color(tokens, options.colorRole || 'primary_text'),
+    align: pptxOptions.align || policy.align,
+    valign: pptxOptions.valign || (shortReadingText ? 'mid' : policy.valign),
+    margin: pptxOptions.margin === undefined ? (policy.margin ?? 8) : pptxOptions.margin,
+  });
+}
+
 function plainText(text) {
   if (!Array.isArray(text)) {
     return String(text || '');
@@ -299,18 +418,13 @@ function addTitle(slide, text, area, tokens, lang) {
     w: area.w,
     h: area.y - fallbackTop - spacing(tokens, 1),
   };
-  assertTextFits(text, titleBox.w, titleBox.h, sizes.title, lang !== 'english', '标题');
-  return slide.addText(text, {
-    x: titleBox.x,
-    y: titleBox.y,
-    w: titleBox.w,
-    h: titleBox.h,
-    fontSize: sizes.title,
+  return addFittedText(slide, text, titleBox, tokens, lang, 'title', {
+    min: sizes.title,
+    max: sizes.titleMax,
     fontFace: fonts.title,
-    color: color(tokens, 'primary_text'),
     bold: true,
-    align: 'left',
-    valign: 'bottom',
+    margin: 0,
+    label: '标题',
   });
 }
 
@@ -325,24 +439,8 @@ function addTitle(slide, text, area, tokens, lang) {
  * @returns {object}
  */
 function addBody(slide, text, area, tokens, lang, opts) {
-  const sizes = fontSizeScale(tokens, lang);
-  const fonts = fontFamily(tokens);
-  const isCJK = lang === 'chinese' || lang === 'bilingual';
   const textStr = Array.isArray(text) ? text.join('\n') : text;
-
-  // 溢出预估
-  assertTextFits(textStr, area.w, area.h, sizes.body, isCJK, '正文');
-
   const options = {
-    x: area.x,
-    y: area.y,
-    w: area.w,
-    h: area.h,
-    fontSize: sizes.body,
-    fontFace: fonts.body,
-    color: color(tokens, 'primary_text'),
-    align: 'left',
-    valign: 'top',
     lineSpacingMultiple: 1.3,
     paraSpaceAfter:
       (opts && opts.spacing ? spacing(tokens, opts.spacing) : spacing(tokens, 1)) * 72,
@@ -352,13 +450,14 @@ function addBody(slide, text, area, tokens, lang, opts) {
     options.bullet = true;
   }
 
-  return slide.addText(textStr, options);
+  return addFittedText(slide, textStr, area, tokens, lang, 'body', { ...options, label: '正文' });
 }
 
 /**
  * 添加经过字号下限和溢出检查的通用文本框。
  */
 function addTextBox(slide, text, box, tokens, lang, opts) {
+  if (opts && opts.role) return addFittedText(slide, text, box, tokens, lang, opts.role, opts);
   const sizes = fontSizeScale(tokens, lang);
   const fonts = fontFamily(tokens);
   const isCJK = lang === 'chinese' || lang === 'bilingual';
@@ -448,7 +547,7 @@ function addAccentCard(slide, text, box, tokens) {
     fontSize,
     fontFace: fontFamily(tokens).body,
     color: color(tokens, 'primary_text'),
-    valign: 'middle',
+    valign: 'mid',
   });
   return { shape, text: textObj };
 }
@@ -634,6 +733,9 @@ module.exports = {
   // 文字适配
   estimateTextFit,
   assertTextFits,
+  fitText,
+  preflightText,
+  addFittedText,
   plainText,
 
   // Box 创建

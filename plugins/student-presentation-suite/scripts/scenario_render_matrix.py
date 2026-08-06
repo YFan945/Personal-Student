@@ -120,6 +120,8 @@ VISUAL_RECIPES = (
 
 
 def recipe_for(name: str, index: int) -> tuple[str, str, dict[str, object]]:
+    if name == "school-template-edit" and index == 2:
+        return VISUAL_RECIPES[2]
     offset = sum(name.encode("utf-8")) % len(VISUAL_RECIPES)
     return VISUAL_RECIPES[(offset + index) % len(VISUAL_RECIPES)]
 
@@ -136,6 +138,39 @@ def run_checked(command: list[str], label: str) -> subprocess.CompletedProcess[s
     if result.returncode:
         raise RuntimeError(f"{label} failed\n{result.stdout}\n{result.stderr}")
     return result
+
+
+def build_qa_evidence(
+    work: Path,
+    name: str,
+    tool: Path,
+    pptx: Path,
+    spec_path: Path,
+    pages: list[Path],
+) -> tuple[Path, Path, Path, Path]:
+    content_qa = work / f"{name}-content-qa.json"
+    run_checked(
+        [sys.executable, str(tool), "content-qa", "--pptx", str(pptx), "--slide-spec", str(spec_path), "--output", str(content_qa)],
+        f"{name}: content QA",
+    )
+    findings = work / f"{name}-visual-findings.json"
+    findings.write_text(
+        json.dumps({"pages": [{"slide": index, "checked": True, "blockers": [], "warnings": [], "notes": "Rendered scenario baseline inspected."} for index in range(1, len(pages) + 1)]}),
+        encoding="utf-8",
+    )
+    visual_inspection = work / f"{name}-visual-inspection.json"
+    visual_command = [sys.executable, str(tool), "visual-inspection", "--pptx", str(pptx), "--findings", str(findings), "--output", str(visual_inspection)]
+    for page in pages:
+        visual_command.extend(["--preview", str(page)])
+    run_checked(visual_command, f"{name}: visual inspection")
+    asset_manifest = work / f"{name}-asset-manifest.json"
+    asset_manifest.write_text(json.dumps({"deck": str(pptx), "assets": []}), encoding="utf-8")
+    asset_report = work / f"{name}-asset-manifest-report.json"
+    run_checked(
+        [sys.executable, str(tool), "validate-asset-manifest", str(asset_manifest), "--output", str(asset_report)],
+        f"{name}: asset manifest",
+    )
+    return content_qa, visual_inspection, asset_manifest, asset_report
 
 
 def generate_deck(work: Path, name: str, language: str, roles: list[str]) -> Path:
@@ -172,6 +207,7 @@ for (const [index, role] of roles.entries()) {{
   const area = H.safeArea(H.SLIDE_W_IN, H.SLIDE_H_IN, TOKENS);
   H.addTitle(slide, `${{index + 1}}. ${{role}}`, area, TOKENS, '{language.lower()}');
   V.renderVisual(slide, recipes[index].family, recipes[index], area, TOKENS, '{language.lower()}');
+  if ({json.dumps(name)} === 'school-template-edit') slide.addNotes(`Speaker note for ${{role}}`);
 }}
 pptx.writeFile({{ fileName: process.argv[2] }});
 """, encoding="utf-8")
@@ -231,6 +267,36 @@ def exercise_school_template_edit(work: Path, tool: Path, source: Path) -> tuple
     return target, source_hash
 
 
+def exercise_rendered_review(
+    work: Path, tool: Path, source: Path, expected_pages: int
+) -> None:
+    """Exercise the review-owned static scan plus independent render path."""
+    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+    static_check = ROOT / "skills" / "sp-review" / "scripts" / "pptx_static_check.py"
+    run_checked(
+        [sys.executable, str(static_check), str(source), "--json"],
+        "review-rendered: static scan",
+    )
+    render_dir = work / "review-rendered-previews"
+    run_checked(
+        [
+            sys.executable,
+            str(tool),
+            "render",
+            str(source),
+            "--output-dir",
+            str(render_dir),
+            "--prefix",
+            "review-rendered",
+        ],
+        "review-rendered: render",
+    )
+    if len(list(render_dir.glob("review-rendered-*.png"))) != expected_pages:
+        raise RuntimeError("review-rendered: preview coverage is incomplete")
+    if hashlib.sha256(source.read_bytes()).hexdigest() != source_hash:
+        raise RuntimeError("review-rendered: source deck changed during read-only review")
+
+
 def validate_scenario(
     work: Path,
     name: str,
@@ -249,7 +315,7 @@ def validate_scenario(
         "slides": [
             {
                 "id": index + 1,
-                "title": role,
+                "title": f"{index + 1}. {role}",
                 "layout": recipe_for(name, index)[1],
                 "content": role,
                 "role": role,
@@ -410,6 +476,9 @@ def main() -> None:
                 raise RuntimeError(f"{name}: rendered {len(pages)} pages for {len(roles)} slides")
             if not package_report.is_file():
                 raise RuntimeError(f"{name}: package validation did not publish a report")
+            content_qa, visual_inspection, asset_manifest, asset_report = build_qa_evidence(
+                work, name, tool, pptx, spec_path, pages
+            )
             manifest = work / f"{name}-qa-manifest.json"
             manifest_command = [
                 sys.executable,
@@ -427,6 +496,14 @@ def main() -> None:
                 str(spec_path),
                 "--package-report",
                 str(package_report),
+                "--content-qa",
+                str(content_qa),
+                "--visual-inspection",
+                str(visual_inspection),
+                "--asset-manifest",
+                str(asset_manifest),
+                "--asset-manifest-report",
+                str(asset_report),
             ]
             for page in pages:
                 manifest_command.extend(["--preview", str(page)])
@@ -459,6 +536,7 @@ def main() -> None:
                     spec_report,
                     notes,
                 )
+                exercise_rendered_review(work, tool, pptx, len(roles))
                 workflow_scenarios.append("review-rendered")
             if hashlib.sha256(source.read_bytes()).hexdigest() != source_hash:
                 raise RuntimeError(f"{name}: source hash changed during scenario")

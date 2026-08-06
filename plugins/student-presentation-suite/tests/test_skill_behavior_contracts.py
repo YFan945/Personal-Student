@@ -78,6 +78,11 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("editable", ppt["description"])
         self.assertIn("review", review["description"])
 
+    def test_skill_versions_match_plugin_version(self) -> None:
+        version = json.loads(self.read(".claude-plugin/plugin.json"))["version"]
+        for path in ROOT.glob("skills/*/SKILL.md"):
+            self.assertEqual(version, str(frontmatter(path).get("version")), path)
+
     def test_runtime_and_output_contracts_are_portable(self) -> None:
         planning = self.read("skills/sp-outline/SKILL.md")
         ppt = self.read("skills/sp-deck/SKILL.md")
@@ -99,8 +104,8 @@ class SkillBehaviorContractTests(unittest.TestCase):
         )
         qa = self.read("skills/sp-deck/references/pptx-qa.md")
         self.assertIn("pptxgenjs-safety.md", production)
-        self.assertIn('require("pptx-layouts")', production)
-        self.assertIn("H.safeArea", production)
+        self.assertIn('require("pptx-composer")', production)
+        self.assertIn("全 deck preflight", production)
         self.assertIn("QA 和 delivery 绑定", production)
         self.assertIn("package validation", qa)
         self.assertIn("首个 candidate 全部通过时结束视觉检查", qa)
@@ -155,6 +160,12 @@ class SkillBehaviorContractTests(unittest.TestCase):
         for terminal in ("incomplete", "blocked"):
             self.assertIn(terminal, intake)
             self.assertIn(terminal, ppt)
+
+    def test_missing_preview_never_qualifies_for_complete(self) -> None:
+        qa = self.read("skills/sp-deck/references/pptx-qa.md")
+        self.assertIn("只能是 `incomplete`", qa)
+        self.assertNotIn("代码允许 complete", qa)
+        self.assertIn("`incomplete → qa`", qa)
 
     def test_review_and_outline_use_intake_without_overreaching(self) -> None:
         planning = self.read("skills/sp-outline/SKILL.md")

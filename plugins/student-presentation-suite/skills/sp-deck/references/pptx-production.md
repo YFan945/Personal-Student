@@ -36,8 +36,9 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
   手算坐标出错率。
 - 按 `pptxgenjs-safety.md` 编写 pptxgenjs 脚本，**默认一致使用**
   `pptx-layouts.js`（`getLayout`/`selectLayouts`/`resolveLayout`）、
-  `pptx-helpers.js`（`H.safeArea`/`H.gridLayout`/`H.addTitle` 等）与 `pptx-visuals.js`
-  （`V.renderVisual` 组件）划分版面，避免手写每页坐标导致重叠/溢出；确需裸写时遵循
+  `pptx-composer.js`、`pptx-helpers.js`、`pptx-shapes.js`、`pptx-svg-library.js` 与
+  `pptx-visuals.js` 划分版面，避免手写每页坐标导致重叠/溢出；详见
+  `pptx-visual-engine.md`。确需自定义构图时仍通过 composer preflight，并遵循
   "Visual design" 节的设计原则。每页用 `slide.background` 设置背景（canvas 角色），
   深色页先用 `H.paletteMode(tokens, "dark")` 得到整套页面 token，再把同一份页面
   token 传给背景、标题、页脚和视觉组件；不得只切换 canvas 而继续使用浅色文字角色。
@@ -70,12 +71,13 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
 
 ## Create branch
 
-1. 按 Slide Spec 创建 `outputs/.pptx-work/<work-id>/deck.js`。
+1. 按 Slide Spec 创建 `outputs/.pptx-work/<work-id>/deck.js`；该文件是薄入口，只加载
+   Slide Spec、resolved tokens、已验证 asset manifest 并调用 `pptx-composer.js`。
+   直接从这些 JSON 输入生成候选稿时，可使用套件入口 `scripts/composer_deck.js`；它只负责
+   参数读取、调用 composer 和写出独立候选文件，不绕过 preflight 或 QA。
 2. 加载 `pptxgenjs-safety.md`，按官方 gotchas 写 pptxgenjs 脚本；**默认**
-   `require("pptx-layouts")` + `require("pptx-helpers")` + `require("pptx-visuals")`：
-   先按内容可行性选共享版式，再用 `H.safeArea` 划分
-   title/content/footer 三层，内容视觉用 `V.renderVisual` 组件（或至少
-   `H.addTitle`/`H.gridLayout`），遵循上方 "Visual design" 原则。每页设
+   `require("pptx-composer")`：先全 deck preflight，再由 composer 选择共享版式、文字策略、
+   形状、SVG 角饰与视觉 fallback。自定义构图也不得绕过同一 preflight。每页设
    `slide.background`（canvas 角色）。深色页统一使用 `H.paletteMode(tokens, "dark")`
    返回的页面 token；不得只切背景，也不得先写文字后补救坐标。
 3. deck.js 从 `process.argv[2]` 接收输出路径；每个输出只创建一个 pptxgen 实例。
@@ -90,9 +92,11 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
 5. wrapper 在原子落盘前只运行 `normalize-generated`（修复 chart axId/presentation 语义），
    不输出 static report，也不做静态门禁。QA 和 delivery 绑定
    `<candidate-stem>-package-report.json`；文字溢出、重叠、可读性问题按 `pptx-qa.md`
-   第 3 节做**默认必做**的渲染+目检，且只重渲染变更页。发现问题时修复 generator 后重建
-   （只重建受影响页），禁止对已打包文件做逐项补丁；重建直接走返工边
+   第 3 节做**默认必做**的整套渲染+目检。发现问题时修复 spec/composer/generator 后重建
+   整份 candidate，禁止对已打包文件做逐项补丁；重建直接走唯一一次返工边
    `workflow_guard.py transition --to producing --reason <blocker 摘要>`，无需 reset。
+   candidate hash 改变后重新执行 content、package 和整套 render；第二次仍有 blocker 时
+   转为 `incomplete`。
 
 ## Edit branch
 

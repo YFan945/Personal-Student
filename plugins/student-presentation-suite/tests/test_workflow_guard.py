@@ -51,6 +51,29 @@ class StateTransitionTests(unittest.TestCase):
         self.assertFalse(module.transition_allowed("complete", "qa"))
         self.assertFalse(module.transition_allowed("producing", "planned"))
 
+    def test_second_qa_rework_cycle_is_rejected(self) -> None:
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "state.json"
+            module.save_state(
+                state,
+                {
+                    "workflow_version": "1.0",
+                    "state": "qa",
+                    "topic": "t",
+                    "rework_count": 1,
+                },
+            )
+            with self.assertRaises(SystemExit):
+                module.state_command(
+                    self._ns(
+                        "transition",
+                        state_file=state,
+                        to="producing",
+                        reason="second blocker cycle",
+                    )
+                )
+
     def test_recovery_edge_incomplete_to_qa_allowed(self) -> None:
         module = self.module
         self.assertTrue(module.transition_allowed("incomplete", "qa"))
@@ -102,6 +125,14 @@ class StateTransitionTests(unittest.TestCase):
             pptx = root / "deck.pptx"
             with zipfile.ZipFile(pptx, "w") as archive:
                 archive.writestr("ppt/slides/slide1.xml", "<slide/>")
+            content_qa = root / "content-qa.json"
+            visual_report = root / "visual-inspection.json"
+            asset_manifest = root / "asset-manifest.json"
+            asset_report = root / "asset-report.json"
+            content_qa.write_text("{}", encoding="utf-8")
+            visual_report.write_text("{}", encoding="utf-8")
+            asset_manifest.write_text("{}", encoding="utf-8")
+            asset_report.write_text("{}", encoding="utf-8")
             manifest = root / "qa.json"
             manifest.write_text(json.dumps({
                 "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
@@ -115,6 +146,14 @@ class StateTransitionTests(unittest.TestCase):
                     "repair_cycles": 0,
                     "no_repair_needed_reason": "No visual defect was found.",
                 },
+                "content_qa_report": str(content_qa),
+                "content_qa_report_sha256": hashlib.sha256(content_qa.read_bytes()).hexdigest(),
+                "visual_inspection_report": str(visual_report),
+                "visual_inspection_report_sha256": hashlib.sha256(visual_report.read_bytes()).hexdigest(),
+                "asset_manifest": str(asset_manifest),
+                "asset_manifest_sha256": hashlib.sha256(asset_manifest.read_bytes()).hexdigest(),
+                "asset_manifest_report": str(asset_report),
+                "asset_manifest_report_sha256": hashlib.sha256(asset_report.read_bytes()).hexdigest(),
             }), encoding="utf-8")
             delivery = root / "delivery.json"
             package = root / "package.json"
@@ -230,6 +269,14 @@ class StateTransitionTests(unittest.TestCase):
             pptx = root / "deck.pptx"
             with zipfile.ZipFile(pptx, "w") as archive:
                 archive.writestr("ppt/slides/slide1.xml", "<slide/>")
+            content_qa = root / "content-qa.json"
+            visual_report = root / "visual-inspection.json"
+            asset_manifest = root / "asset-manifest.json"
+            asset_report = root / "asset-report.json"
+            content_qa.write_text("{}", encoding="utf-8")
+            visual_report.write_text("{}", encoding="utf-8")
+            asset_manifest.write_text("{}", encoding="utf-8")
+            asset_report.write_text("{}", encoding="utf-8")
             manifest = root / "qa.json"
             manifest.write_text(json.dumps({
                 "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
@@ -237,6 +284,14 @@ class StateTransitionTests(unittest.TestCase):
                 "rendered_page_count": 1,
                 "scenario_contract_passed": True,
                 "visual_inspection": {"completed": True, "remaining_blockers": 0},
+                "content_qa_report": str(content_qa),
+                "content_qa_report_sha256": hashlib.sha256(content_qa.read_bytes()).hexdigest(),
+                "visual_inspection_report": str(visual_report),
+                "visual_inspection_report_sha256": hashlib.sha256(visual_report.read_bytes()).hexdigest(),
+                "asset_manifest": str(asset_manifest),
+                "asset_manifest_sha256": hashlib.sha256(asset_manifest.read_bytes()).hexdigest(),
+                "asset_manifest_report": str(asset_report),
+                "asset_manifest_report_sha256": hashlib.sha256(asset_report.read_bytes()).hexdigest(),
             }), encoding="utf-8")
             delivery = root / "delivery.json"
             delivery.write_text(json.dumps({

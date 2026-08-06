@@ -13,6 +13,10 @@ including coursework reports, thesis defenses, and group presentations. In
 Claude Code it can plan an outline and speaker notes, create an editable PPTX,
 review an existing deck, or produce a separate improved version.
 
+Its visual runtime includes 14 executable eight-dimensional styles, 36 shared
+compositions, an original SVG/non-rectangular shape library, a controlled composer,
+and content/file/visual QA evidence bound to the final PPTX hash.
+
 Plugin install ID:
 
 ```text
@@ -275,11 +279,16 @@ visual-dominant, process-path, timeline, comparison, dashboard, architecture,
 matrix, quote, summary, and reference structures without post-generation patch
 loops. All 14 styles resolve to tokenized palette, spacing, typography, line
 constraints, and executable style DNA. They share 36 page layouts selected by
-content feasibility, style affinity, density, and silhouette history. Recipes are adaptive defaults rather
+content feasibility, title-zone capacity, style affinity, density, and silhouette history. Slide Spec-native
+kind/visual values map directly, while missing assets follow explicit feasible fallbacks. Recipes are adaptive defaults rather
 than per-slide templates: narrative fit, readability, and source safety take
 priority, and dark pages switch the complete palette instead of only changing
-the background. A unified smoke tool builds six-page galleries for all 14 styles plus a
-separate 36-layout gallery.
+the background. A unified smoke tool builds eight-page galleries for all 14 styles, a
+separate 36-layout gallery, and a 14-page SVG atlas.
+Brief-to-Slide Spec handoff treats missing mirrored confirmed fields as errors,
+and support outputs may only narrow the confirmed deliverable set. When
+MarkItDown is unavailable, suite-owned OOXML extraction still checks complete
+slide, speaker-note, and chart text.
 The release workflow also renders a temporary scenario matrix on Linux for
 coursework, English-classroom, defense, competition, club-showcase, research,
 software projects, data surveys, and school-template editing.

@@ -40,6 +40,16 @@ class DesignTokenTests(unittest.TestCase):
         )
         layout_ids = {layout["id"] for layout in registry["layouts"]}
         dimensions = (
+            "shape_grammar",
+            "corner_svg_set",
+            "component_variants",
+            "image_frame",
+            "background_treatment",
+            "text_alignment_policy",
+            "visual_rhythm",
+            "fallback_illustration",
+        )
+        descriptive_dimensions = (
             "composition_bias",
             "shape_line_language",
             "typography_treatment",
@@ -52,7 +62,7 @@ class DesignTokenTests(unittest.TestCase):
             with self.subTest(style=style):
                 dna = resolve_design_tokens(style)["style_dna"]
                 style_dna[style] = dna
-                for dimension in dimensions:
+                for dimension in dimensions + descriptive_dimensions:
                     self.assertTrue(dna[dimension])
                 composition = dna["composition"]
                 self.assertGreaterEqual(len(composition["signature_layouts"]), 2)
@@ -69,7 +79,7 @@ class DesignTokenTests(unittest.TestCase):
                     style_dna[left][dimension] != style_dna[right][dimension]
                     for dimension in dimensions
                 )
-                self.assertGreaterEqual(different, 3, f"{left} and {right} are too similar")
+                self.assertGreaterEqual(different, 5, f"{left} and {right} are too similar")
 
     def test_unknown_style_retains_shared_safety_tokens(self) -> None:
         tokens = resolve_design_tokens("School template: green and gold")

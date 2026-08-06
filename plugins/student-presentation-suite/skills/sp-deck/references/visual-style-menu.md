@@ -33,13 +33,31 @@ Treat the selected style file as executable generation control, not mood-board l
    one layout more than twice in succession unless a comparison sequence requires it.
 6. Run its acceptance checks after rendering. If a style-specific rule conflicts with readability, source safety, a supplied school template, or user instructions, those higher-priority constraints win.
 
-The executable source of style differentiation is `../../../references/design-tokens.json`
-under `style_dna`. It defines composition bias, shape/line language, typography treatment,
-image treatment, chart grammar, signature motif, preferred layout tags, two signature layouts,
-a reliable fallback, and `restrained / standard / expressive` intensity. Use `restrained` on
+The executable source of style differentiation is resolved design tokens under `style_dna`.
+In addition to composition, typography, image, chart, motif, layout, fallback, and intensity,
+each standard style exposes `shape_grammar`, `corner_svg_set`, `component_variants`,
+`image_frame`, `background_treatment`, `text_alignment_policy`, `visual_rhythm`, and
+`fallback_illustration`. Use `restrained` on
 data, reference, limitation, and dense evidence pages; use `expressive` selectively on covers,
 section openings, and closings. Style DNA changes layout ranking and visual treatment only—it
 never relaxes capacity, source, contrast, or accessibility rules.
+
+| Style | Shape grammar | Corner SVG | Component / image signature | Reliable fallback |
+| --- | --- | --- | --- | --- |
+| Academic Rigorous | grid + bracket | academic bracket | evidence rail + captioned document | evidence map |
+| Berry Cream | ellipse + pill | berry petal | voice cluster + soft portrait | participant cluster |
+| Charcoal Editorial | sharp plane + parallelogram | crop marks | offset column + monochrome crop | editorial index |
+| Cherry Bold | chevron + parallelogram | decision slash | flag container + duotone cut | decision path |
+| Coral Energy | ellipse + arch | rising arc | momentum disc + bright orbit | momentum route |
+| Creative Student | paper plane + pill | tape | sticky collage + taped frame | prototype wall |
+| Data Driven | rect + bracket | coordinate axis | plot frame + neutral evidence | data relationship |
+| Forest Moss | ellipse + arch | contour | terrain layers + organic window | place system |
+| Midnight Business | parallelogram + chevron | beam | luminous stack + navy overlay | decision stack |
+| Modern Minimal | open plane + ellipse | focal dot | unboxed focus + quiet crop | single focus |
+| Ocean Tech | hexagon + node | circuit | network + technical viewport | system network |
+| Sage Calm | ellipse + pill | orbit | reflection loop + soft window | reflection cycle |
+| Teal Trust | pill + hexagon | checkpoint | service lane + context window | service journey |
+| Warm Terracotta | arch + parallelogram | archive stamp | archive layers + arched frame | archive timeline |
 
 ## Shared Executable Layout Library
 
@@ -152,7 +170,8 @@ When style selection is needed, show the three best topic-fit choices first usin
 - 留出呼吸空间，不填满每一寸
 
 **Avoid（与 pptx skill 一致）：**
-- 不整页重复同一布局；正文不居中（只居中标题）
+- 不整页重复同一布局；正文/列表/参考资料不居中，只有短标签、节点、KPI、quote focus
+  和版式指定的标题可水平/垂直居中
 - 字号对比不足（标题要明显大于正文）
 - 默认蓝色；随机间距
 - 只给一页上样式、其余裸奔；纯 title+bullets 页

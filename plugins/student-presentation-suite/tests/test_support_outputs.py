@@ -45,7 +45,7 @@ class SupportOutputTests(unittest.TestCase):
         self.assertIn("Likely question", cards)
         self.assertIn("https://example.test", references)
 
-    def test_cli_generates_only_confirmed_or_explicit_outputs(self) -> None:
+    def test_cli_generates_only_confirmed_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             spec = root / "spec.json"
@@ -101,8 +101,9 @@ class SupportOutputTests(unittest.TestCase):
                 text=True,
                 encoding="utf-8",
             )
-            self.assertEqual(0, only.returncode, only.stdout + only.stderr)
-            self.assertEqual({"teleprompter"}, set(json.loads(only.stdout)["outputs"]))
+            self.assertEqual(2, only.returncode, only.stdout + only.stderr)
+            self.assertFalse(json.loads(only.stdout)["ok"])
+            self.assertFalse((output / "demo-teleprompter.html").exists())
 
 
 if __name__ == "__main__":

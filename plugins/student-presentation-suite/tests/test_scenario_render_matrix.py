@@ -68,6 +68,9 @@ class ScenarioRenderMatrixTests(unittest.TestCase):
         ):
             self.assertIn(scenario, source)
         self.assertIn("exercise_school_template_edit", source)
+        self.assertIn("exercise_rendered_review", source)
+        self.assertIn("slide.addNotes", source)
+        self.assertEqual("dashboard", module.recipe_for("school-template-edit", 2)[1])
 
 
 if __name__ == "__main__":

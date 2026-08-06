@@ -93,6 +93,11 @@ Slide Spec v2 additionally carries scenario, audience depth, structure mode,
 quality controls, layered slide copy/notes, Evidence Ledger references, locked
 slides, and revision metadata. Legacy Slide Spec remains accepted.
 
+When a Presentation Brief is supplied, every confirmed mirrored field must be
+present and consistent in the Slide Spec; omission is a handoff error, not an
+implicit default. Support-output generation may narrow, but never expand, the
+confirmed deliverable set.
+
 ## Outputs
 
 Deliverables are written under `${CLAUDE_PROJECT_DIR}/outputs`, or the current
@@ -129,13 +134,17 @@ composition, geometry, typography, image treatment, chart grammar, motif, and
 three intensity levels; style preferences never override capacity or evidence rules.
 
 All styles share 36 executable page layouts in `layout-library.json` through
-`pptx-layouts.js`. Selection filters by content feasibility before scoring style,
-density, and recent silhouettes. `scripts/visual_system_smoke_gallery.py` produces
-six-page galleries for all styles and a separate 36-layout gallery, with optional rendering.
+`pptx-layouts.js`. Selection maps Slide Spec-native kind/visual values and filters by
+assets, data, item counts, contraindications, declared capacity, and estimated
+title-zone fit before scoring style, density, and recent silhouettes. Missing
+inputs follow explicit feasible fallback chains. `scripts/visual_system_smoke_gallery.py` produces
+14x8 style galleries, a separate 36-layout gallery, and a 14-page SVG atlas, with optional
+rendering. Pairwise style profiles differ in at least five of eight executable DNA dimensions.
 
 `deck.js` follows the official generation gotchas in
-`skills/sp-deck/references/pptxgenjs-safety.md` and uses `pptx-layouts.js`,
-`pptx-helpers.js`, and `pptx-visuals.js` by default. `pptx-visuals.js` implements editable visual families
+`skills/sp-deck/references/pptxgenjs-safety.md` and uses `pptx-composer.js`,
+`pptx-layouts.js`, `pptx-helpers.js`, `pptx-shapes.js`, `pptx-svg-library.js`, and
+`pptx-visuals.js` by default. The composer runs deck-wide preflight before rendering editable visual families
 (hero, visual-dominant, process-path, timeline, comparison, dashboard,
 architecture, matrix, quote, summary, reference) with shapes, connectors, labels,
 contained images, accessible alt text, and projection-readable charts.
@@ -156,8 +165,12 @@ PPTX delivery requires:
 - strict delivery-check success;
 - separate change summary for an improved existing deck.
 
-Per-page render + visual inspection is a default single fast loop (render all →
-inspect → fix only the changed slides → re-render only those pages); a QA blocker
+If MarkItDown is unavailable, the suite-owned OOXML fallback extracts complete
+slide, speaker-note, and chart text instead of disabling or truncating content QA.
+
+Per-page render + visual inspection binds content QA, the asset manifest, package validation,
+every preview, and explicit page findings. At most one repair loop may change the
+spec/composer/generator and rebuild the complete candidate; a remaining QA blocker
 is fixed via the rework edge
 `workflow_guard.py transition --to producing --reason <blocker summary>` instead
 of resetting the whole pipeline.

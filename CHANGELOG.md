@@ -6,14 +6,36 @@ Codex 发行记录不在此维护。
 
 ## Unreleased
 
+### 重构：Anthropic 对齐的视觉引擎与生产证据链
+
+- 新增 suite-owned 受控 composer、八维可执行 Style DNA、非矩形形状、14 套原创 SVG
+  角饰、形状安全内缩、角色化文字适配与阻断式 preflight，同时保留全部 36 个版式 ID。
+- gallery 扩展为 14×8 风格页、36 版式页和 14 页 SVG atlas。
+- 新增 content QA、显式逐页 visual inspection、asset manifest 校验与 hash 绑定；状态机最多
+  允许一次整份 candidate 重建返工，仍有 blocker 时交付 incomplete。
+- 通过独立 suite-owned 实现对齐已审计 Anthropic PPTX 工作流的 create/edit/clean/pack/
+  validate/render 顺序；运行时不依赖缓存路径，也不分发上游文件。
+
+### 修复：0.6.0 后续契约与验收加固
+
+- Brief→Slide Spec 校验现在把应镜像字段缺失视为错误；support outputs 的 `--only`
+  只能缩小已确认 deliverables，不能在生成阶段新增未确认产物。
+- 版式选择器兼容 Slide Spec 原生 kind/visual enum，并同时执行素材、数量、禁用条件、
+  标题字符和标题区几何容量检查；缺素材时沿显式 fallback 链选择可落地版式。
+- 无 markitdown 时的 suite-owned OOXML fallback 提取完整 slide、notes 与 chart 文本，
+  不再截断长页内容；create/edit/rebuild 的 source 与 production mode 组合执行一致性校验。
+- review rendered 场景验证逐页预览覆盖且不修改源文件；gallery 改为真实语义版式样例，
+  并把静态文字溢出风险作为失败条件。
+- 三个 skill frontmatter 版本纳入 bump、release checker 与测试；CI 环境检查改为 strict。
+
 ## 0.6.0 — 2026-08-06
 
 ### 重构：视觉系统、工作流契约与运行时完备性
 
 - 新增 36 套机器可读共享版式及 `pptx-layouts.js` 选择/解析接口；先做素材与容量过滤，
   再按风格 DNA、密度和连续页面轮廓稳定排序。
-- 为 14 种风格增加可执行 `style_dna` 与 restrained/standard/expressive 强度，六个视觉维度
-  至少三项互异；统一 gallery 扩展为 14×6 风格页和 36 版式页。
+- 为 14 种风格增加可执行 `style_dna` 与 restrained/standard/expressive 强度；当前八个
+  可执行视觉维度至少五项互异，统一 gallery 覆盖 14×8 风格页、36 版式页和 SVG atlas。
 - 统一 outline/review/deck/env 边界、Brief/Slide Spec 交接校验、显式 production mode 与
   Production Summary 重确认回退；无完整逐页预览和视觉检查证据时只能 incomplete。
 - env check 增加 outline/review 能力，OOXML 文本提取增加无 markitdown fallback，support

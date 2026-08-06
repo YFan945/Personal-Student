@@ -7,6 +7,8 @@
 
 const pptxgen = require('pptxgenjs');
 const H = require('pptx-helpers');
+const S = require('pptx-shapes');
+const SVG = require('pptx-svg-library');
 const { imageSize } = require('image-size');
 
 const SHAPE = new pptxgen().ShapeType;
@@ -51,28 +53,38 @@ function containImage(path, box) {
 
 function addPanel(slide, box, tokens, options) {
   const p = palette(tokens);
-  return slide.addShape(SHAPE.roundRect, {
-    ...box,
-    rectRadius: H.cornerRadius(tokens),
-    fill: { color: (options && options.fill) || p.surface },
-    line: {
-      color: (options && options.line) || p.accent,
-      width: (options && options.lineWidth) || 1.25,
-    },
+  const grammar = tokens.style_dna?.shape_grammar || ['roundRect'];
+  const shape =
+    options?.shape || grammar[Number(options?.variant || 0) % grammar.length] || 'roundRect';
+  return S.addStyledContainer(slide, shape, box, tokens, {
+    fill: options?.fill || p.surface,
+    line: options?.line || p.accent,
+    lineWidth: options?.lineWidth || 1.25,
+    fillTransparency: options?.fillTransparency,
   });
 }
 
 function addLabel(slide, text, box, tokens, lang, options) {
-  return H.addTextBox(slide, text, box, tokens, lang, {
-    margin: (options && options.margin) || 16,
+  const role = options?.role || (options?.align === 'left' ? 'body' : 'label');
+  const inset = options?.shape ? S.safeInsetForShape(options.shape, box) : { x: 0, y: 0 };
+  const safeBox = {
+    x: box.x + inset.x,
+    y: box.y + inset.y,
+    w: Math.max(0.1, box.w - inset.x * 2),
+    h: Math.max(0.1, box.h - inset.y * 2),
+  };
+  const fittedOptions = {
+    // Compact component labels often occupy sub-zones under one inch high.
+    // A 16pt inset on every edge can consume the entire box; keep a readable
+    // default while allowing callers to request larger editorial padding.
+    margin: options?.margin ?? 6,
     bold: Boolean(options && options.bold),
-    align: (options && options.align) || 'center',
-    valign: (options && options.valign) || 'mid',
-    color: options && options.color,
-    fontSize: options && options.fontSize,
-    fontFace: options && options.fontFace,
     label: (options && options.label) || '视觉组件文本',
-  });
+  };
+  for (const key of ['align', 'valign', 'color', 'fontSize', 'fontFace', 'min', 'max']) {
+    if (options?.[key] !== undefined) fittedOptions[key] = options[key];
+  }
+  return H.addFittedText(slide, text, safeBox, tokens, lang, role, fittedOptions);
 }
 
 function addNumberMarker(slide, box, tokens) {
@@ -136,14 +148,19 @@ function addProcessFlow(slide, data, area, tokens, lang) {
   const y = area.y + (area.h - cardH) / 2;
   steps.forEach((step, index) => {
     const x = area.x + index * (cardW + gap);
-    addPanel(slide, { x, y, w: cardW, h: cardH }, tokens);
+    const shape = (tokens.style_dna?.shape_grammar || ['roundRect'])[index % 2];
+    const card = { x, y, w: cardW, h: cardH };
+    const inset = S.safeInsetForShape(shape, card);
+    addPanel(slide, card, tokens, { shape, variant: index });
     addLabel(
       slide,
-      `${index + 1}. ${textOf(step, `Step ${index + 1}`)}`,
-      { x, y: y + cardH * 0.22, w: cardW, h: cardH * 0.62 },
+      data.numbered === false
+        ? textOf(step, `Step ${index + 1}`)
+        : `${index + 1}. ${textOf(step, `Step ${index + 1}`)}`,
+      { x: x + inset.x, y: y + inset.y, w: cardW - inset.x * 2, h: cardH - inset.y * 2 },
       tokens,
       lang,
-      { bold: true, label: `流程步骤 ${index + 1}` },
+      { bold: true, role: 'node', label: `流程步骤 ${index + 1}` },
     );
     if (index < steps.length - 1) {
       slide.addShape(SHAPE.line, {
@@ -205,7 +222,9 @@ function addComparison(slide, data, area, tokens, lang) {
   const cells = H.gridLayout(area, entries.length, 1, { columnGap: gap });
   const p = palette(tokens);
   entries.forEach((entry, index) => {
+    const shape = (tokens.style_dna?.shape_grammar || ['roundRect'])[index % 2];
     addPanel(slide, cells[index], tokens, {
+      shape,
       line: index === Number(data.highlight || 0) ? p.accent2 : p.accent,
       lineWidth: index === Number(data.highlight || 0) ? 2.5 : 1.25,
     });
@@ -257,7 +276,8 @@ function addMetricDashboard(slide, data, area, tokens, lang) {
   });
   const p = palette(tokens);
   metrics.forEach((metric, index) => {
-    addPanel(slide, cells[index], tokens);
+    const shape = (tokens.style_dna?.shape_grammar || ['roundRect'])[index % 2];
+    addPanel(slide, cells[index], tokens, { shape, variant: index });
     const value = metric && typeof metric === 'object' ? metric.value : metric;
     const label = metric && typeof metric === 'object' ? metric.label : '';
     addLabel(
@@ -271,7 +291,7 @@ function addMetricDashboard(slide, data, area, tokens, lang) {
       },
       tokens,
       lang,
-      { bold: true, color: p.accent, label: `指标值 ${index + 1}` },
+      { bold: true, role: 'kpi', shape, color: p.accent, label: `指标值 ${index + 1}` },
     );
     addLabel(
       slide,
@@ -284,7 +304,7 @@ function addMetricDashboard(slide, data, area, tokens, lang) {
       },
       tokens,
       lang,
-      { color: p.muted, label: `指标标签 ${index + 1}` },
+      { role: 'label', shape, color: p.muted, label: `指标标签 ${index + 1}` },
     );
   });
 }
@@ -376,9 +396,12 @@ function addArchitecture(slide, data, area, tokens, lang) {
         line: { color: palette(tokens).muted, width: 1.5, endArrowType: 'triangle' },
       });
     }
-    addPanel(slide, cell, tokens);
+    const shape = (tokens.style_dna?.shape_grammar || ['roundRect'])[index % 2];
+    addPanel(slide, cell, tokens, { shape, variant: index });
     addLabel(slide, textOf(node), cell, tokens, lang, {
       bold: true,
+      role: 'node',
+      shape,
       label: `架构节点 ${index + 1}`,
     });
   });
@@ -448,22 +471,27 @@ function addAnnotatedVisual(slide, data, area, tokens, lang) {
   const p = palette(tokens);
   const imageBox = { x: area.x, y: area.y, w: area.w * 0.56, h: area.h };
   if (data.asset) {
-    addPanel(slide, imageBox, tokens, { fill: p.surface, line: p.muted });
+    const imageShape = (tokens.style_dna?.shape_grammar || ['rect'])[0];
+    addPanel(slide, imageBox, tokens, { shape: imageShape, fill: p.surface, line: p.muted });
     slide.addImage({
       path: data.asset,
       ...containImage(data.asset, imageBox),
       altText: data.alt_text || data.altText || data.purpose || 'Presentation visual',
     });
   } else {
-    addPanel(slide, imageBox, tokens, { fill: p.canvas, line: p.muted });
-    slide.addShape(SHAPE.ellipse, {
-      x: imageBox.x + imageBox.w * 0.32,
-      y: imageBox.y + imageBox.h * 0.22,
-      w: imageBox.h * 0.42,
-      h: imageBox.h * 0.42,
-      fill: { color: p.accent2, transparency: 15 },
-      line: { transparency: 100 },
-    });
+    const fallbackName = tokens.style_dna?.corner_svg_set || 'minimal-focus';
+    addPanel(slide, imageBox, tokens, { shape: 'none', fill: p.canvas, line: p.muted });
+    SVG.addCornerDecoration(
+      slide,
+      fallbackName,
+      {
+        x: imageBox.x + imageBox.w * 0.16,
+        y: imageBox.y + imageBox.h * 0.12,
+        w: imageBox.w * 0.68,
+        h: imageBox.h * 0.68,
+      },
+      tokens,
+    );
   }
   const annotations = items(data.annotations || data.items).slice(0, 3);
   const annotationArea = {
@@ -530,7 +558,7 @@ function addSummary(slide, data, area, tokens, lang) {
       label: '总结结论',
     });
   }
-  return addProcessFlow(slide, { steps: takeaways }, area, tokens, lang);
+  return addProcessFlow(slide, { steps: takeaways, numbered: false }, area, tokens, lang);
 }
 
 function addReferenceList(slide, data, area, tokens, lang) {
@@ -548,7 +576,7 @@ function addReferenceList(slide, data, area, tokens, lang) {
     },
     tokens,
     lang,
-    { align: 'left', label: '参考资料' },
+    { align: 'left', role: 'reference', label: '参考资料' },
   );
 }
 

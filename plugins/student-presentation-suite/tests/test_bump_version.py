@@ -27,10 +27,26 @@ class BumpVersionTests(unittest.TestCase):
     def test_bump_dry_run_does_not_write_files(self) -> None:
         module = load_module(SCRIPT)
         hashes = {path: path.read_bytes() for path, _, _ in module.FILES_TO_UPDATE}
+        hashes.update({path: path.read_bytes() for path in module.SKILL_FILES})
         result = module.bump("99.99.99", dry_run=True)
         self.assertEqual(0, result)
         for path in hashes:
             self.assertEqual(hashes[path], path.read_bytes(), f"{path} should not be modified during dry-run")
+
+    def test_update_skill_version_updates_frontmatter_only(self) -> None:
+        module = load_module(SCRIPT)
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "SKILL.md"
+            path.write_text(
+                "---\nname: demo\ndescription: demo\nversion: 0.5.1\n---\n\nVersion 0.5.1 in prose.\n",
+                encoding="utf-8",
+            )
+            module.update_skill_version(path, "0.6.0")
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("version: 0.6.0", text)
+            self.assertIn("Version 0.5.1 in prose.", text)
 
     def test_bump_rejects_invalid_semver(self) -> None:
         module = load_module(SCRIPT)

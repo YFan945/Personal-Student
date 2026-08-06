@@ -27,6 +27,18 @@ class SlideSpecBridgeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bridge.derive_production_mode(data, "edit_ooxml")
 
+    def test_explicit_create_rejects_editable_source_even_without_intent(self) -> None:
+        bridge = load_bridge_module()
+        with self.assertRaises(ValueError):
+            bridge.derive_production_mode({"source_deck": "source.pptx"}, "create")
+
+    def test_production_source_must_be_readable_for_consuming_modes(self) -> None:
+        bridge = load_bridge_module()
+        with self.assertRaises(ValueError):
+            bridge.validate_production_source(
+                {"source_deck": "missing.pptx"}, "edit_ooxml"
+            )
+
     def test_builds_claude_pptx_brief_from_valid_spec(self) -> None:
         bridge = load_bridge_module()
         data = {

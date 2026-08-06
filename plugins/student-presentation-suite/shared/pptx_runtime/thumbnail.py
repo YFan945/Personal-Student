@@ -106,6 +106,39 @@ def slide_metadata(source: Path) -> list[dict[str, object]]:
         return result
 
 
+def slide_text_content(source: Path) -> list[dict[str, object]]:
+    """Extract complete slide, notes, and chart text in registered slide order."""
+    slides = slide_metadata(source)
+    with zipfile.ZipFile(source) as archive:
+        present = set(archive.namelist())
+        result: list[dict[str, object]] = []
+        for slide in slides:
+            slide_part = str(slide["part"])
+            parts = [slide_part]
+            for relation in _part_relationships(archive, slide_part):
+                if relation["type"] in {NOTES_SLIDE_REL, CHART_REL}:
+                    parts.append(relation["target"])
+            values: list[str] = []
+            for part in dict.fromkeys(parts):
+                if part not in present:
+                    continue
+                root = ET.fromstring(archive.read(part))
+                for node in root.iter():
+                    if _local(node.tag) not in {"t", "v"}:
+                        continue
+                    value = (node.text or "").strip()
+                    if value:
+                        values.append(value)
+            result.append(
+                {
+                    "index": slide["index"],
+                    "title": slide.get("title") or "",
+                    "text": " ".join(values),
+                }
+            )
+        return result
+
+
 def _placeholder(size: tuple[int, int]):
     from PIL import Image, ImageDraw  # noqa: PLC0415
 

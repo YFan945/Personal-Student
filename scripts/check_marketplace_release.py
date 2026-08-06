@@ -150,6 +150,19 @@ def main() -> None:
                     errors.append(f"{name}: {source} version is not valid semver: {ver}")
             if len(set(versions.values())) != 1:
                 errors.append(f"{name}: synchronized versions differ: {versions}")
+            expected_version = entry.get("version")
+            for skill_file in sorted((plugin_root / "skills").glob("*/SKILL.md")):
+                skill_text = skill_file.read_text(encoding="utf-8")
+                match = re.search(r"(?m)^version:\s*(\S+)\s*$", skill_text)
+                if not match:
+                    errors.append(
+                        f"{name}: {skill_file.relative_to(plugin_root)} missing frontmatter version"
+                    )
+                elif match.group(1) != expected_version:
+                    errors.append(
+                        f"{name}: {skill_file.relative_to(plugin_root)} version "
+                        f"{match.group(1)!r} differs from release {expected_version!r}"
+                    )
             for field in ("homepage", "repository", "license", "keywords"):
                 if not entry.get(field):
                     errors.append(f"{name}: marketplace entry missing metadata {field}")

@@ -5,9 +5,12 @@ import subprocess
 import unittest
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
+
 ROOT = Path(__file__).resolve().parents[1]
 LAYOUTS = ROOT / "scripts" / "pptx-layouts.js"
 REGISTRY = ROOT / "skills" / "sp-deck" / "references" / "layout-library.json"
+SCHEMA = ROOT / "skills" / "sp-deck" / "references" / "layout-library.schema.json"
 
 
 class PptxLayoutsTests(unittest.TestCase):
@@ -20,6 +23,8 @@ class PptxLayoutsTests(unittest.TestCase):
 
     def test_registry_contains_36_unique_bounded_layouts(self) -> None:
         data = json.loads(REGISTRY.read_text(encoding="utf-8"))
+        schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+        self.assertEqual([], list(Draft202012Validator(schema).iter_errors(data)))
         layouts = data["layouts"]
         self.assertEqual(36, len(layouts))
         self.assertEqual(36, len({layout["id"] for layout in layouts}))
@@ -54,6 +59,23 @@ class PptxLayoutsTests(unittest.TestCase):
         self.assertEqual(1, result["zones"]["title"]["x"])
         self.assertEqual(2.6, result["zones"]["title"]["y"])
         self.assertAlmostEqual(4.7, result["zones"]["title"]["w"])
+        self.assertIn("composition", result)
+        self.assertIn("shape_slots", result)
+        self.assertIn("text_policy", result)
+        self.assertIn("asset_slots", result)
+        self.assertIn("corner_decoration", result)
+        self.assertIn("variant_fallbacks", result)
+
+    def test_all_layouts_resolve_to_supported_composition_shapes(self) -> None:
+        body = """
+const allowed=new Set(['rect','roundRect','ellipse','pill','hexagon','chevron','parallelogram','arch','bracket','none']);
+const resolved=L.registry.layouts.map(x=>L.getLayout(x.id));
+console.log(JSON.stringify({count:resolved.length,valid:resolved.every(x=>x.shape_slots.every(s=>allowed.has(s.shape))),shapes:[...new Set(resolved.flatMap(x=>x.shape_slots.map(s=>s.shape)))]}));
+"""
+        result = self.run_node(body)
+        self.assertEqual(36, result["count"])
+        self.assertTrue(result["valid"])
+        self.assertGreaterEqual(len(set(result["shapes"]) - {"rect", "roundRect", "none"}), 6)
 
     def test_selector_is_deterministic_and_filters_missing_assets(self) -> None:
         body = """
@@ -80,6 +102,48 @@ console.log(JSON.stringify(result.map(x=>({id:x.id,s:x.silhouette,score:x.score}
         result = self.run_node(body)
         self.assertTrue(result)
         self.assertNotEqual("two-column", result[0]["s"])
+
+    def test_selector_accepts_slide_spec_native_kind_and_visual_enums(self) -> None:
+        body = """
+const section=L.selectLayouts({slideKind:'section-divider',itemCount:1}, {}, [], 3);
+const quotation=L.selectLayouts({slideKind:'quotation',visualFamily:'quote',hasQuote:true,itemCount:1}, {}, [], 3);
+const dashboard=L.selectLayouts({slideKind:'content',visualFamily:'dashboard',hasData:true,itemCount:3}, {}, [], 3);
+console.log(JSON.stringify({section:section.map(x=>x.family),quotation:quotation.map(x=>x.id),dashboard:dashboard.map(x=>x.family)}));
+"""
+        result = self.run_node(body)
+        self.assertTrue(result["section"])
+        self.assertEqual({"section"}, set(result["section"]))
+        self.assertTrue(result["quotation"])
+        self.assertTrue(all(item.startswith("quote-") for item in result["quotation"]))
+        self.assertTrue(result["dashboard"])
+        self.assertEqual({"data"}, set(result["dashboard"]))
+
+    def test_selector_enforces_capacity_and_contraindications(self) -> None:
+        body = """
+const longTitle=L.selectLayouts({slideKind:'cover',title:'x'.repeat(50),itemCount:1}, {}, [], 10);
+const blocked=L.selectLayouts({slideKind:'cover',itemCount:1,contraindications:['dense-agenda']}, {}, [], 10);
+console.log(JSON.stringify({longTitle:longTitle.map(x=>x.id),blocked:blocked.map(x=>x.id)}));
+"""
+        result = self.run_node(body)
+        self.assertNotIn("cover-split", result["longTitle"])
+        self.assertNotIn("cover-full-bleed", result["longTitle"])
+        self.assertNotIn("cover-minimal", result["blocked"])
+        self.assertNotIn("cover-split", result["blocked"])
+
+    def test_selector_rejects_narrow_title_zone_for_long_cjk_title(self) -> None:
+        body = """
+const result=L.selectLayouts(
+  {slideKind:'content',visualFamily:'visual-dominant',hasAsset:false,itemCount:3,title:'核心观点：长中文标题与素材缺失时仍须保持清晰层级'},
+  {style_dna:{composition:{preferred_layout_tags:['editorial','asymmetric']}}},
+  [],
+  3
+);
+const payload=result.map(x=>({id:x.id,titleZone:x.zones.title}));
+console.log(JSON.stringify(payload));
+"""
+        result = self.run_node(body)
+        self.assertTrue(result)
+        self.assertTrue(all(item["titleZone"][2] >= 0.9 for item in result))
 
 
 if __name__ == "__main__":

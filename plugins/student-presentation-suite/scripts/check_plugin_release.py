@@ -164,6 +164,18 @@ def check_manifest(errors: list[str]) -> None:
         errors.append("manifest homepage 必须指向 claude-code 分支")
     if "tree/claude-code" not in str(manifest.get("repository")):
         errors.append("manifest repository 必须指向 claude-code 分支")
+    for skill_file in sorted((ROOT / "skills").glob("*/SKILL.md")):
+        match = re.search(
+            r"(?m)^version:\s*(\S+)\s*$",
+            skill_file.read_text(encoding="utf-8"),
+        )
+        if not match:
+            errors.append(f"{skill_file.relative_to(ROOT)} 缺少 frontmatter version")
+        elif match.group(1) != version:
+            errors.append(
+                f"{skill_file.relative_to(ROOT)} version {match.group(1)!r} "
+                f"与 manifest {version!r} 不一致"
+            )
 
 
 def check_script_reference_graph(errors: list[str]) -> dict[str, list[str]]:
@@ -228,6 +240,11 @@ def check_runtime_contract(errors: list[str]) -> None:
             errors.append(f"运行时指令包含 Codex-only 文本: {forbidden}")
     if "tokens truncated" in combined:
         errors.append("PPTX 运行时文档包含截断标记")
+    qa_contract = (ROOT / "skills/sp-deck/references/pptx-qa.md").read_text(
+        encoding="utf-8"
+    )
+    if "代码允许 `complete`" in qa_contract:
+        errors.append("PPTX QA 文档仍包含无预览可 complete 的冲突说明")
     for rel in (
         "skills/sp-deck/SKILL.md",
         "skills/sp-deck/references/pptx-production.md",

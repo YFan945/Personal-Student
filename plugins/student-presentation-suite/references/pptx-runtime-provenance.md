@@ -1,7 +1,7 @@
 # PPTX Runtime Provenance
 
-An initial adaptation audit on 2026-07-22 examined the locally cached Anthropic
-`document-skills` PPTX skill at revision directory `fa0fa64bdc96`. That upstream material
+Initial and follow-up behavior audits examined locally cached Anthropic `document-skills`
+PPTX skill revisions `fa0fa64bdc96` and `b29e7cf65e5c`. That upstream material
 identified itself as proprietary/source-available and is not covered by this repository's MIT
 license.
 
@@ -11,6 +11,10 @@ The current implementation under `shared/pptx_runtime/`, its `scripts/pptx_tool.
 workflow documents, adapters, and tests are suite-owned code maintained in this repository.
 The Linux AF_UNIX compatibility source under `shared/pptx_runtime/assets/` is a new suite-owned
 implementation and is not copied from the audited cache snapshot.
+
+The 2026-08 behavior audit produced `references/anthropic-pptx-parity.md`. It aligns create,
+edit, validate, render, content QA, file QA, and visual QA sequencing through independent
+suite-owned code. The cache paths are neither imported nor required at runtime.
 
 Markup/schema validation is provided by `DocumentFormat.OpenXml` 3.5.1 through a small
 suite-owned .NET adapter, supplemented by suite-owned OPC semantic checks. This is not a claim

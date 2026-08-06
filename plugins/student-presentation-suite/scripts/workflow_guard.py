@@ -112,6 +112,19 @@ def validate_completion_manifest(
         errors.append("转换到 complete 必须完成逐页 visual_inspection。")
     elif inspection.get("remaining_blockers") != 0:
         errors.append("QA manifest 仍有未解决 blocker。")
+    for report_key, hash_key, label in (
+        ("content_qa_report", "content_qa_report_sha256", "content QA"),
+        ("visual_inspection_report", "visual_inspection_report_sha256", "visual inspection"),
+        ("asset_manifest", "asset_manifest_sha256", "asset manifest"),
+        ("asset_manifest_report", "asset_manifest_report_sha256", "asset manifest validation"),
+    ):
+        report_value = manifest.get(report_key)
+        if not report_value:
+            errors.append(f"转换到 complete 缺少 {label} 报告。")
+            continue
+        report_path = Path(str(report_value))
+        if not report_path.is_file() or manifest.get(hash_key) != sha256_file(report_path):
+            errors.append(f"QA manifest 的 {label} 报告绑定无效。")
     if delivery_report_path is None:
         return errors
     try:
@@ -301,8 +314,10 @@ def state_command(args: argparse.Namespace) -> int:
         )
         if is_rework and not args.reason:
             raise SystemExit("返工/恢复必须提供 --reason 记录 blocker 摘要")
+        if before == "qa" and args.to == "producing" and current.get("rework_count", 0) >= 1:
+            raise SystemExit("只允许一次完整重建返工；修复后仍有 blocker 时必须转为 incomplete。")
         current["state"] = args.to
-        if is_rework:
+        if before == "qa" and args.to == "producing":
             current["rework_count"] = current.get("rework_count", 0) + 1
             current["last_rework_reason"] = args.reason
         save_state(state_path, current)

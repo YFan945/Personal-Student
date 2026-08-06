@@ -10,8 +10,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PIL import Image
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -29,7 +27,6 @@ def main() -> None:
         work = Path(tmp)
         pptx = work / "smoke-presentation.pptx"
         notes = work / "smoke-speaker-notes.md"
-        preview = work / "smoke-preview.png"
         deck_script = work / "deck.js"
         deck_script.write_text(
             """\
@@ -96,11 +93,16 @@ pptx.writeFile({ fileName: process.argv[2] });
                 + validation.stderr
             )
         notes.write_text("# Speaker notes\n\nSmoke test.", encoding="utf-8")
-        # 占位 preview：仅用于驱动 qa-manifest/delivery 的结构性冒烟（哈希、计数、门禁链路），
-        # 不构成真实视觉 QA 证据；真实渲染正确性由 CI 的 Ubuntu render-matrix 覆盖。
-        image = Image.new("RGB", (640, 360), "white")
-        image.paste((31, 78, 121), (0, 0, 640, 80))
-        image.save(preview)
+        render_dir = work / "render"
+        rendered = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "pptx_tool.py"), "render", str(pptx), "--output-dir", str(render_dir), "--prefix", "smoke"],
+            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if rendered.returncode:
+            raise SystemExit(rendered.stdout + rendered.stderr)
+        preview = render_dir / "smoke-1.png"
+        if not preview.is_file():
+            raise SystemExit("Rendered smoke preview is missing.")
         package_report = work / "smoke-package-report.json"
         if not package_report.is_file():
             raise SystemExit("Generation/validation did not publish a package report.")
@@ -112,7 +114,7 @@ pptx.writeFile({ fileName: process.argv[2] });
                     "slides": [
                         {
                             "id": 1,
-                            "title": "Smoke",
+                            "title": "Claude Code PPTX smoke test",
                             "layout": "hero",
                             "kind": "cover",
                             "content": "Smoke",
@@ -137,6 +139,34 @@ pptx.writeFile({ fileName: process.argv[2] });
             )
             if evidence.returncode:
                 raise SystemExit(evidence.stdout + evidence.stderr)
+        content_qa = work / "smoke-content-qa.json"
+        content_result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "pptx_tool.py"), "content-qa", "--pptx", str(pptx), "--slide-spec", str(spec), "--output", str(content_qa)],
+            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if content_result.returncode:
+            raise SystemExit(content_result.stdout + content_result.stderr)
+        visual_findings = work / "smoke-visual-findings.json"
+        visual_findings.write_text(
+            json.dumps({"pages": [{"slide": 1, "checked": True, "blockers": [], "warnings": [], "notes": "Rendered one-page runtime smoke inspected."}]}),
+            encoding="utf-8",
+        )
+        visual_inspection = work / "smoke-visual-inspection.json"
+        visual_result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "pptx_tool.py"), "visual-inspection", "--pptx", str(pptx), "--preview", str(preview), "--findings", str(visual_findings), "--output", str(visual_inspection)],
+            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if visual_result.returncode:
+            raise SystemExit(visual_result.stdout + visual_result.stderr)
+        asset_manifest = work / "smoke-asset-manifest.json"
+        asset_manifest.write_text(json.dumps({"deck": str(pptx), "assets": []}), encoding="utf-8")
+        asset_report = work / "smoke-asset-manifest-report.json"
+        asset_result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "pptx_tool.py"), "validate-asset-manifest", str(asset_manifest), "--output", str(asset_report)],
+            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if asset_result.returncode:
+            raise SystemExit(asset_result.stdout + asset_result.stderr)
         qa_manifest = work / "smoke-qa-manifest.json"
         delivery_report = work / "smoke-delivery-report.json"
         manifest_result = subprocess.run(
@@ -156,8 +186,14 @@ pptx.writeFile({ fileName: process.argv[2] });
                 str(spec),
                 "--package-report",
                 str(package_report),
-                "--no-repair-needed-reason",
-                "Minimal smoke deck inspected after render.",
+                "--content-qa",
+                str(content_qa),
+                "--visual-inspection",
+                str(visual_inspection),
+                "--asset-manifest",
+                str(asset_manifest),
+                "--asset-manifest-report",
+                str(asset_report),
             ],
             check=False,
             capture_output=True,

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,8 @@ import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
+
+from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -30,10 +33,15 @@ from shared.pptx_runtime import (  # noqa: E402
 from shared.pptx_runtime.normalize import normalize_generated_package  # noqa: E402
 from shared.pptx_runtime.package import count_registered_slides  # noqa: E402
 from shared.pptx_runtime.render import align_rendered_pages, render_pptx  # noqa: E402
-from shared.pptx_runtime.thumbnail import create_thumbnail_grids, slide_metadata  # noqa: E402
+from shared.pptx_runtime.thumbnail import (  # noqa: E402
+    create_thumbnail_grids,
+    slide_metadata,
+    slide_text_content,
+)
 from shared.slide_spec_contract import load_slide_spec, validate_slide_spec  # noqa: E402
 
 PPTX_SUFFIXES = {".pptx", ".potx"}
+ASSET_MANIFEST_SCHEMA = ROOT / "references" / "asset-manifest.schema.json"
 
 
 def _path(value: str) -> Path:
@@ -88,6 +96,20 @@ def _ensure_separate_output(source: Path, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
 
 
+def _write_ooxml_text_fallback(path: Path, output: Path) -> None:
+    lines = ["# PPTX text extraction", ""]
+    for slide in slide_text_content(path):
+        lines.extend(
+            [
+                f"## Slide {slide['index']}: {slide.get('title') or '(untitled)'}",
+                "",
+                str(slide.get("text") or ""),
+                "",
+            ]
+        )
+    output.write_text("\n".join(lines), encoding="utf-8")
+
+
 def command_inspect(args: argparse.Namespace) -> int:
     path: Path = args.input
     try:
@@ -123,17 +145,7 @@ def command_inspect(args: argparse.Namespace) -> int:
         output.parent.mkdir(parents=True, exist_ok=True)
         command = shutil.which("markitdown")
         if not command:
-            lines = ["# PPTX text extraction", ""]
-            for slide in slides:
-                lines.extend(
-                    [
-                        f"## Slide {slide['index']}: {slide.get('title') or '(untitled)'}",
-                        "",
-                        str(slide.get("text_preview") or ""),
-                        "",
-                    ]
-                )
-            output.write_text("\n".join(lines), encoding="utf-8")
+            _write_ooxml_text_fallback(path, output)
             result["text_output"] = str(output)
             result["text_extraction"] = "suite-ooxml-fallback"
             result["text_extraction_warning"] = "markitdown is unavailable"
@@ -149,17 +161,7 @@ def command_inspect(args: argparse.Namespace) -> int:
             result["text_output"] = str(output)
             result["text_extraction_returncode"] = completed.returncode
             if completed.returncode != 0:
-                lines = ["# PPTX text extraction", ""]
-                for slide in slides:
-                    lines.extend(
-                        [
-                            f"## Slide {slide['index']}: {slide.get('title') or '(untitled)'}",
-                            "",
-                            str(slide.get("text_preview") or ""),
-                            "",
-                        ]
-                    )
-                output.write_text("\n".join(lines), encoding="utf-8")
+                _write_ooxml_text_fallback(path, output)
                 result["text_extraction"] = "suite-ooxml-fallback"
                 result["text_extraction_warning"] = completed.stderr.strip()
             else:
@@ -423,6 +425,149 @@ def _validate_package_report(report: Path, pptx: Path) -> dict:
     return data
 
 
+PLACEHOLDER_PATTERN = re.compile(
+    r"\b(?:lorem ipsum|todo|tbd|placeholder|insert (?:text|image|chart))\b|"
+    r"(?:待补充|占位符|在此输入|插入(?:图片|图表|文字))",
+    re.IGNORECASE,
+)
+
+
+def command_content_qa(args: argparse.Namespace) -> int:
+    pptx: Path = args.pptx
+    try:
+        spec = load_slide_spec(args.slide_spec)
+        extracted = slide_text_content(pptx)
+        metadata = slide_metadata(pptx)
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        raise SystemExit(f"cannot perform content QA: {exc}") from exc
+    expected = spec.get("slides") or []
+    findings: list[dict[str, Any]] = []
+    if len(extracted) != len(expected):
+        findings.append({"severity": "blocker", "code": "slide-count", "detail": f"PPTX has {len(extracted)} slides; Slide Spec has {len(expected)}"})
+    for index, (actual, planned) in enumerate(zip(extracted, expected, strict=False), 1):
+        text = str(actual.get("text") or "")
+        title = str(planned.get("title") or "").strip()
+        normalized_title = re.sub(r"\s+", "", title).casefold()
+        normalized_text = re.sub(r"\s+", "", text).casefold()
+        if not text.strip():
+            findings.append({"slide": index, "severity": "blocker", "code": "empty-slide", "detail": "slide has no extractable content"})
+        if title and normalized_title not in normalized_text:
+            findings.append({"slide": index, "severity": "blocker", "code": "title-drift", "detail": "planned title is not present in the generated slide"})
+        if PLACEHOLDER_PATTERN.search(text):
+            findings.append({"slide": index, "severity": "blocker", "code": "placeholder", "detail": "placeholder text remains"})
+        if planned.get("speaker_notes") and index <= len(metadata) and not metadata[index - 1].get("has_notes"):
+            findings.append({"slide": index, "severity": "blocker", "code": "missing-notes", "detail": "Slide Spec requires speaker notes but the PPTX slide has no notes part"})
+        if int(planned.get("id", index)) != index:
+            findings.append({"slide": index, "severity": "blocker", "code": "page-order", "detail": "Slide Spec ids are not in rendered page order"})
+    blockers = [item for item in findings if item["severity"] == "blocker"]
+    payload = {
+        "ok": not blockers,
+        "report_type": "content-qa-v1",
+        "pptx": str(pptx),
+        "pptx_sha256": _sha256(pptx),
+        "slide_spec": str(args.slide_spec),
+        "slide_spec_sha256": _sha256(args.slide_spec),
+        "slide_count": len(extracted),
+        "findings": findings,
+        "blocker_count": len(blockers),
+    }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"ok": payload["ok"], "output": str(args.output)}, ensure_ascii=False))
+    return 0 if payload["ok"] else 1
+
+
+def command_validate_asset_manifest(args: argparse.Namespace) -> int:
+    try:
+        data = json.loads(args.manifest.read_text(encoding="utf-8"))
+        schema = json.loads(ASSET_MANIFEST_SCHEMA.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"cannot read asset manifest or schema: {exc}") from exc
+    errors = [
+        {"path": "/".join(str(part) for part in error.absolute_path), "message": error.message}
+        for error in Draft202012Validator(schema).iter_errors(data)
+    ]
+    if not errors:
+        for index, asset in enumerate(data.get("assets", [])):
+            path_value = asset.get("path")
+            if path_value and not Path(path_value).expanduser().is_file():
+                errors.append({"path": f"assets/{index}/path", "message": "asset file does not exist"})
+            if path_value and (not asset.get("width") or not asset.get("height")):
+                errors.append({"path": f"assets/{index}", "message": "file assets require width and height"})
+    payload = {"ok": not errors, "report_type": "asset-manifest-validation-v1", "manifest": str(args.manifest), "manifest_sha256": _sha256(args.manifest), "errors": errors}
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0 if payload["ok"] else 1
+
+
+def command_visual_inspection(args: argparse.Namespace) -> int:
+    pptx: Path = args.pptx
+    previews: list[Path] = args.preview
+    slide_count = _slide_count(pptx)
+    if len(previews) != slide_count:
+        raise SystemExit(f"visual inspection requires exactly {slide_count} previews")
+    if args.repair_cycle not in {0, 1}:
+        raise SystemExit("--repair-cycle must be 0 or 1")
+    try:
+        review = json.loads(args.findings.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"cannot read visual findings: {exc}") from exc
+    pages = review.get("pages") if isinstance(review, dict) else None
+    if not isinstance(pages, list) or len(pages) != slide_count:
+        raise SystemExit("visual findings must contain one pages entry per slide")
+    normalized_pages = []
+    for index, (page, preview) in enumerate(zip(pages, previews, strict=True), 1):
+        if not isinstance(page, dict) or page.get("slide") != index:
+            raise SystemExit(f"visual findings page {index} has an invalid slide number")
+        if page.get("checked") is not True:
+            raise SystemExit(f"visual findings page {index} was not explicitly checked")
+        blockers = page.get("blockers") or []
+        warnings = page.get("warnings") or []
+        if not isinstance(blockers, list) or not isinstance(warnings, list):
+            raise SystemExit(f"visual findings page {index} blockers/warnings must be arrays")
+        normalized_pages.append({
+            "slide": index,
+            "checked": True,
+            "preview": str(preview),
+            "preview_sha256": _sha256(preview),
+            "blockers": blockers,
+            "warnings": warnings,
+            "notes": str(page.get("notes") or ""),
+        })
+    blocker_count = sum(len(page["blockers"]) for page in normalized_pages)
+    payload = {
+        "ok": blocker_count == 0,
+        "report_type": "visual-inspection-v1",
+        "pptx": str(pptx),
+        "pptx_sha256": _sha256(pptx),
+        "slide_count": slide_count,
+        "repair_cycle": args.repair_cycle,
+        "checked_page_count": slide_count,
+        "blocker_count": blocker_count,
+        "pages": normalized_pages,
+    }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"ok": payload["ok"], "output": str(args.output)}, ensure_ascii=False))
+    return 0 if payload["ok"] else 1
+
+
+def _validate_bound_qa_report(report: Path, pptx: Path, report_type: str) -> dict[str, Any]:
+    try:
+        data = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"cannot read {report_type} report: {exc}") from exc
+    if not isinstance(data, dict) or data.get("report_type") != report_type:
+        raise SystemExit(f"invalid {report_type} report")
+    if data.get("pptx_sha256") != _sha256(pptx):
+        raise SystemExit(f"{report_type} report does not match the current PPTX")
+    if data.get("ok") is not True or int(data.get("blocker_count", 0)) != 0:
+        raise SystemExit(f"{report_type} report contains blockers")
+    return data
+
+
 def command_qa_manifest(args: argparse.Namespace) -> int:
     pptx: Path = args.pptx
     previews: list[Path] = args.preview
@@ -435,6 +580,25 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
     package_report_data = None
     if args.package_report:
         package_report_data = _validate_package_report(args.package_report, pptx)
+    content_qa_data = None
+    visual_inspection_data = None
+    if args.content_qa:
+        content_qa_data = _validate_bound_qa_report(args.content_qa, pptx, "content-qa-v1")
+    if previews:
+        if not args.content_qa or not args.visual_inspection or not args.asset_manifest or not args.asset_manifest_report:
+            raise SystemExit("rendered QA requires content, visual inspection, and asset manifest evidence")
+        try:
+            asset_report_data = json.loads(args.asset_manifest_report.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SystemExit(f"cannot read asset manifest report: {exc}") from exc
+        if asset_report_data.get("ok") is not True or asset_report_data.get("manifest_sha256") != _sha256(args.asset_manifest):
+            raise SystemExit("asset manifest report does not bind a valid current manifest")
+        visual_inspection_data = _validate_bound_qa_report(args.visual_inspection, pptx, "visual-inspection-v1")
+        if visual_inspection_data.get("checked_page_count") != slide_count:
+            raise SystemExit("visual inspection does not cover every slide")
+        bound_hashes = [page.get("preview_sha256") for page in visual_inspection_data.get("pages", [])]
+        if bound_hashes != [_sha256(path) for path in previews]:
+            raise SystemExit("visual inspection preview hashes do not match --preview files")
     try:
         spec_report_data = json.loads(args.slide_spec_report.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -478,17 +642,21 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
         "preview_sha256": [_sha256(path) for path in previews],
     }
     if previews:
-        # 视觉检查仅在实际渲染后记录；无 preview 时跳过（视觉检查可选）。
-        # 提供 preview 且无遗留 blocker（--remaining-blockers 0）即视为检查完成；
-        # --no-repair-needed-reason 为可选说明，不再强制。
-        inspection_completed = args.remaining_blockers == 0
         payload["visual_inspection"] = {
-            "completed": inspection_completed,
+            "completed": True,
             "inspected_pages": list(range(1, slide_count + 1)),
-            "repair_cycles": args.repair_cycles,
-            "no_repair_needed_reason": args.no_repair_needed_reason,
-            "remaining_blockers": args.remaining_blockers,
+            "repair_cycles": visual_inspection_data["repair_cycle"],
+            "remaining_blockers": 0,
         }
+        payload["visual_inspection_report"] = str(args.visual_inspection)
+        payload["visual_inspection_report_sha256"] = _sha256(args.visual_inspection)
+        payload["asset_manifest"] = str(args.asset_manifest)
+        payload["asset_manifest_sha256"] = _sha256(args.asset_manifest)
+        payload["asset_manifest_report"] = str(args.asset_manifest_report)
+        payload["asset_manifest_report_sha256"] = _sha256(args.asset_manifest_report)
+    if content_qa_data is not None:
+        payload["content_qa_report"] = str(args.content_qa)
+        payload["content_qa_report_sha256"] = _sha256(args.content_qa)
     if package_report_data is not None:
         payload["package_report"] = str(args.package_report)
         payload["package_report_sha256"] = _sha256(args.package_report)
@@ -576,6 +744,25 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument("--dpi", type=int, default=150)
     render.set_defaults(handler=command_render)
 
+    content_qa = sub.add_parser("content-qa", help="compare complete PPTX text and notes with the Slide Spec")
+    content_qa.add_argument("--pptx", required=True, type=_pptx_file)
+    content_qa.add_argument("--slide-spec", required=True, type=_existing_file)
+    content_qa.add_argument("--output", required=True, type=_path)
+    content_qa.set_defaults(handler=command_content_qa)
+
+    asset_manifest = sub.add_parser("validate-asset-manifest", help="validate source, permission, dimensions, alt text, and fallback records")
+    asset_manifest.add_argument("manifest", type=_existing_file)
+    asset_manifest.add_argument("--output", type=_path)
+    asset_manifest.set_defaults(handler=command_validate_asset_manifest)
+
+    visual_inspection = sub.add_parser("visual-inspection", help="bind explicit page-by-page findings to rendered previews")
+    visual_inspection.add_argument("--pptx", required=True, type=_pptx_file)
+    visual_inspection.add_argument("--preview", action="append", required=True, type=_existing_file)
+    visual_inspection.add_argument("--findings", required=True, type=_existing_file)
+    visual_inspection.add_argument("--repair-cycle", type=int, default=0)
+    visual_inspection.add_argument("--output", required=True, type=_path)
+    visual_inspection.set_defaults(handler=command_visual_inspection)
+
     manifest = sub.add_parser("qa-manifest", help="bind inspected previews to the final PPTX")
     manifest.add_argument("--pptx", required=True, type=_pptx_file)
     manifest.add_argument("--preview", action="append", default=[], type=_existing_file)
@@ -590,6 +777,10 @@ def build_parser() -> argparse.ArgumentParser:
     manifest.add_argument("--remaining-blockers", type=int, default=0)
     manifest.add_argument("--slide-spec-report", required=True, type=_existing_file)
     manifest.add_argument("--slide-spec", required=True, type=_existing_file)
+    manifest.add_argument("--content-qa", type=_existing_file)
+    manifest.add_argument("--visual-inspection", type=_existing_file)
+    manifest.add_argument("--asset-manifest", type=_existing_file)
+    manifest.add_argument("--asset-manifest-report", type=_existing_file)
     manifest.set_defaults(handler=command_qa_manifest)
     return parser
 
