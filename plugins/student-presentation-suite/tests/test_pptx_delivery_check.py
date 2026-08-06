@@ -14,7 +14,7 @@ from test_helpers import load_module
 from shared.pptx_static_core import summarize_static_risks
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "skills" / "student-presentation-ppt" / "scripts" / "pptx_delivery_check.py"
+SCRIPT = ROOT / "skills" / "sp-deck" / "scripts" / "pptx_delivery_check.py"
 
 
 class PptxDeliveryCheckTests(unittest.TestCase):
@@ -148,6 +148,37 @@ class PptxDeliveryCheckTests(unittest.TestCase):
         self.assertEqual("complete", result["delivery_report"]["status"])
         self.assertEqual("1/1", result["delivery_report"]["preview_page_coverage"])
         self.assertEqual(0, result["delivery_report"]["package_blockers"])
+
+    def test_stale_preview_is_warning_not_error(self) -> None:
+        """预览在 manifest 后重新渲染：文件本身有效仅 hash 不一致 → warning，不阻断交付。"""
+        module = load_module(SCRIPT)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx, preview, manifest = root / "deck.pptx", root / "deck-preview.png", root / "qa-manifest.json"
+            notes = root / "deck-speaker-notes.md"
+            self.write_minimal_pptx(pptx)
+            notes.write_text("notes", encoding="utf-8")
+            self.write_valid_preview_and_manifest(pptx, preview, manifest)
+            # 重新渲染同一张预览（内容有变、尺寸不变、非单色仍是合法 PNG）→ hash 与 manifest 不一致
+            import PIL.Image as PILImage
+            stale = PILImage.new("RGB", (640, 360), (20, 40, 60))
+            for y in range(80, 360):
+                for x in range(640):
+                    stale.putpixel((x, y), (200, 200, 200))
+            stale.save(preview)
+            result = module.inspect_delivery(
+                pptx,
+                notes,
+                [preview],
+                qa_manifest=manifest,
+                package_report=manifest.with_name("package-report.json"),
+            )
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["qa_manifest"]["valid"])
+        self.assertTrue(
+            any("stale" in warning for warning in result["qa_manifest"].get("warnings", [])),
+            "expected a stale warning",
+        )
 
     def test_corrupt_preview_fails_qa_manifest(self) -> None:
         module = load_module(SCRIPT)

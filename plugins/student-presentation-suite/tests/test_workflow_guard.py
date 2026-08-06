@@ -223,6 +223,37 @@ class StateTransitionTests(unittest.TestCase):
                 module.validate_completion_manifest(manifest, pptx, delivery),
             )
 
+    def test_complete_allows_completed_inspection_without_repair_reason(self) -> None:
+        """no_repair_needed_reason 为可选：completed + remaining_blockers=0 即可 complete。"""
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            with zipfile.ZipFile(pptx, "w") as archive:
+                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
+            manifest = root / "qa.json"
+            manifest.write_text(json.dumps({
+                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                "slide_count": 1,
+                "rendered_page_count": 1,
+                "scenario_contract_passed": True,
+                "visual_inspection": {"completed": True, "remaining_blockers": 0},
+            }), encoding="utf-8")
+            delivery = root / "delivery.json"
+            delivery.write_text(json.dumps({
+                "ok": True,
+                "status": "complete",
+                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                "qa_manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+                "package_blockers": 0,
+                "package_validation_passed": True,
+                "preview_page_coverage": "1/1",
+            }), encoding="utf-8")
+            self.assertEqual(
+                [],
+                module.validate_completion_manifest(manifest, pptx, delivery),
+            )
+
     def _ns(self, action: str, **kwargs: object) -> argparse.Namespace:
         base: dict[str, object] = {
             "action": action,

@@ -775,7 +775,13 @@ def validate_pptx(path: Path, original: Path | None = None) -> dict:
         except (OSError, ValueError, zipfile.BadZipFile):
             baseline = set()
         original_schema, _ = _schema_findings(original)
-        baseline.update(original_schema)
+        # schema-validator-unavailable 不能被 baseline 去重掉：dotnet 缺失时当前文件
+        # 必须如实报告 schema 未执行，而不是因 original 同样缺失而被误判为通过。
+        baseline.update(
+            finding
+            for finding in original_schema
+            if finding.code != "schema-validator-unavailable"
+        )
         findings = [finding for finding in findings if finding not in baseline]
     if schema_status.get("performed"):
         schema_status["error_count"] = sum(

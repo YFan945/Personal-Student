@@ -69,7 +69,7 @@ Meta field rules:
 Optional top-level fields for existing deck improvement:
 - `source_deck`: path or label of the original PPTX/PDF/preview being improved
 - `edit_intent`: `"review-fix" | "content-rewrite" | "visual-redesign" | "template-adapt" | "rebuild-clean-copy"`
-- `review_findings`: structured issues from `student-presentation-review`; each item should include `severity`, `target`, `problem`, and `fix`
+- `review_findings`: structured issues from `sp-review`; each item should include `severity`, `target`, `problem`, and `fix`
 - `preserve`: required elements to keep, such as template, logo, footer, citations, approved slide order, or strong existing content
 - `change_summary_required`: set to `true` when the PPTX workflow must write `outputs/<topic>-change-summary.md`
 
@@ -97,7 +97,7 @@ Schema and validation:
 - The validator requires `jsonschema` and `PyYAML` from `requirements.txt`.
 - Unknown fields are rejected in `meta`, slides, visuals, and review findings to catch spelling mistakes.
 - Semantic validation also checks contiguous slide ids, `slide_count`, total timing vs `duration_min`, group members/owners, existing-deck combinations, high-score controls, evidence references, and lock semantics.
-- Scenario-driven story roles are enforced as groups; for example, `research` requires one slide from each of: problem, background, method, result/evidence, limitation, and conclusion/closing. Run the validator to see the exact mapping for a scenario.
+- Scenario-driven story roles（如 `defense` 的 problem/method/result/solution/limitation/qa）是**建议性**的，不再作为硬错误阻断：`validate_slide_spec.py` 不因缺失角色失败，`analyze_presentation_spec.py` 会以 Minor 提示。不要为了凑满角色而硬塞一页。
 
 ```powershell
 python "${CLAUDE_PLUGIN_ROOT}/scripts/validate_slide_spec.py" path/to/slide-spec.yaml --json
@@ -163,7 +163,7 @@ slides:
 
 ## PPTX Handoff Rules
 
-When `student-presentation-ppt` receives Slide Spec YAML:
+When `sp-deck` receives Slide Spec YAML:
 - preserve slide order and ownership
 - treat `visual.purpose` as required design intent when `visual` is present
 - use integer `timing_sec` values to balance speaker notes
@@ -188,7 +188,7 @@ Use these mappings as intent rules. The final visual form may vary by creative d
 
 ## Review Rules
 
-When `student-presentation-review` receives Slide Spec YAML plus a deck:
+When `sp-review` receives Slide Spec YAML plus a deck:
 - compare planned title, layout, visual, timing, and owner against the actual deck
 - flag missing visuals, changed claims, lost handoff lines, or timing drift
 - treat mismatches as risks, not automatic errors, when the final deck improves clarity

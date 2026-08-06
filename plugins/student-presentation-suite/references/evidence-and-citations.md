@@ -34,6 +34,11 @@ Flag:
 
 ## Citation Styles
 
+**Default: `classroom`（课堂引用）**。intake 不再询问引用风格，默认即课堂引用；
+不要为了"展示引用风格"而在页面或讲稿中刻意强调格式（例如反复标注"课堂引用"、
+或把引用风格写进开场白）。按上面各风格的自然呈现即可：幻灯片页脚/来源行简短标注，
+完整出处放在讲稿或参考文献页。
+
 - `classroom`: short source line on slide, full details in references.
 - `GB-T-7714`: unified Chinese academic reference list.
 - `APA`: author-date in content and APA reference list.

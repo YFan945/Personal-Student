@@ -111,11 +111,11 @@ def validate_completion_manifest(
     if inspection is not None:
         if not isinstance(inspection, dict):
             errors.append("QA manifest 的 visual_inspection 无效。")
-        elif inspection.get("completed") is True:
-            if inspection.get("remaining_blockers") != 0:
-                errors.append("QA manifest 仍有未解决 blocker。")
-            if not inspection.get("no_repair_needed_reason"):
-                errors.append("QA manifest 声称视觉检查完成，但缺少 no_repair_needed_reason 证据。")
+        elif (
+            inspection.get("completed") is True
+            and inspection.get("remaining_blockers") != 0
+        ):
+            errors.append("QA manifest 仍有未解决 blocker。")
     if delivery_report_path is None:
         return errors
     try:

@@ -27,15 +27,15 @@ REQUIRED_FILES = [
     "references/content-workflow.md",
     "references/evidence-and-citations.md",
     "references/revision-training-export.md",
-    "skills/student-presentation/SKILL.md",
-    "skills/student-presentation-ppt/SKILL.md",
-    "skills/student-presentation-ppt/references/pptx-production.md",
-    "skills/student-presentation-ppt/references/pptx-runtime.md",
-    "skills/student-presentation-ppt/references/pptxgenjs-safety.md",
-    "skills/student-presentation-ppt/references/pptx-editing.md",
-    "skills/student-presentation-ppt/references/pptx-qa.md",
-    "skills/student-presentation-review/SKILL.md",
-    "skills/student-presentation-review/scripts/pptx_static_check.py",
+    "skills/sp-outline/SKILL.md",
+    "skills/sp-deck/SKILL.md",
+    "skills/sp-deck/references/pptx-production.md",
+    "skills/sp-deck/references/pptx-runtime.md",
+    "skills/sp-deck/references/pptxgenjs-safety.md",
+    "skills/sp-deck/references/pptx-editing.md",
+    "skills/sp-deck/references/pptx-qa.md",
+    "skills/sp-review/SKILL.md",
+    "skills/sp-review/scripts/pptx_static_check.py",
     "scripts/check_claude_pptx_env.py",
     "scripts/pptx_tool.py",
     "scripts/run_with_pptxgenjs.js",
@@ -158,9 +158,9 @@ def check_runtime_contract(errors: list[str]) -> None:
         combined = "\n".join(
             (ROOT / rel).read_text(encoding="utf-8")
             for rel in (
-                "skills/student-presentation-ppt/SKILL.md",
-                "skills/student-presentation-review/SKILL.md",
-                "skills/student-presentation-ppt/references/pptx-production.md",
+                "skills/sp-deck/SKILL.md",
+                "skills/sp-review/SKILL.md",
+                "skills/sp-deck/references/pptx-production.md",
             )
         )
     except OSError as exc:
@@ -179,12 +179,12 @@ def check_runtime_contract(errors: list[str]) -> None:
     if "tokens truncated" in combined:
         errors.append("PPTX 运行时文档包含截断标记")
     for rel in (
-        "skills/student-presentation-ppt/SKILL.md",
-        "skills/student-presentation-ppt/references/pptx-production.md",
-        "skills/student-presentation-ppt/references/pptx-runtime.md",
-        "skills/student-presentation-ppt/references/pptxgenjs-safety.md",
-        "skills/student-presentation-ppt/references/pptx-editing.md",
-        "skills/student-presentation-ppt/references/pptx-qa.md",
+        "skills/sp-deck/SKILL.md",
+        "skills/sp-deck/references/pptx-production.md",
+        "skills/sp-deck/references/pptx-runtime.md",
+        "skills/sp-deck/references/pptxgenjs-safety.md",
+        "skills/sp-deck/references/pptx-editing.md",
+        "skills/sp-deck/references/pptx-qa.md",
     ):
         text = (ROOT / rel).read_text(encoding="utf-8")
         if text.count("```") % 2:
@@ -203,7 +203,7 @@ def check_embedded_runtime(errors: list[str]) -> None:
     )
     if probe.returncode != 0:
         errors.append(f"suite-owned PPTX runtime 无法启动: {(probe.stderr or probe.stdout).strip()}")
-    legacy_runtime = ROOT / "skills/student-presentation-ppt/scripts/pptx_skill"
+    legacy_runtime = ROOT / "skills/sp-deck/scripts/pptx_skill"
     if legacy_runtime.is_dir() and any(
         path.is_file() and "__pycache__" not in path.parts
         for path in legacy_runtime.rglob("*")

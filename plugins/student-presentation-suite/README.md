@@ -14,13 +14,13 @@ Install ID: `student-presentation-suite@claude-personal`.
 
 ## Skills
 
-### `student-presentation`
+### `sp-outline`
 
 Use for slide outlines, presentation spines, speaking notes, group allocation,
 transitions, Q&A preparation, and optional Slide Spec handoff. It never creates
 or claims to create a PPTX.
 
-### `student-presentation-ppt`
+### `sp-deck`
 
 Use for a new editable PPTX or a separate improved copy of an existing deck.
 Low-level package editing, validation, and rendering use the suite-owned
@@ -31,7 +31,7 @@ suite-owned package/presentation semantics, and generates hidden-slide-aware pag
 Cleanup is transactional, inspection returns versioned slide metadata, and Linux rendering builds
 the bundled AF_UNIX shim only when runtime detection proves the sandbox requires it.
 
-### `student-presentation-review`
+### `sp-review`
 
 Use for review, scoring, diagnosis, planned-vs-actual comparison, and concrete
 slide fixes. Review is read-only by default. “Fix it directly” first produces a
@@ -54,9 +54,11 @@ Before production, confirm:
 - required deliverables.
 
 The plugin reuses confirmed information and asks only for missing fields. Each
-missing field receives a recommendation and impact statement. A user delegation
-such as “you decide” fills recommendations but still requires approval of the
-complete Production Summary.
+missing field receives a recommendation and impact statement. Quality level
+defaults to `high-score` and citation style to classroom citations — neither is
+asked during intake. A user delegation such as “you decide” fills
+recommendations but still requires approval of the complete Production Summary,
+confirmed via `AskUserQuestion` (confirm / adjust / change style).
 
 Production follows:
 
@@ -110,7 +112,7 @@ The plugin installation directory is read-only for user deliverables.
 
 ## Visual System
 
-The PPTX skill first reads `skills/student-presentation-ppt/references/visual-style-menu.md`, recommends the strongest
+The PPTX skill first reads `skills/sp-deck/references/visual-style-menu.md`, recommends the strongest
 topic-fit choices, then loads exactly one style specification from
 `visual-styles/`. Each style defines color roles, typography, geometry, layout
 recipes, image treatment, density limits, and acceptance checks.
@@ -120,7 +122,7 @@ slide's function, and decorative visuals must not replace evidence or
 readability.
 
 `deck.js` is written as raw pptxgenjs following the official generation
-gotchas in `skills/student-presentation-ppt/references/pptxgenjs-safety.md`. `pptx-helpers.js`/`pptx-visuals.js`
+gotchas in `skills/sp-deck/references/pptxgenjs-safety.md`. `pptx-helpers.js`/`pptx-visuals.js`/`pptx-icons.js`
 are optional conveniences; `pptx-visuals.js` implements editable layout families
 (hero, visual-dominant, process-path, timeline, comparison, dashboard,
 architecture, matrix, quote, summary, reference) with shapes, connectors, labels,
@@ -135,15 +137,16 @@ PPTX delivery requires:
 - editable PPTX generation (raw pptxgenjs following the official gotchas);
 - speaker notes;
 - text extraction sanity check for edit/template-derived decks;
-- a QA manifest that revalidates the source Slide Spec and matches its Slide Spec/PPTX/package-report hashes;
+- a QA manifest that binds the source Slide Spec hash and matches its Slide Spec/PPTX/package-report hashes（spec 自规划期未被改动时不再重复校验）;
 - a package report using the complete suite validation profile with successful Open XML schema validation;
 - requested quality reports bound to the source Slide Spec or current PPTX hash;
 - resolved design tokens when a standard visual style is selected;
 - strict delivery-check success;
 - separate change summary for an improved existing deck.
 
-Per-page render + visual inspection is optional (only when a layout issue is
-suspected); a QA blocker is fixed via the rework edge
+Per-page render + visual inspection is a default single fast loop (render all →
+inspect → fix only the changed slides → re-render only those pages); a QA blocker
+is fixed via the rework edge
 `workflow_guard.py transition --to producing --reason <blocker summary>` instead
 of resetting the whole pipeline.
 

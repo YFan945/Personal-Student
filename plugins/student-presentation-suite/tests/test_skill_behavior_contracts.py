@@ -71,18 +71,18 @@ class SkillBehaviorContractTests(unittest.TestCase):
         )
 
     def test_skill_frontmatter_has_distinct_intents(self) -> None:
-        planning = frontmatter(ROOT / "skills/student-presentation/SKILL.md")
-        ppt = frontmatter(ROOT / "skills/student-presentation-ppt/SKILL.md")
-        review = frontmatter(ROOT / "skills/student-presentation-review/SKILL.md")
+        planning = frontmatter(ROOT / "skills/sp-outline/SKILL.md")
+        ppt = frontmatter(ROOT / "skills/sp-deck/SKILL.md")
+        review = frontmatter(ROOT / "skills/sp-review/SKILL.md")
         self.assertIn("outline", planning["description"])
         self.assertIn("editable", ppt["description"])
         self.assertIn("review", review["description"])
 
     def test_runtime_and_output_contracts_are_portable(self) -> None:
-        planning = self.read("skills/student-presentation/SKILL.md")
-        ppt = self.read("skills/student-presentation-ppt/SKILL.md")
-        production = self.read("skills/student-presentation-ppt/references/pptx-production.md")
-        review = self.read("skills/student-presentation-review/SKILL.md")
+        planning = self.read("skills/sp-outline/SKILL.md")
+        ppt = self.read("skills/sp-deck/SKILL.md")
+        production = self.read("skills/sp-deck/references/pptx-production.md")
+        review = self.read("skills/sp-review/SKILL.md")
         self.assertIn("${CLAUDE_PLUGIN_ROOT}", ppt)
         self.assertIn("${CLAUDE_PROJECT_DIR}", ppt)
         self.assertIn("run_with_pptxgenjs.js", production)
@@ -95,9 +95,9 @@ class SkillBehaviorContractTests(unittest.TestCase):
 
     def test_create_flow_is_first_pass_and_reuses_package_evidence(self) -> None:
         production = self.read(
-            "skills/student-presentation-ppt/references/pptx-production.md"
+            "skills/sp-deck/references/pptx-production.md"
         )
-        qa = self.read("skills/student-presentation-ppt/references/pptx-qa.md")
+        qa = self.read("skills/sp-deck/references/pptx-qa.md")
         self.assertIn("pptxgenjs-safety.md", production)
         self.assertIn("裸 pptxgenjs", production)
         self.assertIn("H.safeArea", production)
@@ -110,15 +110,15 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("Outline-only work never creates", shared)
         self.assertIn('“看看问题” means review only', shared)
         self.assertIn('“直接改好” means review diagnosis followed by PPTX editing', shared)
-        review = self.read("skills/student-presentation-review/SKILL.md")
-        self.assertIn("先诊断，再交接给 `student-presentation-ppt`", review)
+        review = self.read("skills/sp-review/SKILL.md")
+        self.assertIn("先诊断，再交接给 `sp-deck`", review)
         self.assertIn("不得覆盖原始 deck", review)
 
     def test_pptx_intake_is_a_hard_gate(self) -> None:
         intake = self.read("references/presentation-intake.md")
-        ppt = self.read("skills/student-presentation-ppt/SKILL.md")
+        ppt = self.read("skills/sp-deck/SKILL.md")
         production = self.read(
-            "skills/student-presentation-ppt/references/pptx-production.md"
+            "skills/sp-deck/references/pptx-production.md"
         )
         for field in (
             "Topic",
@@ -146,7 +146,7 @@ class SkillBehaviorContractTests(unittest.TestCase):
 
     def test_workflow_states_are_consistent(self) -> None:
         intake = self.read("references/presentation-intake.md")
-        ppt = self.read("skills/student-presentation-ppt/SKILL.md")
+        ppt = self.read("skills/sp-deck/SKILL.md")
         states = (
             "intake_pending → intake_confirmed → planned → producing → qa → complete"
         )
@@ -157,8 +157,8 @@ class SkillBehaviorContractTests(unittest.TestCase):
             self.assertIn(terminal, ppt)
 
     def test_review_and_outline_use_intake_without_overreaching(self) -> None:
-        planning = self.read("skills/student-presentation/SKILL.md")
-        review = self.read("skills/student-presentation-review/SKILL.md")
+        planning = self.read("skills/sp-outline/SKILL.md")
+        review = self.read("skills/sp-review/SKILL.md")
         self.assertIn("outline-only 模式", planning)
         self.assertIn("review-only 模式", review)
         self.assertIn("不修改文件", review)
@@ -166,9 +166,9 @@ class SkillBehaviorContractTests(unittest.TestCase):
 
     def test_skill_files_stay_compact_and_reference_canonical_rules(self) -> None:
         paths = [
-            ROOT / "skills/student-presentation/SKILL.md",
-            ROOT / "skills/student-presentation-ppt/SKILL.md",
-            ROOT / "skills/student-presentation-review/SKILL.md",
+            ROOT / "skills/sp-outline/SKILL.md",
+            ROOT / "skills/sp-deck/SKILL.md",
+            ROOT / "skills/sp-review/SKILL.md",
         ]
         for path in paths:
             lines = path.read_text(encoding="utf-8").splitlines()
@@ -184,9 +184,9 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertNotIn("## Confirmed Constraints", shared)
 
     def test_style_selection_contract(self) -> None:
-        menu = self.read("skills/student-presentation-ppt/references/visual-style-menu.md")
+        menu = self.read("skills/sp-deck/references/visual-style-menu.md")
         styles = sorted(
-            (ROOT / "skills/student-presentation-ppt/references/visual-styles").glob("*.md")
+            (ROOT / "skills/sp-deck/references/visual-styles").glob("*.md")
         )
         self.assertEqual(14, len(styles))
         self.assertIn("three best topic-fit choices", menu)
@@ -234,9 +234,9 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertEqual([], manifest["dependencies"])
 
     def test_review_edit_handoff_requires_separate_outputs(self) -> None:
-        review = self.read("skills/student-presentation-review/SKILL.md")
-        ppt = self.read("skills/student-presentation-ppt/SKILL.md")
-        editing = self.read("skills/student-presentation-ppt/references/pptx-editing.md")
+        review = self.read("skills/sp-review/SKILL.md")
+        ppt = self.read("skills/sp-deck/SKILL.md")
+        editing = self.read("skills/sp-deck/references/pptx-editing.md")
         self.assertIn("先诊断", review)
         self.assertIn("独立改进版", review)
         self.assertIn("禁止覆盖 source deck", ppt)
@@ -281,10 +281,10 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("target_slides", slide_schema["properties"])
 
     def test_skills_route_through_layered_quality_workflow(self) -> None:
-        planning = self.read("skills/student-presentation/SKILL.md")
-        production = self.read("skills/student-presentation-ppt/references/pptx-production.md")
+        planning = self.read("skills/sp-outline/SKILL.md")
+        production = self.read("skills/sp-deck/references/pptx-production.md")
         revision = self.read("references/revision-training-export.md")
-        review = self.read("skills/student-presentation-review/SKILL.md")
+        review = self.read("skills/sp-review/SKILL.md")
         self.assertIn("目录→每页主张", planning)
         self.assertIn("analyze_presentation_spec.py", planning)
         self.assertIn("build_support_outputs.py", planning)
@@ -293,9 +293,9 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("可能的问题", review)
 
     def test_handoff_artifacts_and_completion_contract(self) -> None:
-        outline = self.read("skills/student-presentation/SKILL.md")
-        review = self.read("skills/student-presentation-review/SKILL.md")
-        ppt = self.read("skills/student-presentation-ppt/SKILL.md")
+        outline = self.read("skills/sp-outline/SKILL.md")
+        review = self.read("skills/sp-review/SKILL.md")
+        ppt = self.read("skills/sp-deck/SKILL.md")
         # outline 交接工件：转 PPTX 时必写 slide-spec.yaml 与 brief.yaml
         self.assertIn("<topic>-slide-spec.yaml", outline)
         self.assertIn("<topic>-brief.yaml", outline)

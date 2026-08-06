@@ -107,6 +107,43 @@ class PresentationQualityTests(unittest.TestCase):
         result = analyze_spec(data)
         self.assertEqual(1, result["summary"]["critical"])
 
+    def test_content_layer_rules_are_minor_not_blocking(self) -> None:
+        """每页证据引用 / 场景角色完整性 / opening / closing / limitation 均为 Minor，不阻断 --strict。"""
+        data = {
+            "meta": {
+                "scenario": "defense",
+                "quality_level": "high-score",
+                "max_words_per_slide": 40,
+                "max_chinese_chars_per_slide": 80,
+                "include_speaker_notes": True,
+            },
+            "slides": [
+                {
+                    "id": 1,
+                    "kind": "content",
+                    "role": "method",
+                    "title": "方法页 80% 提升",
+                    "claim": "方法 X 提升效率",
+                    "content": "80%",
+                    "slide_copy": "该方法提升 80% 效率，因此成本下降",
+                    "timing_sec": 30,
+                    "owner": "Individual",
+                }
+            ],
+        }
+        result = analyze_spec(data)
+        by_code = {item["code"]: item["severity"] for item in result["findings"]}
+        for code in (
+            "missing-evidence-reference",
+            "missing-opening-hook",
+            "missing-closing",
+            "missing-limitation",
+            "missing-story-role",
+        ):
+            self.assertEqual("Minor", by_code.get(code), f"{code} should be Minor, got {by_code.get(code)}")
+        self.assertEqual(0, result["summary"]["critical"])
+        self.assertEqual(0, result["summary"]["major"])
+
 
 if __name__ == "__main__":
     unittest.main()

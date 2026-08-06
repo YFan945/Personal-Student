@@ -250,10 +250,10 @@ def main() -> None:
             raise SystemExit("LibreOffice soffice and pdftoppm are required for the render matrix.")
         print(json.dumps({"ok": True, "skipped": True, "reason": "LibreOffice or Poppler unavailable"}))
         return
-    delivery = ROOT / "skills" / "student-presentation-ppt" / "scripts" / "pptx_delivery_check.py"
+    delivery = ROOT / "skills" / "sp-deck" / "scripts" / "pptx_delivery_check.py"
     tool = ROOT / "scripts" / "pptx_tool.py"
     completed = []
-    with tempfile.TemporaryDirectory(prefix="student-presentation-matrix-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="sp-outline-matrix-") as tmp:
         work = Path(tmp)
         for name, (scenario, language, roles) in MATRIX.items():
             spec_path, spec_report = validate_scenario(

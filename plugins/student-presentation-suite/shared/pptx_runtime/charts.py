@@ -350,6 +350,23 @@ def validate_charts(root: Path, files: set[str], findings: list[Finding]) -> Non
                             f"{plot_name} series require one unique {field} each",
                         )
                     )
+            # pptxgenjs 4.0.1 在传 chartColors 时会把 per-point c:dPt 写到 c:dLbls
+            # 之后，违反 dml-chart.xsd 的 series 子元素顺序（dPt 必须位于 dLbls 之前）。
+            for item in series:
+                seen_labels = False
+                for child in item:
+                    name = _local(child.tag)
+                    if name == "dLbls":
+                        seen_labels = True
+                    elif name == "dPt" and seen_labels:
+                        findings.append(
+                            Finding(
+                                "chart-dpt-order",
+                                part,
+                                "series has c:dPt after c:dLbls, which violates dml-chart.xsd ordering",
+                            )
+                        )
+                        break
             if plot_name in {"barChart", "bar3DChart"}:
                 grouping = next(
                     (child.attrib.get("val") for child in plot if _local(child.tag) == "grouping"),

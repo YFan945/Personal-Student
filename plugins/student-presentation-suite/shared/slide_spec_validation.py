@@ -220,7 +220,8 @@ def semantic_errors(data: Any) -> list[dict[str, str]]:
                     }
                 )
 
-    errors.extend(_validate_scenario_roles(meta, slides))
+    # 场景故事角色完整性不再作为硬错误阻断（避免 defense/research 逼页数膨胀）；
+    # 由 `analyze_presentation_spec.py` 作为 Minor 提示。仅保留结构性语义校验。
     errors.extend(_validate_visual_semantics(meta, slides))
 
     revision_operation = data.get("revision_operation")

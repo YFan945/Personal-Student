@@ -246,6 +246,57 @@ class ChartValidationTests(unittest.TestCase):
             validate_charts(root, files, findings)
         self.assertIn("chart-formula-sheet-missing", {finding.code for finding in findings})
 
+    def test_chart_validator_reports_dpt_after_dlabels(self) -> None:
+        """c:dPt 出现在 c:dLbls 之后违反 dml-chart.xsd 顺序（pptxgenjs chartColors 的已知问题）。"""
+        chart = """<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">
+          <c:chart><c:plotArea><c:barChart>
+            <c:ser><c:idx val="0"/><c:order val="0"/>
+              <c:dLbls/>
+              <c:dPt><c:idx val="0"/></c:dPt>
+            </c:ser>
+            <c:axId val="10"/><c:axId val="20"/>
+          </c:barChart>
+          <c:catAx><c:axId val="10"/><c:crossAx val="20"/></c:catAx>
+          <c:valAx><c:axId val="20"/><c:crossAx val="10"/></c:valAx>
+          </c:plotArea></c:chart>
+        </c:chartSpace>"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "ppt" / "charts" / "chart1.xml"
+            path.parent.mkdir(parents=True)
+            path.write_text(chart, encoding="utf-8")
+            findings = []
+            validate_charts(root, {"ppt/charts/chart1.xml"}, findings)
+        self.assertIn("chart-dpt-order", {finding.code for finding in findings})
+
+    def test_original_baseline_does_not_hide_unavailable_schema_validator(self) -> None:
+        """schema-validator-unavailable 不能被 --original 基线去重掉（dotnet 缺失时须如实报告）。"""
+        from shared.pptx_runtime import validate as validate_mod
+        from shared.pptx_runtime.findings import Finding
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            current = root / "current.pptx"
+            original = root / "original.pptx"
+            with zipfile.ZipFile(current, "w") as zf:
+                zf.writestr("[Content_Types].xml", "<Types/>")
+            with zipfile.ZipFile(original, "w") as zf:
+                zf.writestr("[Content_Types].xml", "<Types/>")
+            unavailable = Finding(
+                "schema-validator-unavailable",
+                "ppt/presentation.xml",
+                "Open XML validator is unavailable",
+            )
+            status = {"performed": False, "error_count": 1}
+            # _validate_unpacked 必须每次返回新 list（return_value=[] 会共享同一对象，
+            # 被 validate 内部 extend 原地修改后污染 baseline 去重）。
+            with mock.patch.object(validate_mod, "_validate_unpacked", side_effect=lambda _root: []), mock.patch.object(
+                validate_mod, "_schema_findings", return_value=([unavailable], status)
+            ):
+                result = validate_mod.validate_pptx(current, original)
+        codes = {item["code"] for item in result["findings"]}
+        self.assertIn("schema-validator-unavailable", codes)
+        self.assertFalse(result["ok"])
+
 
 class SharedAssetRiskTests(unittest.TestCase):
     def test_reports_shared_slide_master_as_info(self) -> None:

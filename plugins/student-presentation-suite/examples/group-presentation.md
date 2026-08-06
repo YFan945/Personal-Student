@@ -1,6 +1,6 @@
 # 分组汇报示例
 
 - 请求：四人、十分钟、十二页课堂汇报大纲。
-- 路由：`student-presentation`
+- 路由：`sp-outline`
 - 输出：逐页 owner、时间、handoff 和每位成员的难度平衡。
 - 边界：仅生成大纲和讲稿，不生成 PPTX。

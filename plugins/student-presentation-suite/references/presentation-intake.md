@@ -40,7 +40,7 @@ Confirm every item before production:
 | Template/branding | No required template, logo, or brand | Controls layout constraints |
 | Source deck (新建/改进) | No existing deck → create new | Decides `production_mode`: an editable `.pptx`/`.potx` source → `edit_ooxml`; a corrupt source or non-PPTX (PDF/preview) → `rebuild_from_source`/`create`; otherwise `create` |
 | Edit intent | None (new deck) | For improvements: `incremental` / `rebuild-clean-copy` / `fix-specific`; `rebuild-clean-copy` overrides the edit_ooxml default |
-| Image strategy | Diagram-only or generated abstract visuals; no web images | Controls sourcing and production |
+| Image strategy | imagegen 关键插图（封面/背景）+ SVG/原生形状结构图；仅图表为安全后备 | Controls sourcing and production |
 | Visual style | Recommend three topic-fit styles; choose one only after confirmation | Controls visual direction |
 | Deliverables | PPTX, speaker notes, preview/contact sheet; add change summary for edits | Controls completion criteria |
 | Interaction/quality mode | Beginner + high-score | Controls guidance, evidence, and rehearsal depth |
@@ -77,11 +77,19 @@ reply.
 5. If the user types “你决定”, “按推荐来”, or “use the recommendations” at any
    point, stop asking and fill all remaining fields with recommended values.
 6. After all fields are resolved, show the complete `Production Summary` and ask
-   for final confirmation. Delegation does NOT itself move the state to
-   `intake_confirmed`; approval of the summary does.
-7. Do not run environment checks, generation scripts, rendering, or delivery
+   for final confirmation **via `AskUserQuestion`**（不要以纯文本收尾等待自由输入）。
+   Delegation does NOT itself move the state to `intake_confirmed`; approval of
+   the summary does. 确认选项固定为：
+   - `确认，开始制作（推荐）` → 批准摘要并进入生产
+   - `调整方案` → 修改页数/配色/内容后重新确认
+   - `更换视觉风格` → 回到风格选择（Round 3a）重新选
+   - `Other`（自由输入，例如"改为仅大纲"）
+   用户选中"确认"后，才调用 `confirm --summary-file <summary>` 落 `intake_confirmed`。
+7. 任何一轮询问之后需要用户表态时，一律用 `AskUserQuestion` 继续，不要以纯文本
+   收尾中断会话。
+8. Do not run environment checks, generation scripts, rendering, or delivery
    checks while the state is `intake_pending`.
-8. If a field has no natural option set (e.g. Topic, Course/context, Rubric),
+9. If a field has no natural option set (e.g. Topic, Course/context, Rubric),
    use `AskUserQuestion` with `”Other”` as a free-text fallback, or ask inline.
 
 ### Question batches (by priority)
@@ -97,12 +105,14 @@ Batch fields so that the most impactful decisions come first. Typical grouping:
 **Round 2 — 规模与格式**:
 - `Duration` → options: 3min (5-7页), 5min (7-9页), 8min (9-12页), 10min (10-14页), 15min (14-18页)
 - `Format` → options: Individual/个人, Group/小组 (2-4人), Group/小组 (5+人)
-- `Quality level` → options: Basic, High-score/高分
 - `Interaction mode` → options: Beginner/新手引导, Expert/专家模式
+
+`Quality level` 不再询问：默认 `High-score/高分`（仅在用户明确要求低要求时才降为
+Basic）。`Citation style` 不再询问：默认 `Classroom/课堂引用`，内容中不强调引用风格。
 
 **Round 3 — 视觉与素材**:
 - `Visual style` → **两步选择**（样式 > 4 种时强制分步）:
-  - **Step A — 风格方向**：按场景归类为 4 个方向，让用户先选方向（方向定义与示例见 `../skills/student-presentation-ppt/references/visual-style-menu.md`）
+  - **Step A — 风格方向**：按场景归类为 4 个方向，让用户先选方向（方向定义与示例见 `../skills/sp-deck/references/visual-style-menu.md`）
     → 学术严谨类 / 商务专业类 / 科技现代类 / 创意人文类
     （每个方向下列出包含的样式名和中文别名，让用户知道里面有什么）
   - **Step B — 具体样式**：根据用户选的方向，展示该方向下的 3-4 个具体样式，标注最佳推荐
@@ -115,9 +125,16 @@ Batch fields so that the most impactful decisions come first. Typical grouping:
     - 创意人文类：Creative Student、Coral Energy、Forest Moss、Warm Terracotta、Berry Cream、Sage Calm、Cherry Bold
   - Step A 必须根据 topic 推荐最匹配的方向作为第一个选项 `（推荐）`，而不是机械按固定顺序
   - 若用户在 Step B 中看到上方带 `*` 的跨方向样式，标注为"也适用于 [另一方向]"
-- `Image strategy` → options: Diagram-only/仅图表, Generated abstract/生成抽象图, Web image/联网图片, User-provided image/用户照片, Ask-before-web-search/每次联网前询问, No images/无图
-- `Citation style` → options: Classroom/课堂引用, GB-T-7714, APA, IEEE, MLA, None
-- 如果本轮的 3 个问题填不满 4 个槽位（视觉风格已占 2 轮），把 Citation style 挪到 Round 2 或 Round 4
+- `Image strategy` → options:
+  - `生图+SVG/原生形状结合（推荐）` → 封面/背景等必要插图用内置生图 skill（imagegen）生成，方法链条/结构图用 SVG 或原生形状渲染；视觉丰富，需联网+生图环境
+  - `内置生图 skill 生成插图` → 全部插图（含封面/背景/概念图）由 imagegen 生成
+  - `Diagram-only/仅图表` → 仅图表与原生形状，无外部依赖，最安全最快
+  - `Web image/联网图片` → 真实人物/地点/产品等先确认是否允许联网搜图
+  - `User-provided image/用户照片` → 优先使用用户提供的素材
+  - `Ask-before-web-search/每次联网前询问`
+  - `No images/无图` → 纯图表/形状/文字版式
+- `Citation style` → 不询问，默认 `Classroom/课堂引用`（详见 `../../references/evidence-and-citations.md`）
+- Round 3 只有视觉风格（占 2 轮）与配图 1 个问题，若需要可把 Deliverables 提前到本轮填满槽位
 
 **Round 4 — 输出格式**:
 - `Deliverables` (multi-select) → options: PPTX/幻灯片, Speaker notes/讲稿, Preview/预览图, PDF export/PDF, Contact sheet/缩略图联系人表, Full script/完整演讲稿
@@ -137,25 +154,27 @@ Batch fields so that the most impactful decisions come first. Typical grouping:
 → 用户选择后，调用 AskUserQuestion（Round 2）：
   1. Duration → 5min（推荐）
   2. Format → Individual（推荐）
-  3. Quality level → High-score（推荐）
-  4. Interaction mode → Beginner（推荐）
+  3. Interaction mode → Beginner（推荐）
+  （Quality level 不再询问，默认 High-score/高分）
 
 → 用户选择后，调用 AskUserQuestion（Round 3a — 风格方向）：
   1. 风格方向 → 科技现代类（推荐）/ 学术严谨类 / 商务专业类 / 创意人文类
 
-→ 用户选"科技现代类"后，调用 AskUserQuestion（Round 3b — 具体样式）：
+→ 用户选"科技现代类"后，调用 AskUserQuestion（Round 3b — 具体样式与配图）：
   1. Visual style → Ocean Tech 海洋科技（推荐）/ Modern Minimal 现代简洁 / Data Driven 数据驱动
-  2. Image strategy → Diagram-only（推荐）
-  3. Citation style → Classroom（推荐）
+  2. Image strategy → 生图+SVG/原生形状结合（推荐）/ Diagram-only 仅图表 / 内置生图 skill / Web image / ...
+  （Citation style 不再询问，默认 Classroom）
 
-→ 所有字段确认完毕，展示完整 Production Summary 等待最终确认
+→ 所有字段确认完毕，展示完整 Production Summary，用 AskUserQuestion 请求最终确认：
+  1. 是否按以上方案开始制作？ → 确认，开始制作（推荐）/ 调整方案 / 更换视觉风格 / Other
 ```
 
 ### Delegation shortcut
 
 If the user says “你决定”, “按推荐来”, or “use the recommendations” at any
 point, fill every remaining unresolved field with the recommended value. Then
-show the complete `Production Summary` and ask for explicit confirmation.
+show the complete `Production Summary` and ask for explicit confirmation **via
+`AskUserQuestion`**（选项见 Interaction flow 步骤 6，勿以纯文本收尾）。
 
 If all fields were already supplied in the initial request, skip the question
 rounds and go directly to showing the complete `Production Summary` for
@@ -165,7 +184,9 @@ confirmation.
 
 The confirmation summary must list all full-intake fields plus the planned output
 directory or filename prefix when known. Only an affirmative reply to this
-summary moves the workflow to `intake_confirmed`.
+summary moves the workflow to `intake_confirmed`. 确认必须通过 `AskUserQuestion`
+（选项：确认，开始制作 / 调整方案 / 更换视觉风格 / Other），不要以纯文本
+"回复确认即可开始"这类方式中断会话等待自由输入。
 
 After confirmation, map supported values into Slide Spec `meta`:
 

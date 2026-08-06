@@ -149,9 +149,36 @@ try {
     process.exitCode = normalization.status === null ? 1 : normalization.status;
     return;
   }
+  // normalize 会移除图表中未声明的 c:axId 引用。pptxgenjs 对普通单系列 chart 也会
+  // 写一个多余轴引用，因此这不是 blocker——但若模型本意是组合图（次轴系列），这里会
+  // 被静默降级为单轴。故只告警不阻断：让模型看到提示，同时不误伤正常生成。
+  let normalizedCharts = [];
+  try {
+    const payload = JSON.parse(normalization.stdout || '{}');
+    normalizedCharts = Array.isArray(payload.changed) ? payload.changed : [];
+  } catch (_) {
+    // 忽略 stdout 解析失败；仍继续用已归一化文件。
+  }
+  if (normalizedCharts.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[normalize] ${normalizedCharts.length} 个图表的未声明轴引用被移除（pptxgenjs 常规输出；` +
+        `若本意是双轴组合图，请在 deck.js 中显式声明 valAxes + catAxes 各两条）：\n` +
+        `  ${normalizedCharts.join('\n  ')}`,
+    );
+  }
   // A same-directory hard link is atomic and fails with EEXIST on every
   // supported platform; rename() would overwrite a raced-in file on POSIX.
-  fs.linkSync(normalized, finalOutput);
+  // 硬链接不可用（FAT/exFAT/网络盘）时回退为复制。
+  try {
+    fs.linkSync(normalized, finalOutput);
+  } catch (linkError) {
+    if (linkError.code === 'EEXIST' || linkError.code === 'EPERM') {
+      fs.copyFileSync(normalized, finalOutput);
+    } else {
+      throw linkError;
+    }
+  }
 } finally {
   for (const temporary of [generated, normalized]) {
     try {

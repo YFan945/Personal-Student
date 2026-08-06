@@ -1,7 +1,7 @@
 # English Class Report Example
 
 - Request: Create a seven-slide editable deck for an undergraduate English class on "Social Media and Teen Mental Health."
-- Route: `student-presentation-ppt`
+- Route: `sp-deck`
 - Confirmed: Topic, language=English, duration=5min, slide count=7, individual format.
 - To ask: Course/context, scenario, audience, rubric, source material, image strategy, visual style, deliverables.
 - Recommended: Coursework report, Teacher + classmates, B1-B2 English level, `Modern Minimal（现代简洁）`, diagram-only, PPTX + speaker notes + preview.

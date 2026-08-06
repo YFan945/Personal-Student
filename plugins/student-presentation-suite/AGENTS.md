@@ -22,11 +22,11 @@ The three skills MUST only activate when BOTH conditions hold:
    classroom report, thesis/course defense, teacher rubric, or student competition)
 2. An explicit PPT intent
 
-- **`student-presentation`**: User asks for PPT/slide outline or Slide Spec
+- **`sp-outline`**: User asks for PPT/slide outline or Slide Spec
   handoff. Never creates PPTX files.
-- **`student-presentation-ppt`**: User asks to create, edit, improve, or
+- **`sp-deck`**: User asks to create, edit, improve, or
   rebuild an editable PPT/PPTX/PowerPoint/slide deck.
-- **`student-presentation-review`**: User provides an existing artifact and
+- **`sp-review`**: User provides an existing artifact and
   asks for review, scoring, risk checks, or comparison.
 
 See `references/shared-standards.md` for full intent routing rules.

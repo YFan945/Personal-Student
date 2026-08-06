@@ -281,7 +281,7 @@ slides:
 
         self.assertTrue(any("Additional properties" in error["message"] for error in errors))
 
-    def test_each_scenario_rejects_missing_required_story_role(self) -> None:
+    def test_scenario_story_role_is_advisory_not_blocking(self) -> None:
         bridge = load_bridge_module()
         required_missing = {
             "coursework": "method", "defense": "qa", "competition": "solution",
@@ -300,8 +300,8 @@ slides:
                     ],
                 }
                 errors = bridge.validate_spec(data, ROOT / "references" / "slide-spec.schema.json", __import__("jsonschema"))
-                messages = "\n".join(error["message"] for error in errors)
-                self.assertIn(f"scenario={scenario} requires", messages)
+                # 场景故事角色完整性为建议性（analyze 输出 Minor），不再硬阻断。
+                self.assertEqual([], errors, f"missing {missing} role should not block: {errors}")
 
     def test_visual_semantics_require_structured_layout_details(self) -> None:
         bridge = load_bridge_module()

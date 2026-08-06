@@ -10,12 +10,12 @@ Code 插件。它将内容规划、可编辑 PPTX 生成和已有 deck 审查拆
 
 ## 三个 Skill
 
-### `student-presentation`
+### `sp-outline`
 
 用于 PPT 大纲、叙事主线、逐页口播规划、小组分工、转场、Q&A 准备和可选
 Slide Spec。该 skill 不创建也不会声称创建 PPTX。
 
-### `student-presentation-ppt`
+### `sp-deck`
 
 用于新建可编辑 PPTX，或为已有 deck 生成独立改进版。底层包编辑、校验和渲染
 统一通过本套件维护的 `scripts/pptx_tool.py` 与 `shared/pptx_runtime/` 完成；
@@ -25,7 +25,7 @@ package/presentation 语义检查，并生成支持隐藏页和分页的 contact
 clean 具备事务回滚，inspect 返回版本化逐页 metadata；仅当 Linux sandbox 实际阻断
 AF_UNIX 时，render 才按需编译并加载内置 shim。
 
-### `student-presentation-review`
+### `sp-review`
 
 用于审查、评分、风险诊断、计划与成品对比和逐页修改建议。默认只读。
 用户说“直接改好”时，先完成诊断，再把结构化 findings 交给 PPTX skill。
@@ -47,8 +47,9 @@ AF_UNIX 时，render 才按需编译并加载内置 shim。
 - 必需交付物。
 
 插件会复用已确认的信息，只询问缺失项，并为每个缺失项提供推荐值和影响。
-即使用户说“你决定”，也只是自动采用推荐值，仍需用户确认完整 Production
-Summary。
+质量目标默认 `high-score`，引用风格默认课堂引用，两者都不在 intake 中询问。
+即使用户说“你决定”，也只是自动采用推荐值，仍需用户通过 `AskUserQuestion`
+（确认 / 调整方案 / 更换视觉风格）确认完整 Production Summary。
 
 生产状态为：
 
@@ -97,15 +98,15 @@ Evidence Ledger 引用、锁定页面及 revision 元数据；旧版 Slide Spec 
 
 ## 视觉系统
 
-PPTX skill 先读取 `skills/student-presentation-ppt/references/visual-style-menu.md`，推荐最适合主题的风格，再只加载一个
+PPTX skill 先读取 `skills/sp-deck/references/visual-style-menu.md`，推荐最适合主题的风格，再只加载一个
 `visual-styles/` 下的具体风格规范。每个风格都包含颜色角色、字体、几何、
 页面配方、图片处理、密度限制和验收检查。
 
 风格是生成方向，不是固定模板。页面布局必须服务于内容功能，装饰不能代替
 证据、层级和可读性。
 
-`deck.js` 按 `skills/student-presentation-ppt/references/pptxgenjs-safety.md` 中的官方 gotchas 写成裸 pptxgenjs 脚本；
-`pptx-helpers.js`/`pptx-visuals.js` 是可选工具库。`pptx-visuals.js` 用可编辑形状、
+`deck.js` 按 `skills/sp-deck/references/pptxgenjs-safety.md` 中的官方 gotchas 写成裸 pptxgenjs 脚本；
+`pptx-helpers.js`/`pptx-visuals.js`/`pptx-icons.js` 是可选工具库（`pptx-icons.js` 提供约 30 个随 token 着色的矢量图标）。`pptx-visuals.js` 用可编辑形状、
 连接线、标签和图片/图表结构实现 hero/visual-dominant/process-path/timeline/comparison/
 dashboard/architecture/matrix/quote/summary/reference 等布局族。图片默认等比包含并写入 alt text，
 图表使用投影可读字号。
@@ -119,15 +120,15 @@ PPTX 交付要求：
 - 生成可编辑 PPTX（裸 pptxgenjs，遵循官方 gotchas）；
 - 提供讲稿；
 - 编辑/模板继承路径执行文本提取检查；
-- QA manifest 会重新验证原始 Slide Spec，并保证
-  Slide Spec/PPTX/package-report hash 一致；
+- QA manifest 绑定原始 Slide Spec 的 hash，并保证
+  Slide Spec/PPTX/package-report hash 一致（spec 自规划期未被改动时不再重复校验）；
 - package report 使用完整 suite validation profile，且 Open XML schema 校验已执行并通过；
 - 按需生成的 quality report 与原始 Slide Spec 或当前 PPTX hash 一致；
 - 使用标准视觉风格时，提供解析后的 design tokens；
 - 严格 delivery check 通过；
 - 已有 deck 改进提供独立 change summary。
 
-`complete` 还额外要求执行 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --delivery-report <report>`。PptxGenJS wrapper 在原子落盘前只做 `normalize-generated`，不做静态门禁；逐页渲染视觉检查可选，仅在怀疑布局问题时做。QA 发现 blocker 时通过返工边 `transition --to producing --reason <摘要>` 重建，无需 reset 全流程重跑。QA 和 delivery 复用生成阶段的 package report，不重复校验未修改的 deck。CI 也会为 coursework、英语课堂汇报、答辩、竞赛、社团展示、研究展示、软件项目、数据调研和学校模板编辑等场景创建并渲染临时矩阵；不会把生成 deck 或预览提交到仓库。
+`complete` 还额外要求执行 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --delivery-report <report>`。PptxGenJS wrapper 在原子落盘前只做 `normalize-generated`，不做静态门禁；逐页渲染视觉检查为默认单次快循环（渲染全部 → 目检 → 只修有问题的页 → 只重渲染变更页）。QA 发现 blocker 时通过返工边 `transition --to producing --reason <摘要>` 重建，无需 reset 全流程重跑。QA 和 delivery 复用生成阶段的 package report，不重复校验未修改的 deck。CI 也会为 coursework、英语课堂汇报、答辩、竞赛、社团展示、研究展示、软件项目、数据调研和学校模板编辑等场景创建并渲染临时矩阵；不会把生成 deck 或预览提交到仓库。
 
 ## Runtime
 

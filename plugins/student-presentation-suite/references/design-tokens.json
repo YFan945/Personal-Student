@@ -20,6 +20,6 @@
     "ocean-tech": {"name": "Ocean Tech", "palette": {"canvas": "F4F9FC", "surface": "FFFFFF", "primary_text": "132238", "secondary_text": "52677A", "primary_accent": "065A82", "secondary_accent": "1C7293"}, "dark_palette": {"canvas": "21295C", "surface": "112240", "primary_text": "D6E8FF", "secondary_text": "A3C5D9", "primary_accent": "00C2D1", "secondary_accent": "4E8DFF"}, "geometry": {"corner_radius_pt": 4}},
     "sage-calm": {"name": "Sage Calm", "palette": {"canvas": "F4F7F2", "surface": "FFFFFF", "primary_text": "263D3A", "secondary_text": "5C716D", "primary_accent": "84B59F", "secondary_accent": "69A297"}, "geometry": {"corner_radius_pt": 16}},
     "teal-trust": {"name": "Teal Trust", "palette": {"canvas": "F3FAF9", "surface": "FFFFFF", "primary_text": "173B3F", "secondary_text": "536C70", "primary_accent": "028090", "secondary_accent": "00A896"}, "geometry": {"corner_radius_pt": 10}},
-    "warm-terracotta": {"name": "Warm Terracotta", "palette": {"canvas": "F4EEDF", "surface": "FFFDFC", "primary_text": "3D2C28", "secondary_text": "6F5B53", "primary_accent": "B85042", "secondary_accent": "A7BEAE"}, "typography": {"title_font": "Cambria", "body_font": "Calibri"}, "geometry": {"corner_radius_pt": 4}}
+    "warm-terracotta": {"name": "Warm Terracotta", "palette": {"canvas": "F4EEDF", "surface": "FFFDFC", "primary_text": "3D2C28", "secondary_text": "6F5B53", "primary_accent": "B85042", "secondary_accent": "A7BEAE"}, "typography": {"title_font": "Cambria", "body_font": "Calibri"}, "geometry": {"corner_radius_pt": 8}}
   }
 }

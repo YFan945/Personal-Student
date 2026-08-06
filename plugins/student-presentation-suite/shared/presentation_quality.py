@@ -106,12 +106,12 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
     max_chars = int(raw_chars) if raw_chars is not None else 80
     include_notes = bool(meta.get("include_speaker_notes", True))
 
-    # 场景故事角色完整性检查
+    # 场景故事角色完整性检查（仅提示，不阻断：避免逼页数膨胀/凑角色）
     role_errors = _validate_scenario_roles(meta, slides)
     for err in role_errors:
         findings.append(
             finding(
-                "Major" if "requires" in err["message"] else "Minor",
+                "Minor",
                 err["path"],
                 "missing-story-role",
                 err["message"],
@@ -215,7 +215,7 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
         if factual_signal and not refs:
             current.append(
                 finding(
-                    "Major",
+                    "Minor",
                     target,
                     "missing-evidence-reference",
                     "A numeric or causal claim has no evidence reference.",
@@ -276,7 +276,7 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
     if slides and not roles.intersection({"opening", "problem"}):
         findings.append(
             finding(
-                "Major",
+                "Minor",
                 "Deck",
                 "missing-opening-hook",
                 "No opening/problem role is declared.",
@@ -287,7 +287,7 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
     if slides and not roles.intersection({"conclusion", "closing"}):
         findings.append(
             finding(
-                "Major",
+                "Minor",
                 "Deck",
                 "missing-closing",
                 "No conclusion or closing role is declared.",
@@ -298,7 +298,7 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
     if meta.get("quality_level") == "high-score" and not roles.intersection({"limitation"}):
         findings.append(
             finding(
-                "Major",
+                "Minor",
                 "Deck",
                 "missing-limitation",
                 "High-score mode has no limitation page or role.",

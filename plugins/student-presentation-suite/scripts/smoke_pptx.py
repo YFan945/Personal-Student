@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
-    with tempfile.TemporaryDirectory(prefix="student-presentation-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="sp-outline-smoke-") as tmp:
         work = Path(tmp)
         pptx = work / "smoke-presentation.pptx"
         notes = work / "smoke-speaker-notes.md"
@@ -160,7 +160,7 @@ pptx.writeFile({ fileName: process.argv[2] });
         proc = subprocess.run(
             [
                 sys.executable,
-                str(ROOT / "skills/student-presentation-ppt/scripts/pptx_delivery_check.py"),
+                str(ROOT / "skills/sp-deck/scripts/pptx_delivery_check.py"),
                 "--pptx",
                 str(pptx),
                 "--notes",

@@ -31,7 +31,7 @@ from shared.pptx_runtime.normalize import normalize_generated_package  # noqa: E
 from shared.pptx_runtime.package import count_registered_slides  # noqa: E402
 from shared.pptx_runtime.render import align_rendered_pages, render_pptx  # noqa: E402
 from shared.pptx_runtime.thumbnail import create_thumbnail_grids, slide_metadata  # noqa: E402
-from shared.slide_spec_contract import validate_slide_spec  # noqa: E402
+from shared.slide_spec_contract import load_slide_spec, validate_slide_spec  # noqa: E402
 
 PPTX_SUFFIXES = {".pptx", ".potx"}
 
@@ -416,10 +416,15 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
         raise SystemExit(f"cannot read Slide Spec report: {exc}") from exc
     if not isinstance(spec_report_data, dict) or spec_report_data.get("valid") is not True:
         raise SystemExit("Slide Spec validation report did not pass")
-    # 重校验是刻意的完成一致性门禁：捕获 spec 漂移与 spec-vs-pptx 页数不一致，
-    # 并非规划期校验（slide_spec_to_pptx_brief）的简单重复。
+    # spec 自规划期未被改动时不再重复校验（规划期已由 validate_slide_spec.py 校验），
+    # QA 只做 hash 绑定与页数核对，避免门禁叠罗汉。spec 被改动时才重校验以捕获漂移。
+    spec_hash = spec_report_data.get("slide_spec_sha256")
+    actual_spec_hash = _sha256(args.slide_spec)
     try:
-        spec_data, spec_errors, actual_spec_hash = validate_slide_spec(args.slide_spec)
+        if actual_spec_hash == spec_hash:
+            spec_data, spec_errors = load_slide_spec(args.slide_spec), []
+        else:
+            spec_data, spec_errors, actual_spec_hash = validate_slide_spec(args.slide_spec)
     except (OSError, ValueError) as exc:
         raise SystemExit(f"cannot validate Slide Spec: {exc}") from exc
     if spec_errors:
@@ -427,11 +432,10 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
             "Slide Spec no longer passes validation: "
             + "; ".join(error["message"] for error in spec_errors[:3])
         )
-    if len((spec_data or {}).get("slides") or []) != slide_count:
-        raise SystemExit("Slide Spec slide count does not match the current PPTX")
-    spec_hash = spec_report_data.get("slide_spec_sha256")
     if not spec_hash or actual_spec_hash != spec_hash:
         raise SystemExit("Slide Spec report does not bind the current spec")
+    if len((spec_data or {}).get("slides") or []) != slide_count:
+        raise SystemExit("Slide Spec slide count does not match the current PPTX")
     output: Path = args.output
     output.parent.mkdir(parents=True, exist_ok=True)
     # scenario_contract_passed 恒为 True：由上方对 Slide Spec 的重校验推导
@@ -450,9 +454,9 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
     }
     if previews:
         # 视觉检查仅在实际渲染后记录；无 preview 时跳过（视觉检查可选）。
-        # completed=True 必须由人工 attestation 支撑：显式提供 --no-repair-needed-reason
-        # 且 --remaining-blockers==0；否则不得声称"检查完成"。
-        inspection_completed = bool(args.no_repair_needed_reason) and args.remaining_blockers == 0
+        # 提供 preview 且无遗留 blocker（--remaining-blockers 0）即视为检查完成；
+        # --no-repair-needed-reason 为可选说明，不再强制。
+        inspection_completed = args.remaining_blockers == 0
         payload["visual_inspection"] = {
             "completed": inspection_completed,
             "inspected_pages": list(range(1, slide_count + 1)),

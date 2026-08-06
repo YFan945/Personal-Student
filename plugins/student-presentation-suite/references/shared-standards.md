@@ -17,9 +17,9 @@ owns source/visual policy.
 Before routing to any skill in this suite, require both a clear student-owned academic context and an explicit PPT intent. Strong context includes an identified student, university assignment, classroom report, thesis/course defense, teacher rubric, or student competition. Do not treat a single ambiguous word such as "course", "class", "competition", or "defense" as sufficient without supporting academic cues. PPT intent must be one of: requesting a PPT/slide outline, requesting PPT/PPTX creation or improvement, or requesting review of an existing PPT artifact. Do not use this suite for generic presentation work, standalone scripts/Q&A, attached decks without a review request, or non-student presentations.
 
 Choose the skill by the user's requested outcome, not only by the input type:
-- Use `student-presentation` when an eligible student-context request explicitly asks for a PPT/slide outline or Slide Spec outline handoff.
-- Use `student-presentation-ppt` when the user asks for PPT, PPTX, PowerPoint, slides, editable deck, rendered preview, or a ready presentation file.
-- Use `student-presentation-review` when the user provides an existing artifact and asks for review, scoring, risk checks, before/after comparison, or improvement advice.
+- Use `sp-outline` when an eligible student-context request explicitly asks for a PPT/slide outline or Slide Spec outline handoff.
+- Use `sp-deck` when the user asks for PPT, PPTX, PowerPoint, slides, editable deck, rendered preview, or a ready presentation file.
+- Use `sp-review` when the user provides an existing artifact and asks for review, scoring, risk checks, before/after comparison, or improvement advice.
 
 Ambiguous requests:
 - "做一个 PPT", "生成 slides", "make a slide deck", "make PowerPoint", or "make PPTX" means PPTX production unless the user explicitly says outline only.
@@ -35,7 +35,7 @@ When the target remains genuinely ambiguous, ask one routing question: outline, 
 ## Cross-Skill Handoff
 
 - Outline-only work never creates or claims to create a PPTX.
-- A file-generation request goes directly to `student-presentation-ppt`; planning happens inside that workflow.
+- A file-generation request goes directly to `sp-deck`; planning happens inside that workflow.
 - “看看问题” means review only.
 - “直接改好” means review diagnosis followed by PPTX editing in the same task.
 - Existing source decks are evidence and must not be overwritten.
