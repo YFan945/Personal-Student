@@ -92,7 +92,6 @@ Evidence Ledger 引用、锁定页面及 revision 元数据；旧版 Slide Spec 
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` 或 contact sheet
 - `<topic>-presentation-package-report.json`（suite validation 产物，可复用）
-- `<topic>-qa-manifest.json`（与 Slide Spec 证据和最终 PPTX 绑定）
 - `<topic>-delivery-report.json`（最终门禁证据）
 - 已有 deck 改进时的 `<topic>-change-summary.md`
 - 按需输出 PDF、HTML 提词版、训练卡、引用清单、质量报告和 revision manifest
@@ -101,53 +100,41 @@ Evidence Ledger 引用、锁定页面及 revision 元数据；旧版 Slide Spec 
 
 ## 视觉系统
 
-PPTX skill 先读取 `skills/sp-deck/references/visual-style-menu.md`，推荐最适合主题的风格，再只加载一个
-`visual-styles/` 下的具体风格规范。每个风格都包含颜色角色、字体、几何、
-页面配方、图片处理、密度限制和验收检查。
+PPTX skill 先从三类、每类四种风格中选择一个，或选择“其他”，再加载
+`visual-styles/` 下的一份轻量参考。正式风格只包含气质、六个颜色角色、背景参考和一个
+可选 SVG 参考；“其他”使用相同四项结构，并在 Production Summary 中完整展示后确认。
 
 风格是自适应生成方向，不是固定模板。硬约束只保护可读性、证据真实性、来源边界和
 内容适配；页面配方、比例、母题和常规密度范围均可根据叙事任务调整。没有合适视觉素材时
 允许排版主导页，不能用无意义图标、卡片或引文填空。
 
-深色页使用 `H.paletteMode(tokens, "dark")`，让 canvas、surface、文字和强调色整体切换。
-14 种风格还通过可执行 `style_dna` 区分构图、几何、字体处理、图像处理、图表语法、母题及
-三档表现强度；风格偏好不能绕过容量、来源或对比度规则。
+12 种风格不控制布局、形状、图片处理、图表语法、组件或页面节奏。SVG 母题只作可选参考，
+不得自动插入；风格参考不能绕过容量、来源、对比度或用户模板规则。
 
-所有风格共享 `layout-library.json` 中的 36 套可执行页面版式。`pptx-layouts.js` 会映射 Slide Spec
+所有风格共享 `layout-library.json` 中的 36 套页面构图灵感。`pptx-layouts.js` 会映射 Slide Spec
 原生 kind/visual 值，先按素材、数据、项目数量、禁用条件、声明容量和标题区几何容量过滤，
-缺输入时沿明确且可行的 fallback 链处理，再结合风格、密度和连续轮廓排序。
-`scripts/visual_system_smoke_gallery.py` 会生成 14×8 风格 gallery、独立 36 版式 gallery
-和 14 页 SVG atlas，并在 LibreOffice/Poppler 可用时渲染。14 套风格的八维 Style DNA
-任意两套至少五项不同。
+缺输入时沿明确且可行的 fallback 链处理，再结合密度和连续轮廓排序，视觉风格不参与排序。
+`scripts/visual_system_smoke_gallery.py` 会生成 12×6 轻量风格参考 gallery、独立
+36 版式参考/兜底 gallery 和 12 页 SVG atlas，并在 LibreOffice/Poppler 可用时渲染。
 
-`deck.js` 遵守 `skills/sp-deck/references/pptxgenjs-safety.md` 中的官方 gotchas，并默认使用
-`pptx-composer.js`、`pptx-layouts.js`、`pptx-helpers.js`、`pptx-shapes.js`、
-`pptx-svg-library.js` 与 `pptx-visuals.js`；`pptx-icons.js` 提供约 30 个随 token 着色的矢量图标。composer 先完成全 deck preflight，再用可编辑形状、
+`deck.js` 遵守 `skills/sp-deck/references/pptxgenjs-safety.md` 中的官方 gotchas，并使用
+`pptx-helpers.js` 执行硬安全检查；`pptx-composer.js`、`pptx-layouts.js`、`pptx-shapes.js`、
+`pptx-svg-library.js` 与 `pptx-visuals.js` 是可选灵感、工具箱和兜底。未锁定的 `layout` 可自由
+调整，`layout_lock: true` 才恢复精确构图；`pptx-icons.js` 提供约 30 个随 token 着色的矢量图标。兜底 composer 先完成全 deck preflight，再用可编辑形状、
 连接线、标签和图片/图表结构实现 hero/visual-dominant/process-path/timeline/comparison/
 dashboard/architecture/matrix/quote/summary/reference 等布局族。图片默认等比包含并写入 alt text，
 图表使用投影可读字号。
 
 ## 质量门禁
 
-PPTX 交付要求：
+默认流程只有三道门禁：一次 Slide Spec/Brief 校验；最终 PPTX 的 package validation、完整
+渲染和逐页查看；最后一次简化 delivery check，绑定当前 PPTX、规划报告、package report、
+预览和用户要求的输出。content QA、asset、visual-inspection、QA manifest 等独立报告只保留给
+高风险编辑、排错或用户明确要求审计证据的场景。
 
-- 环境兼容性检查；
-- 输入 Slide Spec 时执行 schema、语义验证；
-- 生成可编辑 PPTX（裸 pptxgenjs，遵循官方 gotchas）；
-- 提供讲稿；
-- 编辑/模板继承路径执行文本提取检查；
-- QA manifest 绑定原始 Slide Spec 的 hash，并保证
-  Slide Spec/PPTX/package-report hash 一致（spec 自规划期未被改动时不再重复校验）；
-- package report 使用完整 suite validation profile，且 Open XML schema 校验已执行并通过；
-- 按需生成的 quality report 与原始 Slide Spec 或当前 PPTX hash 一致；
-- 使用标准视觉风格时，提供解析后的 design tokens；
-- 严格 delivery check 通过；
-- 已有 deck 改进提供独立 change summary。
-
-MarkItDown 不可用时，suite-owned OOXML fallback 会提取完整的幻灯片、讲稿备注和图表文本，
-不会停用内容 QA，也不会截断长页文本。
-
-`complete` 还额外要求执行 `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --delivery-report <report>`。PptxGenJS wrapper 在原子落盘前只做 `normalize-generated`；QA 必须绑定 content QA、asset manifest、package report、整套预览和显式逐页 visual inspection。发现 blocker 时最多允许一次“修 spec/composer/generator → 重建整份 candidate → 重新执行全部 QA”；仍有 blocker 则交付 `incomplete`。CI 也会为 coursework、英语课堂汇报、答辩、竞赛、社团展示、研究展示、软件项目、数据调研和学校模板编辑等场景创建并渲染临时矩阵；不会把生成 deck 或预览提交到仓库。
+`complete` 使用 `workflow_guard.py transition --to complete --pptx <pptx> --delivery-report <report>`。
+发现 blocker 时最多允许一次“修 spec/composer/generator → 重建整份 candidate → 重跑最终门禁”；
+仍有 blocker 则交付 `incomplete`。CI 继续渲染完整场景矩阵，但不会提交生成产物。
 
 ## Runtime
 
@@ -168,7 +155,7 @@ python scripts/check_claude_pptx_env.py --mode edit_ooxml --json --strict
 python scripts/pptx_tool.py --help
 python scripts/validate_slide_spec.py path\to\spec.yaml --json
 python scripts/validate_presentation_brief.py path\to\brief.yaml --json
-python scripts/analyze_presentation_spec.py path\to\spec.yaml --strict --json
+python scripts/analyze_presentation_spec.py path\to\spec.yaml --json  # 建议性分析
 python scripts/build_support_outputs.py path\to\spec.yaml --output-dir <project>\outputs --json
 python scripts/create_revision_manifest.py old.yaml new.yaml --strict
 python scripts/manage_versions.py snapshot --output-root <project>\outputs --revision-id r1 --file <deck>

@@ -37,8 +37,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--teleprompter", type=Path, help="Optional requested HTML teleprompter")
     parser.add_argument("--quality-report", type=Path, help="Optional requested JSON quality report")
     parser.add_argument("--package-report", type=Path, help="PPTX package validation JSON report")
+    parser.add_argument(
+        "--slide-spec-report",
+        type=Path,
+        help="Validated Slide Spec report used by the simplified gate",
+    )
     parser.add_argument("--revision-manifest", type=Path, help="Optional requested revision manifest")
     parser.add_argument("--qa-manifest", type=Path, help="Rendered QA evidence manifest JSON path")
+    parser.add_argument(
+        "--simple",
+        action="store_true",
+        help="Use the default three-gate flow without separate content/asset/visual manifests",
+    )
+    parser.add_argument(
+        "--visual-reviewed",
+        action="store_true",
+        help="Confirm that every supplied rendered page was visually reviewed",
+    )
     parser.add_argument("--output", type=Path, help="Optional delivery-report.json output path")
     parser.add_argument("--json", action="store_true", help="Emit JSON")
     parser.add_argument(
@@ -281,6 +296,34 @@ def validate_bound_report(
     }
 
 
+def validate_slide_spec_report(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {"provided": False, "valid": False, "errors": ["Slide Spec report is required."]}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"provided": True, "valid": False, "errors": [f"Cannot read Slide Spec report: {exc}"]}
+    errors = []
+    if not isinstance(data, dict) or data.get("valid") is not True:
+        errors.append("Slide Spec validation did not pass.")
+    spec_value = data.get("slide_spec") if isinstance(data, dict) else None
+    if not isinstance(spec_value, str) or not spec_value:
+        errors.append("Slide Spec report does not identify its source spec.")
+    else:
+        spec_path = Path(spec_value)
+        if not spec_path.is_absolute():
+            spec_path = path.parent / spec_path
+        if not spec_path.is_file() or data.get("slide_spec_sha256") != sha256_file(spec_path):
+            errors.append("Slide Spec report does not match the current source spec.")
+    return {
+        "provided": True,
+        "valid": not errors,
+        "errors": errors,
+        "sha256": sha256_file(path),
+        "report": data,
+    }
+
+
 def expected_notes_path(pptx: Path) -> Path:
     stem = pptx.stem
     prefix = stem[: -len("-presentation")] if stem.endswith("-presentation") else stem
@@ -315,6 +358,9 @@ def inspect_delivery(
     quality_report: Path | None = None,
     package_report: Path | None = None,
     require_package_report: bool = False,
+    slide_spec_report: Path | None = None,
+    simple: bool = False,
+    visual_reviewed: bool = False,
 ) -> dict[str, Any]:
     if require_notes and notes is None:
         notes = expected_notes_path(pptx)
@@ -345,6 +391,11 @@ def inspect_delivery(
             missing.append(name)
 
     qa_summary = validate_qa_manifest(qa_manifest, pptx, slide_count, preview_checks)
+    spec_summary = validate_slide_spec_report(slide_spec_report) if simple else {
+        "provided": False,
+        "valid": None,
+        "errors": [],
+    }
     bound_spec_hash = qa_summary.get("manifest", {}).get("slide_spec_sha256")
     quality_summary = validate_bound_report(
         quality_report,
@@ -380,23 +431,41 @@ def inspect_delivery(
     required_files_valid = not missing
     pptx_readable = pptx_info is not None and pptx_info["exists"] and slide_error is None
     render_qa_valid = all(item["valid"] for item in preview_checks)
-    complete_ready = bool(
+    package_ready = (
+        package_summary["valid"] is True
+        if simple or require_package_report
+        else package_summary["valid"] is not False
+    )
+    base_ready = bool(
         required_files_valid
         and pptx_readable
-        and slide_count and slide_count > 0
+        and slide_count
+        and slide_count > 0
         and render_qa_valid
-        and qa_summary["valid"]
-        and quality_summary["valid"] is not False
-        and package_summary["valid"] is not False
         and preview_checks
-        and isinstance(qa_summary.get("manifest", {}).get("visual_inspection"), dict)
-        and qa_summary["manifest"]["visual_inspection"].get("completed") is True
+        and package_ready
     )
+    if simple:
+        complete_ready = bool(
+            base_ready
+            and len(preview_checks) == slide_count
+            and spec_summary["valid"] is True
+            and visual_reviewed
+        )
+    else:
+        complete_ready = bool(
+            base_ready
+            and qa_summary["valid"]
+            and quality_summary["valid"] is not False
+            and isinstance(qa_summary.get("manifest", {}).get("visual_inspection"), dict)
+            and qa_summary["manifest"]["visual_inspection"].get("completed") is True
+        )
 
     inspection = qa_summary.get("manifest", {}).get("visual_inspection", {}) if qa_summary.get("valid") else {}
     delivery_report = {
         "ok": complete_ready,
         "status": "complete" if complete_ready else "incomplete",
+        "gate_profile": "simplified-v1" if simple else "evidence-chain-v1",
         "pptx_sha256": sha256_file(pptx) if pptx.is_file() else None,
         "qa_manifest_sha256": (
             sha256_file(qa_manifest) if qa_manifest is not None and qa_manifest.is_file() else None
@@ -410,8 +479,21 @@ def inspect_delivery(
         "package_blockers": (
             len(package_summary.get("errors", [])) if package_summary.get("valid") is False else 0
         ),
-        "render_blockers": len(qa_summary.get("errors", [])),
-        "scenario_contract_passed": qa_summary.get("manifest", {}).get("scenario_contract_passed") if qa_summary.get("valid") else False,
+        "render_blockers": (
+            0
+            if simple and render_qa_valid and len(preview_checks) == (slide_count or 0)
+            else len(qa_summary.get("errors", []))
+        ),
+        "scenario_contract_passed": (
+            spec_summary.get("valid") is True
+            if simple
+            else qa_summary.get("manifest", {}).get("scenario_contract_passed")
+            if qa_summary.get("valid")
+            else False
+        ),
+        "slide_spec_validation_passed": spec_summary.get("valid") if simple else None,
+        "slide_spec_report_sha256": spec_summary.get("sha256") if simple else None,
+        "visual_reviewed": visual_reviewed if simple else None,
         "quality_report_passed": quality_summary.get("valid"),
         "quality_report_sha256": quality_summary.get("sha256"),
         "package_validation_passed": package_summary.get("valid"),
@@ -430,6 +512,7 @@ def inspect_delivery(
         "slide_count": slide_count,
         "slide_count_error": slide_error,
         "qa_manifest": qa_summary,
+        "slide_spec_report": spec_summary,
         "quality_report": quality_summary,
         "package_validation": package_summary,
         "missing_expected_files": missing,
@@ -439,9 +522,12 @@ def inspect_delivery(
             "notes_required": require_notes,
             "preview_required": require_preview,
             "package_report_required": require_package_report,
+            "simple_gate": simple,
         },
         "note": (
-            "Strict delivery requires package validation, readable rendered previews, and a QA manifest bound to the current PPTX."
+            "The simplified gate requires a valid Slide Spec report, package validation, one readable preview per slide, and explicit visual review."
+            if simple
+            else "Strict delivery requires package validation, readable rendered previews, and a QA manifest bound to the current PPTX."
         ),
     }
 
@@ -489,7 +575,10 @@ def main() -> None:
         qa_manifest=args.qa_manifest,
         quality_report=args.quality_report,
         package_report=args.package_report,
-        require_package_report=args.strict,
+        require_package_report=args.strict or args.simple,
+        slide_spec_report=args.slide_spec_report,
+        simple=args.simple,
+        visual_reviewed=args.visual_reviewed,
     )
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))

@@ -140,37 +140,43 @@ def run_checked(command: list[str], label: str) -> subprocess.CompletedProcess[s
     return result
 
 
-def build_qa_evidence(
-    work: Path,
-    name: str,
-    tool: Path,
-    pptx: Path,
-    spec_path: Path,
-    pages: list[Path],
-) -> tuple[Path, Path, Path, Path]:
-    content_qa = work / f"{name}-content-qa.json"
-    run_checked(
-        [sys.executable, str(tool), "content-qa", "--pptx", str(pptx), "--slide-spec", str(spec_path), "--output", str(content_qa)],
-        f"{name}: content QA",
-    )
-    findings = work / f"{name}-visual-findings.json"
-    findings.write_text(
-        json.dumps({"pages": [{"slide": index, "checked": True, "blockers": [], "warnings": [], "notes": "Rendered scenario baseline inspected."} for index in range(1, len(pages) + 1)]}),
+def exercise_adaptive_composition_contracts() -> list[str]:
+    """Exercise freeform, hint, lock, and deterministic fallback semantics."""
+    node_path = os.pathsep.join((str(ROOT / "scripts"), str(ROOT / "node_modules")))
+    script = r"""
+require('module').Module._initPaths();
+const C=require('pptx-composer');
+const tokens={geometry:{safe_margin_pct:6,footer_zone_pct:5,title_zone_pct:16},palette:{primary_accent:'2563EB'},typography:{title_min_pt:24,body_cjk_min_pt:22,body_latin_min_pt:20,caption_min_pt:10,title_font:'Cambria',body_font:'Calibri'}};
+const base={id:1,title:'Composition contract',kind:'content',layout:'claim-evidence',content:['Evidence','Implication']};
+const adaptive=C.resolveSlideComposition(base,{tokens,history:[]});
+if(adaptive.exact || adaptive.zones || adaptive.suggestions.length < 2) throw new Error('adaptive-freeform contract failed');
+const hint=C.resolveSlideComposition({...base,layout:'visual-left'},{tokens,history:[]});
+if(hint.exact || hint.layout_hint !== 'visual-left') throw new Error('unlocked hint contract failed');
+const locked=C.resolveSlideComposition({...base,layout_lock:true},{tokens,history:[]});
+if(!locked.exact || locked.id !== 'claim-evidence' || !locked.zones) throw new Error('layout lock contract failed');
+const fallback=C.resolveSlideComposition(base,{tokens,history:[],compositionMode:'deterministic-fallback'});
+if(!fallback.exact || !fallback.zones) throw new Error('deterministic fallback contract failed');
+console.log(JSON.stringify({ok:true}));
+"""
+    env = os.environ.copy()
+    env["NODE_PATH"] = node_path
+    result = subprocess.run(
+        ["node", "-e", script],
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
         encoding="utf-8",
+        errors="replace",
     )
-    visual_inspection = work / f"{name}-visual-inspection.json"
-    visual_command = [sys.executable, str(tool), "visual-inspection", "--pptx", str(pptx), "--findings", str(findings), "--output", str(visual_inspection)]
-    for page in pages:
-        visual_command.extend(["--preview", str(page)])
-    run_checked(visual_command, f"{name}: visual inspection")
-    asset_manifest = work / f"{name}-asset-manifest.json"
-    asset_manifest.write_text(json.dumps({"deck": str(pptx), "assets": []}), encoding="utf-8")
-    asset_report = work / f"{name}-asset-manifest-report.json"
-    run_checked(
-        [sys.executable, str(tool), "validate-asset-manifest", str(asset_manifest), "--output", str(asset_report)],
-        f"{name}: asset manifest",
-    )
-    return content_qa, visual_inspection, asset_manifest, asset_report
+    if result.returncode:
+        raise RuntimeError(f"adaptive composition contracts failed\n{result.stdout}\n{result.stderr}")
+    return [
+        "adaptive-freeform",
+        "layout-hint-unlocked",
+        "layout-locked",
+        "freeform-deterministic-fallback",
+    ]
 
 
 def generate_deck(work: Path, name: str, language: str, roles: list[str]) -> Path:
@@ -357,7 +363,6 @@ def exercise_cross_workflow_contracts(
     delivery: Path,
     pptx: Path,
     package_report: Path,
-    spec_path: Path,
     spec_report: Path,
     notes: Path,
 ) -> list[str]:
@@ -386,21 +391,13 @@ def exercise_cross_workflow_contracts(
         raise RuntimeError("review-to-deck: Production Summary confirmation was not enforced")
     completed.append("review-to-deck")
 
-    no_preview_manifest = work / "missing-render-qa-manifest.json"
-    run_checked(
-        [
-            sys.executable, str(tool), "qa-manifest", "--pptx", str(pptx),
-            "--slide-spec", str(spec_path), "--slide-spec-report", str(spec_report),
-            "--package-report", str(package_report), "--output", str(no_preview_manifest),
-        ],
-        "missing-render-incomplete: manifest",
-    )
     incomplete_report = work / "missing-render-delivery-report.json"
     run_checked(
         [
-            sys.executable, str(delivery), "--pptx", str(pptx), "--notes", str(notes),
-            "--qa-manifest", str(no_preview_manifest), "--package-report", str(package_report),
-            "--allow-missing-preview", "--output", str(incomplete_report), "--json",
+            sys.executable, str(delivery), "--simple", "--pptx", str(pptx),
+            "--notes", str(notes), "--slide-spec-report", str(spec_report),
+            "--package-report", str(package_report), "--allow-missing-preview",
+            "--output", str(incomplete_report), "--json",
         ],
         "missing-render-incomplete: delivery",
     )
@@ -432,7 +429,7 @@ def main() -> None:
     delivery = ROOT / "skills" / "sp-deck" / "scripts" / "pptx_delivery_check.py"
     tool = ROOT / "scripts" / "pptx_tool.py"
     completed = []
-    workflow_scenarios: list[str] = []
+    workflow_scenarios: list[str] = exercise_adaptive_composition_contracts()
     with tempfile.TemporaryDirectory(prefix="sp-outline-matrix-") as tmp:
         work = Path(tmp)
         for name, (scenario, language, roles) in MATRIX.items():
@@ -476,47 +473,17 @@ def main() -> None:
                 raise RuntimeError(f"{name}: rendered {len(pages)} pages for {len(roles)} slides")
             if not package_report.is_file():
                 raise RuntimeError(f"{name}: package validation did not publish a report")
-            content_qa, visual_inspection, asset_manifest, asset_report = build_qa_evidence(
-                work, name, tool, pptx, spec_path, pages
-            )
-            manifest = work / f"{name}-qa-manifest.json"
-            manifest_command = [
-                sys.executable,
-                str(tool),
-                "qa-manifest",
-                "--pptx",
-                str(pptx),
-                "--output",
-                str(manifest),
-                "--no-repair-needed-reason",
-                "CI rendered scenario baseline.",
-                "--slide-spec-report",
-                str(spec_report),
-                "--slide-spec",
-                str(spec_path),
-                "--package-report",
-                str(package_report),
-                "--content-qa",
-                str(content_qa),
-                "--visual-inspection",
-                str(visual_inspection),
-                "--asset-manifest",
-                str(asset_manifest),
-                "--asset-manifest-report",
-                str(asset_report),
-            ]
-            for page in pages:
-                manifest_command.extend(["--preview", str(page)])
-            run_checked(manifest_command, f"{name}: QA manifest")
             delivery_command = [
                 sys.executable,
                 str(delivery),
+                "--simple",
+                "--visual-reviewed",
                 "--pptx",
                 str(pptx),
                 "--notes",
                 str(notes),
-                "--qa-manifest",
-                str(manifest),
+                "--slide-spec-report",
+                str(spec_report),
                 "--package-report",
                 str(package_report),
                 "--strict",
@@ -526,15 +493,16 @@ def main() -> None:
                 delivery_command.extend(["--preview", str(page)])
             run_checked(delivery_command, f"{name}: strict delivery")
             if name == "coursework-zh":
-                workflow_scenarios = exercise_cross_workflow_contracts(
-                    work,
-                    tool,
-                    delivery,
-                    pptx,
-                    package_report,
-                    spec_path,
-                    spec_report,
-                    notes,
+                workflow_scenarios.extend(
+                    exercise_cross_workflow_contracts(
+                        work,
+                        tool,
+                        delivery,
+                        pptx,
+                        package_report,
+                        spec_report,
+                        notes,
+                    )
                 )
                 exercise_rendered_review(work, tool, pptx, len(roles))
                 workflow_scenarios.append("review-rendered")

@@ -80,7 +80,7 @@ console.log(JSON.stringify({count:resolved.length,valid:resolved.every(x=>x.shap
     def test_selector_is_deterministic_and_filters_missing_assets(self) -> None:
         body = """
 const context={slideKind:'cover',hasAsset:false,itemCount:1,seed:'stable'};
-const tokens={style_dna:{composition:{preferred_layout_tags:['editorial']}}};
+const tokens={palette:{primary_accent:'2563EB'}};
 const a=L.selectLayouts(context,tokens,[],3);
 const b=L.selectLayouts(context,tokens,[],3);
 console.log(JSON.stringify({a:a.map(x=>x.id),b:b.map(x=>x.id)}));
@@ -88,6 +88,20 @@ console.log(JSON.stringify({a:a.map(x=>x.id),b:b.map(x=>x.id)}));
         result = self.run_node(body)
         self.assertEqual(result["a"], result["b"])
         self.assertNotIn("cover-full-bleed", result["a"])
+
+    def test_selector_returns_adaptable_inspiration_not_exact_coordinates(self) -> None:
+        payload = self.run_node(
+            """
+const result=L.suggestLayouts({slideKind:'content',layout:'claim-evidence',itemCount:2},{},[],3);
+console.log(JSON.stringify(result));
+"""
+        )
+        self.assertEqual(3, len(payload))
+        for item in payload:
+            self.assertEqual("inspiration", item["usage"])
+            self.assertTrue(item["adaptable"])
+            self.assertNotIn("safeArea", item)
+            self.assertNotIn("mirrored", item)
 
     def test_selector_penalizes_third_identical_silhouette(self) -> None:
         body = """
@@ -134,7 +148,7 @@ console.log(JSON.stringify({longTitle:longTitle.map(x=>x.id),blocked:blocked.map
         body = """
 const result=L.selectLayouts(
   {slideKind:'content',visualFamily:'visual-dominant',hasAsset:false,itemCount:3,title:'核心观点：长中文标题与素材缺失时仍须保持清晰层级'},
-  {style_dna:{composition:{preferred_layout_tags:['editorial','asymmetric']}}},
+  {palette:{primary_accent:'990011'}},
   [],
   3
 );
@@ -144,6 +158,17 @@ console.log(JSON.stringify(payload));
         result = self.run_node(body)
         self.assertTrue(result)
         self.assertTrue(all(item["titleZone"][2] >= 0.9 for item in result))
+
+    def test_selector_order_is_independent_of_visual_style_tokens(self) -> None:
+        body = """
+const context={slideKind:'content',visualFamily:'dashboard',hasData:true,itemCount:3,seed:'same'};
+const history=['claim-focus'];
+const a=L.selectLayouts(context,{palette:{primary_accent:'2563EB'},style_character:'minimal'},history,5);
+const b=L.selectLayouts(context,{palette:{primary_accent:'990011'},style_character:'bold'},history,5);
+console.log(JSON.stringify({a:a.map(x=>x.id),b:b.map(x=>x.id)}));
+"""
+        result = self.run_node(body)
+        self.assertEqual(result["a"], result["b"])
 
 
 if __name__ == "__main__":

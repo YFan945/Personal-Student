@@ -41,6 +41,18 @@ Depth controls terminology and explanation:
 
 Both modes require explicit Production Summary approval before PPTX production.
 
+## Visual Style Reference
+
+Choose one of the 12 formal lightweight references in `visual-style-menu.md`, or set
+`visual_style: Other`. A formal reference supplies only style character, six palette roles,
+cover/content/section/closing background references, and one optional SVG reference. It does not
+control layout, shapes, images, charts, components, or page rhythm.
+
+`Other` requires `visual_style_custom` with `style_character`, all six `palette` roles, all four
+`backgrounds`, and `svg_reference.name` plus `svg_reference.usage`. The AI may complete missing
+values from the topic and user direction, but all four sections must appear in the Production
+Summary and be confirmed before planning.
+
 ## Quality Levels
 
 - `basic`: complete, readable, correctly timed, and easy to present.

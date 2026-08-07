@@ -17,12 +17,14 @@ Do not force YAML for simple outline-only requests.
 Each slide entry must include:
 - `id`: slide number
 - `title`: claim-style title for argumentative/evidence slides; descriptive title is allowed for cover, divider, quotation, references, appendix, Q&A, and closing slides
-- `layout`: intended layout or slide type
+- `layout`: adaptable composition hint or slide type; a known catalog ID is not locked by default
 - `content`: short on-slide text or structured objects
 - `timing_sec`: planned speaking time as an integer number of seconds
 - `owner`: speaker/member, or `Individual`
 
 Optional slide fields:
+- `layout_lock`: when `true`, use the named catalog layout exactly; omitted/`false` allows the
+  producer to alter proportions, zones, shapes, or choose a better related composition
 - `kind`: `cover`, `content`, `section-divider`, `quotation`, `references`, `appendix`, `qa`, or `closing`; defaults conceptually to `content`
 - `visual`: visual type, purpose, optional `layout_family`, asset/alt text, and structured
   details. In v2/high-score/balanced/visual-led production it is required on content slides;
@@ -36,7 +38,7 @@ Meta field rules:
 - Recommended required fields: `topic`, `presentation_type`, `language`,
   `duration_min`, and `format`
 - Optional fields: `slide_count`, `members`, `course`, `audience`, `rubric`,
-  `source_material`, `template`, `logo`, `image_source`, `visual_style`,
+  `source_material`, `template`, `logo`, `image_source`, `visual_style`, `visual_style_custom`,
   `deliverables`, and `output_prefix`
 - v2 control fields: `scenario`, `audience_type`, `audience_depth`,
   `structure_mode`, `interaction_mode`, `quality_level`,
@@ -49,7 +51,9 @@ Meta field rules:
 - `slide_count`: integer target slide count
 - `image_source`: `"user-assets" | "web-search" | "generated" | "hybrid-adaptive" | "diagram-only" | "text-only" | "ask-before-web-search"`
 - `source_material`: a short evidence-boundary description or a list of supplied sources
-- `visual_style`: confirmed style name from the style menu or a user-defined direction
+- `visual_style`: one of the 12 formal style names, `Other`, or a legacy style name
+- `visual_style_custom`: required when `visual_style: Other`; carries the confirmed
+  `style_character`, six-role `palette`, four `backgrounds`, and `svg_reference`
 - `quality_level: high-score` and `visual_text_ratio: balanced|visual-led` require a
   meaningful structured `visual` for every content slide. `timeline` needs 3+ stages;
   `comparison` needs 2+ items plus dimensions; `process` needs 2+ steps; `chart` needs
@@ -101,10 +105,10 @@ Schema and validation:
 python "${CLAUDE_PLUGIN_ROOT}/scripts/validate_slide_spec.py" path/to/slide-spec.yaml --json
 ```
 
-Run deterministic story, density, wording, and evidence checks with:
+Optionally run advisory story, density, wording, and evidence checks with:
 
 ```powershell
-python "${CLAUDE_PLUGIN_ROOT}/scripts/analyze_presentation_spec.py" path/to/slide-spec.yaml --strict --json
+python "${CLAUDE_PLUGIN_ROOT}/scripts/analyze_presentation_spec.py" path/to/slide-spec.yaml --json
 ```
 
 ```yaml

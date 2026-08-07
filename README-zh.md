@@ -11,8 +11,8 @@
 场景。它可以在 Claude Code 中生成 PPT 大纲和讲稿、创建可编辑 PPTX、审查
 已有 PPT，并根据审查结果生成独立改进版。
 
-视觉运行时包含 14 套八维可执行风格、36 套共享 composition、原创 SVG/非矩形形状库、
-受控 composer，以及与最终 PPTX hash 绑定的 content/file/visual QA 证据链。
+视觉运行时包含三类共 12 套轻量风格参考和“其他”自定义入口、36 套共享构图参考、原创 SVG/非矩形形状工具箱、
+安全/兜底 composer，以及与最终 PPTX hash 绑定的 content/file/visual QA 证据链。
 
 插件安装 ID：
 
@@ -236,7 +236,6 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 <topic>-speaker-notes.md
 <topic>-preview.png
 <topic>-presentation-package-report.json
-<topic>-qa-manifest.json
 <topic>-delivery-report.json
 <topic>-change-summary.md
 <topic>-presentation.pdf
@@ -247,22 +246,21 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 ```
 
 最终回复会说明文件绝对路径、页数、渲染检查结果，以及任务状态：
-`complete`、`incomplete` 或 `blocked`。进入 `complete` 必须提供使用完整 suite
-validation profile 且 Open XML schema 校验通过的 package report、会重新验证原始
-Slide Spec 并与当前 PPTX 和渲染预览 hash 绑定的 QA manifest，以及通过的严格
-delivery report。按需生成的 quality report 也必须分别绑定原始 Spec 或当前
-PPTX，不能只凭文件名通过。
-`deck.js` 遵守官方 PptxGenJS gotchas，并默认使用 suite-owned 共享版式、helper 和 visual
-库；wrapper 只做 normalize 后原子落盘，不做生成期静态
+`complete`、`incomplete` 或 `blocked`。默认只有三道门禁：一次 Slide Spec/Brief 校验；
+最终 PPTX 的 package validation、完整渲染与逐页查看；一次绑定当前 PPTX、规划报告和预览的
+简化 delivery check。content/asset/visual/QA manifest 仅作为高级诊断，不再是普通交付物。
+`deck.js` 遵守官方 PptxGenJS gotchas，并默认根据叙事任务和可用素材自由构图；helper
+负责安全检查，版式、visual、shape、SVG 和 composer 库仅提供可选灵感与确定性兜底。
+wrapper 只做 normalize 后原子落盘，不做生成期静态
 门禁，布局/溢出问题由 QA 逐页视觉检查与 package validation 发现。
 QA 和 delivery 复用 package report，不重复校验未修改的 deck。
 11 类可编辑视觉组件（`pptx-visuals.js`）直接提供 hero、visual-dominant、
 process-path、时间线、对比、指标、架构、矩阵、引文、总结和参考资料结构，避免生成后逐页修补。
-14 种标准视觉风格会解析为 palette、间距、字体、线条 token 和可执行 style DNA，并共享
-36 套按内容可行性、标题区容量、风格偏好、密度及连续轮廓选择的页面版式；Slide Spec 原生
-kind/visual 值可直接映射，缺素材时沿明确 fallback 选择可落地版式。页面配方是可调整的默认方向，
-不是逐页模板；叙事适配、可读性和来源安全优先，深色页会整体切换 palette，而不是只换背景。
-统一 smoke 工具会生成 14×8 风格 gallery、独立 36 版式 gallery 和 14 页 SVG atlas。
+12 种正式视觉风格只解析为气质、六角色 palette、四类背景和一个可选 SVG；“其他”使用
+同样的确认结构。36 套构图灵感只按内容可行性、标题区容量、密度及连续轮廓排序，不受视觉风格影响；Slide Spec 的
+`layout` 默认可调整，仅 `layout_lock: true` 精确锁定。缺素材时沿明确 fallback 选择可落地构图。页面配方是可调整的默认方向，
+不是逐页模板；叙事适配、可读性和来源安全优先。
+统一 smoke 工具会生成 12×6 轻量风格参考 gallery、独立 36 版式参考/兜底 gallery 和 12 页 SVG atlas。
 Brief→Slide Spec 交接会把已确认镜像字段缺失视为错误，support outputs 只能缩小已确认的
 deliverables。MarkItDown 不可用时，suite-owned OOXML fallback 仍会检查完整的幻灯片、讲稿备注和图表文本。
 发布工作流还会在 Linux 上临时渲染课程汇报、英语课堂、答辩、竞赛、社团展示、研究展示、软件项目、数据调查和学校模板编辑场景矩阵。

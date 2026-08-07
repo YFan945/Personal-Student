@@ -13,8 +13,9 @@ including coursework reports, thesis defenses, and group presentations. In
 Claude Code it can plan an outline and speaker notes, create an editable PPTX,
 review an existing deck, or produce a separate improved version.
 
-Its visual runtime includes 14 executable eight-dimensional styles, 36 shared
-compositions, an original SVG/non-rectangular shape library, a controlled composer,
+Its visual runtime includes 12 lightweight style references in three categories, an `Other`
+custom entry, 36 shared composition
+references, an original SVG/non-rectangular shape toolbox, a safety/fallback composer,
 and content/file/visual QA evidence bound to the final PPTX hash.
 
 Plugin install ID:
@@ -252,7 +253,6 @@ Depending on the request, `outputs/` may contain:
 <topic>-speaker-notes.md
 <topic>-preview.png
 <topic>-presentation-package-report.json
-<topic>-qa-manifest.json
 <topic>-delivery-report.json
 <topic>-change-summary.md
 <topic>-presentation.pdf
@@ -264,27 +264,25 @@ Depending on the request, `outputs/` may contain:
 
 The final response reports each absolute file path, slide count, rendered QA
 result, and the status: `complete`, `incomplete`, or `blocked`. A `complete`
-delivery requires a package report using the full suite validation profile with
-successful Open XML schema evidence, a QA manifest that revalidates and binds
-the source Slide Spec to the current PPTX and rendered previews, and a passing
-strict delivery report. Requested quality reports are hash-bound to the
-source spec or current PPTX instead of being accepted by filename alone.
-`deck.js` follows the official PptxGenJS gotchas and uses the suite-owned shared
-layout, helper, and visual libraries by default; the wrapper
+delivery uses three gates: one validated Slide Spec report, package validation plus full rendering
+and page review, and one simplified delivery report bound to the current PPTX and previews.
+Detailed content/asset/visual manifests remain optional diagnostics.
+`deck.js` follows the official PptxGenJS gotchas and composes slides freely from their
+narrative job and available assets. Suite-owned layout, visual, shape, SVG, and composer
+libraries provide optional inspiration and deterministic fallback; the wrapper
 normalizes and atomically publishes the deck, and layout/overflow quality is
-caught by QA visual inspection and package validation. QA and delivery reuse the
+caught by page review and package validation. Delivery reuses the
 package report instead of revalidating an unchanged deck.
 Eleven editable visual families (`pptx-visuals.js`) provide hero,
 visual-dominant, process-path, timeline, comparison, dashboard, architecture,
 matrix, quote, summary, and reference structures without post-generation patch
-loops. All 14 styles resolve to tokenized palette, spacing, typography, line
-constraints, and executable style DNA. They share 36 page layouts selected by
-content feasibility, title-zone capacity, style affinity, density, and silhouette history. Slide Spec-native
-kind/visual values map directly, while missing assets follow explicit feasible fallbacks. Recipes are adaptive defaults rather
+loops. The 12 formal styles resolve only to character, six color roles, four background references,
+and one optional SVG reference; `Other` uses the same confirmed structure. They share 36
+page-layout inspirations ranked by content feasibility, title-zone capacity, density, and silhouette history—never by visual style. Slide Spec `layout`
+is an adaptable hint unless `layout_lock: true`; missing assets follow explicit feasible fallbacks. Recipes are adaptive defaults rather
 than per-slide templates: narrative fit, readability, and source safety take
-priority, and dark pages switch the complete palette instead of only changing
-the background. A unified smoke tool builds eight-page galleries for all 14 styles, a
-separate 36-layout gallery, and a 14-page SVG atlas.
+priority. A unified smoke tool builds six-page galleries for all 12 styles, a
+separate reference/fallback gallery for all 36 layouts, and a 12-page SVG atlas.
 Brief-to-Slide Spec handoff treats missing mirrored confirmed fields as errors,
 and support outputs may only narrow the confirmed deliverable set. When
 MarkItDown is unavailable, suite-owned OOXML extraction still checks complete

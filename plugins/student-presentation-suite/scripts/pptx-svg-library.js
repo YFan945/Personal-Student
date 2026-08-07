@@ -2,7 +2,6 @@
 
 const CORNER_SETS = Object.freeze({
   'academic-bracket': 'bracket',
-  'berry-petal': 'petal',
   'editorial-crop': 'crop-mark',
   'cherry-slash': 'slash',
   'coral-arc': 'arc',
@@ -12,9 +11,13 @@ const CORNER_SETS = Object.freeze({
   'midnight-beam': 'beam',
   'minimal-focus': 'focus',
   'ocean-circuit': 'circuit',
-  'sage-orbit': 'orbit',
   'teal-checkpoint': 'checkpoint',
   'terracotta-stamp': 'stamp',
+});
+
+const LEGACY_CORNER_ALIASES = Object.freeze({
+  'berry-petal': 'terracotta-stamp',
+  'sage-orbit': 'moss-contour',
 });
 
 function hex(value, fallback = '2563EB') {
@@ -47,7 +50,8 @@ function paths(name, a, b) {
 }
 
 function getCornerSvg(name, options = {}) {
-  const resolved = CORNER_SETS[name] || name;
+  const canonical = LEGACY_CORNER_ALIASES[name] || name;
+  const resolved = CORNER_SETS[canonical] || canonical;
   const primary = hex(options.primary);
   const secondary = hex(options.secondary, '93C5FD');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><g fill="none" stroke="#${primary}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${paths(resolved, `#${primary}`, `#${secondary}`)}</g></svg>`;
@@ -81,4 +85,10 @@ function addCornerDecoration(slide, name, box, tokens, options = {}) {
   });
 }
 
-module.exports = { CORNER_SETS, getCornerSvg, getPatternSvg, addCornerDecoration };
+module.exports = {
+  CORNER_SETS,
+  LEGACY_CORNER_ALIASES,
+  getCornerSvg,
+  getPatternSvg,
+  addCornerDecoration,
+};

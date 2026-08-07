@@ -34,26 +34,25 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
 - 坐标必须落在画布内；标题、正文、页脚区与安全边距保持一致。禁止用
   `slideH - 常量` 自算页脚坐标。可用可选 helper 的 `H.safeArea`/`H.gridLayout` 降低
   手算坐标出错率。
-- 按 `pptxgenjs-safety.md` 编写 pptxgenjs 脚本，**默认一致使用**
-  `pptx-layouts.js`（`getLayout`/`selectLayouts`/`resolveLayout`）、
-  `pptx-composer.js`、`pptx-helpers.js`、`pptx-shapes.js`、`pptx-svg-library.js` 与
-  `pptx-visuals.js` 划分版面，避免手写每页坐标导致重叠/溢出；详见
-  `pptx-visual-engine.md`。确需自定义构图时仍通过 composer preflight，并遵循
-  "Visual design" 节的设计原则。每页用 `slide.background` 设置背景（canvas 角色），
-  深色页先用 `H.paletteMode(tokens, "dark")` 得到整套页面 token，再把同一份页面
-  token 传给背景、标题、页脚和视觉组件；不得只切换 canvas 而继续使用浅色文字角色。
+- 按 `pptxgenjs-safety.md` 编写 pptxgenjs 脚本。默认使用 `pptx-helpers.js` 做边界、文字
+  与 palette 安全；`pptx-layouts.js`、`pptx-shapes.js`、`pptx-svg-library.js`、
+  `pptx-visuals.js` 和 `pptx-composer.js` 是可选灵感/工具/兜底，不得强制逐页套用。AI 可手写
+  每页完整构图，但实际坐标和文本框必须通过 safety preflight；详见
+  `pptx-visual-engine.md`。自由构图应遵循 "Visual design" 节的设计原则。每页用
+  `slide.background` 设置背景；若背景参考采用深色字段，文字必须显式使用已验证的浅色角色，
+  不得只换背景而保留低对比文字。
 - 使用 resolved design tokens；不得另选本 reference 之外的 palette。
 - 所有最终 candidate 都必须通过 `pptx_tool.py validate`。
 
 ## Visual design（对齐 document-skills pptx skill）
 
-把"每页手写坐标"作为兜底而非首选。每页都按这些原则设计，从源头减少视觉返工：
+把内容驱动的 `adaptive-freeform` 自由构图作为默认；共享库用于获得建议、减少机械劳动和失败兜底。每页都按这些
+原则设计，从源头减少视觉返工：
 
 - **按角色用色**：canvas/surface 承担阅读底色，primary/secondary text 承担文字，accent
   只承担重点、状态或导航；不要平均使用全部色彩，也不要把高饱和强调色当普通正文色。
-- **深/浅对比（sandwich）**：默认封面与结论页用深色背景、内容页用浅色，或整体走深色高级风；
-  **仅定义了 `dark_palette` 的样式（Midnight Business / Ocean Tech）强制深色封面/结论**，
-  其余样式深色页需校验对比度。
+- **深/浅对比（sandwich）**：封面与结论页可采用深色字段、内容页可采用浅色 canvas，
+  但这是背景参考而非强制节奏；所有实际文字/背景组合都必须重新校验对比度。
 - **一个可识别但克制的视觉母题（motif）**：在封面、章节、代表性内容页和结尾重复；
   数据页、长图页、引文页可采用更适合内容的轮廓，不要求逐页出现。
 - **禁止 AI 痕迹**：标题下划线、装饰性色条/强调条/单侧边框都禁用；用留白、背景色或图标
@@ -66,20 +65,19 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
 - **间距**：0.5" 最小边距、0.3-0.5" 内容块间距；不要让卡片几乎相碰或某侧空一大片。
 - **视觉服务内容**：内容页优先采用能解释、比较、举证或组织信息的视觉结构；允许经过
   设计的文字主导页，禁止为达成视觉配额强塞图标、卡片或无关图片。始终避免低对比和溢出。
-- **每页的布局选项、数据展示、视觉润色、字号表、间距与 Avoid 清单**见
-  `visual-style-menu.md` 的 "Per-Slide Design Ideas"（与 document-skills pptx skill 一致）。
+- **布局、视觉、文字与素材安全**见 `pptx-visual-engine.md`；风格菜单只提供轻量视觉参考。
 
 ## Create branch
 
-1. 按 Slide Spec 创建 `outputs/.pptx-work/<work-id>/deck.js`；该文件是薄入口，只加载
-   Slide Spec、resolved tokens、已验证 asset manifest 并调用 `pptx-composer.js`。
-   直接从这些 JSON 输入生成候选稿时，可使用套件入口 `scripts/composer_deck.js`；它只负责
-   参数读取、调用 composer 和写出独立候选文件，不绕过 preflight 或 QA。
-2. 加载 `pptxgenjs-safety.md`，按官方 gotchas 写 pptxgenjs 脚本；**默认**
-   `require("pptx-composer")`：先全 deck preflight，再由 composer 选择共享版式、文字策略、
-   形状、SVG 角饰与视觉 fallback。自定义构图也不得绕过同一 preflight。每页设
-   `slide.background`（canvas 角色）。深色页统一使用 `H.paletteMode(tokens, "dark")`
-   返回的页面 token；不得只切背景，也不得先写文字后补救坐标。
+1. 按 Slide Spec 创建 `outputs/.pptx-work/<work-id>/deck.js`；该文件加载已验证的 Slide Spec 和
+   resolved tokens，并根据每页任务自行确定比例、形状、坐标和视觉焦点。只有高级证据模式
+   才额外加载 asset manifest。
+   `layout` 默认只是提示；仅 `layout_lock: true` 严格解析对应版式。
+2. 加载 `pptxgenjs-safety.md`，按官方 gotchas 写 pptxgenjs 脚本。可用
+   `suggestLayouts()` 获得 2–3 个候选，然后调整或弃用；必须对最终实际 composition 运行
+   helper preflight。`scripts/composer_deck.js` 只用于显式锁定、旧项目兼容或自由构图失败后的
+   deterministic fallback，不是默认入口。每页设
+   `slide.background`。深色字段必须同时选择通过对比度验证的浅色文字；不得先写文字后补救坐标。
 3. deck.js 从 `process.argv[2]` 接收输出路径；每个输出只创建一个 pptxgen 实例。
 4. 执行：
 
@@ -92,10 +90,10 @@ Slide Spec、明确的 output prefix、selected visual style，以及唯一 prod
 5. wrapper 在原子落盘前只运行 `normalize-generated`（修复 chart axId/presentation 语义），
    不输出 static report，也不做静态门禁。QA 和 delivery 绑定
    `<candidate-stem>-package-report.json`；文字溢出、重叠、可读性问题按 `pptx-qa.md`
-   第 3 节做**默认必做**的整套渲染+目检。发现问题时修复 spec/composer/generator 后重建
+   Gate 2 做**默认必做**的整套渲染+目检。发现问题时修复 spec/composer/generator 后重建
    整份 candidate，禁止对已打包文件做逐项补丁；重建直接走唯一一次返工边
    `workflow_guard.py transition --to producing --reason <blocker 摘要>`，无需 reset。
-   candidate hash 改变后重新执行 content、package 和整套 render；第二次仍有 blocker 时
+   candidate hash 改变后重新执行 package validation、整套 render 和简化 delivery check；第二次仍有 blocker 时
    转为 `incomplete`。
 
 ## Edit branch

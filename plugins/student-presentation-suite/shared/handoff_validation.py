@@ -43,6 +43,16 @@ def handoff_errors(brief: Any, spec: Any) -> list[dict[str, str]]:
                 )
             )
 
+    brief_custom_style = brief.get("visual_style_custom")
+    spec_custom_style = meta.get("visual_style_custom")
+    if brief_custom_style is not None and spec_custom_style != brief_custom_style:
+        errors.append(
+            _error(
+                ".meta.visual_style_custom",
+                "does not match Presentation Brief visual_style_custom",
+            )
+        )
+
     audience = brief.get("audience") or {}
     if isinstance(audience, dict):
         for brief_key, meta_key in (("type", "audience_type"), ("depth", "audience_depth")):

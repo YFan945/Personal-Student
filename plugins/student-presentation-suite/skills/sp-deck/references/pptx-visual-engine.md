@@ -1,25 +1,32 @@
 # PPTX Visual Engine
 
-本文件定义 suite-owned 的可执行视觉契约。风格是排序和视觉处理方向，不是逐页固定模板；
-内容可行性、可读性、来源和容量约束始终优先。
+本文件定义 suite-owned 的视觉辅助与安全契约。风格和版式是创作建议，不是逐页固定模板；
+只有内容真实性、可读性、来源、容量、边界、文字适配和完整 QA 是硬约束。
 
-## Controlled composer
+## Adaptive-freeform by default
 
-Create/rebuild 默认由 `pptx-composer.js` 统一执行：
+Create/rebuild 默认由模型根据页面任务、素材和叙事节奏编写完整 `deck.js`。先分析页面，
+再从 `pptx-layouts.js` 获得 2–3 个可行构图建议；可以移动、缩放、合并、拆分区域，改变
+比例、形状和图片裁切，也可以完全采用更合适的原创构图。随后必须使用 helper 做文字、
+边界、素材和对比度 preflight，并完成整套渲染 QA。
 
-- `preflightSlide(slideSpec, context)`：检查标题、正文、素材、容量和 fallback。
-- `resolveSlideComposition(slideSpec, context)`：选择 36 个兼容 ID 之一并返回可执行 composition plan。
-- `renderSlide(slide, slideSpec, context)`：应用完整 tokens、文字策略、视觉组件和角饰。
-- `renderDeck(pptx, slideSpec, context)`：先全 deck preflight，再逐页生成并记录 silhouette 历史。
+`pptx-composer.js` 是安全辅助层和兼容入口：
 
-`deck.js` 只加载已验证的 Slide Spec、resolved tokens、asset manifest，并调用 composer。
-自定义 layout 描述由选择器映射到注册表 ID；不得绕开 preflight 手写一套弱化流程。
+- `suggestCompositions()`：返回 2–3 个灵感候选，不返回最终坐标。
+- `resolveSlideComposition()`：默认返回 `adaptive-freeform` 建议；仅 `layout_lock: true`
+  或 `deterministic-fallback` 解析精确版式。
+- `preflightSlide()`：对模型提供的实际 composition zones 执行文字和素材检查。
+- `renderSlide()` / `renderDeck()`：保留给锁定版式和确定性 fallback。
+
+`composer_deck.js` 只作为旧项目和自由构图失败后的确定性 fallback，不是 create/rebuild
+默认入口。手写 `deck.js` 可以自由构图，但不能绕开 safety preflight、来源检查和 QA。
 
 ## Composition and shapes
 
-`pptx-layouts.js` 保留 36 个 ID，并为每个 resolved layout 增加：
+`pptx-layouts.js` 保留 36 个 ID 作为 inspiration catalog，并记录：
 `composition`、`shape_slots`、`text_policy`、`asset_slots`、`corner_decoration`、
-`variant_fallbacks`。注册表由 `layout-library.schema.json` 校验。
+`variant_fallbacks`。normalized zones 是比例参考，允许调整。只有用户明确锁定、模板复现或
+自由构图失败时才用 `resolveLayout()`。注册表由 `layout-library.schema.json` 校验。
 
 `pptx-shapes.js` 支持 `rect`、`roundRect`、`ellipse`、`pill`、`hexagon`、
 `chevron`、`parallelogram`、`arch`、`bracket` 和 `none`。正文安全区必须通过
@@ -29,9 +36,10 @@ Create/rebuild 默认由 `pptx-composer.js` 统一执行：
 ## SVG library
 
 `pptx-svg-library.js` 提供 `getCornerSvg()`、`getPatternSvg()`、
-`addCornerDecoration()`。14 套原创角饰包括 bracket、petal、crop-mark、slash、arc、
-tape、axis、contour、beam、focus、circuit、orbit、checkpoint、stamp。SVG 只承担角饰、
-背景纹理和确定性辅助插图；正文、数据和主要结构保持 PowerPoint 可编辑。
+`addCornerDecoration()`。12 套正式 SVG 参考包括 bracket、crop-mark、slash、arc、
+tape、axis、contour、beam、focus、circuit、checkpoint、stamp。SVG 只承担角饰、
+背景纹理和确定性辅助插图；AI 可调用、组合、修改或完全不用，系统不得自动添加视觉配额。
+正文、数据和主要结构保持 PowerPoint 可编辑。
 
 ## Text fit and alignment
 
@@ -46,18 +54,16 @@ tape、axis、contour、beam、focus、circuit、orbit、checkpoint、stamp。SV
 无法在角色硬下限内适配时必须阻断，按“扩大区域 → 换变体 → 换版式 → 压缩文案 →
 拆页”解决；禁止只告警后交付。
 
-## Style DNA
+## Lightweight visual reference
 
-resolved tokens 必须包含八个可执行维度：`shape_grammar`、`corner_svg_set`、
-`component_variants`、`image_frame`、`background_treatment`、
-`text_alignment_policy`、`visual_rhythm`、`fallback_illustration`。任意两套标准风格至少
-五项不同。Style DNA 只能改变版式排序、形状、角饰、图片处理、组件变体和节奏，不能绕过
-来源、对比度、字号、容量或素材许可。
+resolved tokens 只提供 `style_character`、六角色 `palette`、四类 `backgrounds` 和一个
+`svg_reference`。它们不参与版式排序，也不指定形状、图片处理、图表语法、组件或页面节奏。
+`Other` 使用同一结构，并在 Production Summary 中完整展示后确认。SVG 不自动插入；只有模型
+判断它能支持页面任务时才显式调用。
 
 ## Assets
 
 默认 `hybrid-adaptive`：优先可靠用户素材；缺图时使用原创 SVG、原生图表、关系图、
 时间线或形状结构。禁止空图片框、装饰性 placeholder 和 filler icon。
-`<topic>-asset-manifest.json` 必须符合 `references/asset-manifest.schema.json`，记录 slide、
-用途、路径、来源、权限、尺寸、裁切、alt text 和 fallback，并通过
-`pptx_tool.py validate-asset-manifest`。
+普通任务直接在 Slide Spec 或生成脚本中保留素材来源与 alt text。只有外部素材许可需要归档、
+高风险模板编辑或用户明确要求审计证据时，才生成并验证 `<topic>-asset-manifest.json`。

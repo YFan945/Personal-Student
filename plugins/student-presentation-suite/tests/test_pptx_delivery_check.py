@@ -62,7 +62,13 @@ class PptxDeliveryCheckTests(unittest.TestCase):
         spec_hash = hashlib.sha256(spec.read_bytes()).hexdigest()
         spec_report = manifest.with_name("slide-spec-report.json")
         spec_report.write_text(
-            json.dumps({"valid": True, "slide_spec_sha256": spec_hash}),
+            json.dumps(
+                {
+                    "valid": True,
+                    "slide_spec": str(spec),
+                    "slide_spec_sha256": spec_hash,
+                }
+            ),
             encoding="utf-8",
         )
         manifest.write_text(json.dumps({
@@ -148,6 +154,54 @@ class PptxDeliveryCheckTests(unittest.TestCase):
         self.assertEqual("complete", result["delivery_report"]["status"])
         self.assertEqual("1/1", result["delivery_report"]["preview_page_coverage"])
         self.assertEqual(0, result["delivery_report"]["package_blockers"])
+
+    def test_simplified_gate_needs_only_plan_package_previews_and_review(self) -> None:
+        module = load_module(SCRIPT)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            preview = root / "deck-preview.png"
+            notes = root / "deck-speaker-notes.md"
+            legacy_manifest = root / "qa-manifest.json"
+            self.write_minimal_pptx(pptx)
+            notes.write_text("notes", encoding="utf-8")
+            self.write_valid_preview_and_manifest(pptx, preview, legacy_manifest)
+            result = module.inspect_delivery(
+                pptx,
+                notes,
+                [preview],
+                package_report=root / "package-report.json",
+                slide_spec_report=root / "slide-spec-report.json",
+                simple=True,
+                visual_reviewed=True,
+            )
+        self.assertTrue(result["ok"])
+        self.assertEqual("simplified-v1", result["delivery_report"]["gate_profile"])
+        self.assertTrue(result["delivery_report"]["slide_spec_validation_passed"])
+        self.assertTrue(result["delivery_report"]["visual_reviewed"])
+        self.assertIsNone(result["delivery_report"]["qa_manifest_sha256"])
+
+    def test_simplified_gate_rejects_unreviewed_previews(self) -> None:
+        module = load_module(SCRIPT)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            preview = root / "deck-preview.png"
+            notes = root / "deck-speaker-notes.md"
+            legacy_manifest = root / "qa-manifest.json"
+            self.write_minimal_pptx(pptx)
+            notes.write_text("notes", encoding="utf-8")
+            self.write_valid_preview_and_manifest(pptx, preview, legacy_manifest)
+            result = module.inspect_delivery(
+                pptx,
+                notes,
+                [preview],
+                package_report=root / "package-report.json",
+                slide_spec_report=root / "slide-spec-report.json",
+                simple=True,
+                visual_reviewed=False,
+            )
+        self.assertFalse(result["ok"])
 
     def test_stale_preview_is_warning_not_error(self) -> None:
         """预览在 manifest 后重新渲染：文件本身有效仅 hash 不一致 → warning，不阻断交付。"""

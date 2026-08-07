@@ -107,7 +107,6 @@ project's `outputs/` directory when the environment variable is unavailable:
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` or contact sheet
 - `<topic>-presentation-package-report.json` from suite validation and reused
-- `<topic>-qa-manifest.json` bound to Slide Spec evidence and the delivered PPTX
 - `<topic>-delivery-report.json` with final gate evidence
 - `<topic>-change-summary.md` for existing-deck improvements
 - requested PDF, HTML teleprompter, training cards, references, quality report,
@@ -117,10 +116,10 @@ The plugin installation directory is read-only for user deliverables.
 
 ## Visual System
 
-The PPTX skill first reads `skills/sp-deck/references/visual-style-menu.md`, recommends the strongest
-topic-fit choices, then loads exactly one style specification from
-`visual-styles/`. Each style defines color roles, typography, geometry, layout
-recipes, image treatment, density limits, and acceptance checks.
+The PPTX skill first chooses one of three four-style categories, or `Other`, then loads one
+lightweight reference from `visual-styles/`. Each formal style defines only its character, six
+color roles, background references, and one optional SVG reference. `Other` uses the same four-part
+structure and must be shown in the Production Summary before confirmation.
 
 Styles are adaptive directions rather than fixed templates. Hard guardrails
 protect readability, truthful evidence, source boundaries, and fit; layout
@@ -128,59 +127,48 @@ recipes, ratios, motifs, and normal density ranges remain adjustable to the
 slide's narrative job. Typography-led pages are valid when no meaningful visual
 is available, and filler icons, cards, or quotations are not acceptable.
 
-Dark pages use `H.paletteMode(tokens, "dark")` so canvas, surfaces, text, and
-accents switch together. The 14 styles also expose executable `style_dna` for
-composition, geometry, typography, image treatment, chart grammar, motif, and
-three intensity levels; style preferences never override capacity or evidence rules.
+The 12 styles do not control layout, shapes, image treatment, chart grammar, components, or page
+rhythm. SVG motifs are optional and never inserted automatically; style references never override
+capacity, evidence, contrast, or template rules.
 
-All styles share 36 executable page layouts in `layout-library.json` through
-`pptx-layouts.js`. Selection maps Slide Spec-native kind/visual values and filters by
+All styles share 36 page-layout inspirations in `layout-library.json` through
+`pptx-layouts.js`. Suggestions map Slide Spec-native kind/visual values and filter by
 assets, data, item counts, contraindications, declared capacity, and estimated
-title-zone fit before scoring style, density, and recent silhouettes. Missing
+title-zone fit before scoring density and recent silhouettes. Missing
 inputs follow explicit feasible fallback chains. `scripts/visual_system_smoke_gallery.py` produces
-14x8 style galleries, a separate 36-layout gallery, and a 14-page SVG atlas, with optional
-rendering. Pairwise style profiles differ in at least five of eight executable DNA dimensions.
+12x6 freeform style-reference galleries, a separate 36-layout reference/fallback gallery, and a
+12-page SVG atlas, with optional rendering.
 
 `deck.js` follows the official generation gotchas in
-`skills/sp-deck/references/pptxgenjs-safety.md` and uses `pptx-composer.js`,
-`pptx-layouts.js`, `pptx-helpers.js`, `pptx-shapes.js`, `pptx-svg-library.js`, and
-`pptx-visuals.js` by default. The composer runs deck-wide preflight before rendering editable visual families
+`skills/sp-deck/references/pptxgenjs-safety.md` and uses `pptx-helpers.js` for hard safety checks.
+`pptx-composer.js`, `pptx-layouts.js`, `pptx-shapes.js`, `pptx-svg-library.js`, and
+`pptx-visuals.js` are optional inspiration/toolbox/fallback modules. An unlocked Slide Spec
+`layout` is advisory; `layout_lock: true` restores exact deterministic composition. The fallback
+composer runs deck-wide preflight before rendering editable visual families
 (hero, visual-dominant, process-path, timeline, comparison, dashboard,
 architecture, matrix, quote, summary, reference) with shapes, connectors, labels,
 contained images, accessible alt text, and projection-readable charts.
 
 ## Quality Gates
 
-PPTX delivery requires:
+The default workflow has three gates: one Slide Spec/Brief validation report; package validation
+plus complete rendering and page-by-page review of the final PPTX; then one simplified delivery
+report binding the current PPTX, planning report, package report, previews, and requested outputs.
+Separate content QA, asset, visual-inspection, and QA-manifest reports are advanced diagnostics,
+not normal deliverables.
 
-- environment compatibility check;
-- Slide Spec validation when supplied;
-- editable PPTX generation (raw pptxgenjs following the official gotchas);
-- speaker notes;
-- text extraction sanity check for edit/template-derived decks;
-- a QA manifest that binds the source Slide Spec hash and matches its Slide Spec/PPTX/package-report hashes（spec 自规划期未被改动时不再重复校验）;
-- a package report using the complete suite validation profile with successful Open XML schema validation;
-- requested quality reports bound to the source Slide Spec or current PPTX hash;
-- resolved design tokens when a standard visual style is selected;
-- strict delivery-check success;
-- separate change summary for an improved existing deck.
-
-If MarkItDown is unavailable, the suite-owned OOXML fallback extracts complete
-slide, speaker-note, and chart text instead of disabling or truncating content QA.
-
-Per-page render + visual inspection binds content QA, the asset manifest, package validation,
-every preview, and explicit page findings. At most one repair loop may change the
+At most one repair loop may change the
 spec/composer/generator and rebuild the complete candidate; a remaining QA blocker
 is fixed via the rework edge
 `workflow_guard.py transition --to producing --reason <blocker summary>` instead
 of resetting the whole pipeline.
 
-Results use `complete`, `incomplete`, or `blocked`. `complete` additionally
-requires `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest>
---delivery-report <report>`. The PptxGenJS wrapper
+Results use `complete`, `incomplete`, or `blocked`. `complete` requires
+`workflow_guard.py transition --to complete --pptx <pptx> --delivery-report <report>`.
+The PptxGenJS wrapper
 normalizes the generated package and atomically publishes it; layout/overflow quality
 is caught by QA visual inspection and package validation.
-QA and delivery reuse the package report instead of revalidating an unchanged deck.
+Delivery reuses the package report instead of revalidating an unchanged deck.
 Static XML findings alone are not proof of rendered clipping or readability.
 CI also creates and renders a temporary scenario matrix for coursework, English
 classroom, defense, competition, club showcase, research, software project,
@@ -206,7 +194,7 @@ python scripts/check_claude_pptx_env.py --mode edit_ooxml --json --strict
 python scripts/pptx_tool.py --help
 python scripts/validate_slide_spec.py path\to\spec.yaml --json
 python scripts/validate_presentation_brief.py path\to\brief.yaml --json
-python scripts/analyze_presentation_spec.py path\to\spec.yaml --strict --json
+python scripts/analyze_presentation_spec.py path\to\spec.yaml --json  # advisory analysis
 python scripts/build_support_outputs.py path\to\spec.yaml --output-dir <project>\outputs --json
 python scripts/create_revision_manifest.py old.yaml new.yaml --strict
 python scripts/manage_versions.py snapshot --output-root <project>\outputs --revision-id r1 --file <deck>

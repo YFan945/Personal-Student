@@ -84,10 +84,34 @@ def validate_completion_manifest(
     pptx: Path | None,
     delivery_report_path: Path | None = None,
 ) -> list[str]:
-    if manifest_path is None or pptx is None:
-        return [
-            "转换到 complete 必须提供 --qa-manifest、--delivery-report 和 --pptx。"
-        ]
+    if pptx is None:
+        return ["转换到 complete 必须提供 --pptx 和 --delivery-report。"]
+    if manifest_path is None:
+        if delivery_report_path is None:
+            return ["转换到 complete 必须提供 --pptx 和 --delivery-report。"]
+        try:
+            delivery = json.loads(delivery_report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return [f"无法读取简化交付报告: {exc}"]
+        if not isinstance(delivery, dict):
+            return ["简化交付报告根节点必须是对象。"]
+        slide_count = count_slides(pptx)
+        errors = []
+        if delivery.get("gate_profile") != "simplified-v1":
+            errors.append("缺少 QA manifest 时必须使用 simplified-v1 交付报告。")
+        if delivery.get("ok") is not True or delivery.get("status") != "complete":
+            errors.append("简化交付报告未通过。")
+        if not pptx.is_file() or delivery.get("pptx_sha256") != sha256_file(pptx):
+            errors.append("简化交付报告与当前 PPTX 不一致。")
+        if delivery.get("slide_spec_validation_passed") is not True:
+            errors.append("Slide Spec 规划门禁未通过。")
+        if delivery.get("package_validation_passed") is not True or delivery.get("package_blockers") != 0:
+            errors.append("PPTX package validation 未通过。")
+        if delivery.get("visual_reviewed") is not True:
+            errors.append("未确认完成全页视觉检查。")
+        if slide_count is None or delivery.get("preview_page_coverage") != f"{slide_count}/{slide_count}":
+            errors.append("渲染预览未覆盖全部页面。")
+        return errors
     errors: list[str] = []
     if delivery_report_path is None:
         errors.append("转换到 complete 必须提供 --delivery-report。")
@@ -377,7 +401,7 @@ def main() -> None:
     transition.add_argument(
         "--delivery-report",
         type=Path,
-        help="转换到 complete 所需的严格 delivery report",
+        help="转换到 complete 所需的交付报告；默认 simplified-v1，旧流程可配合 QA manifest",
     )
     transition.add_argument("--pptx", type=Path, help="转换到 complete 所需的交付 PPTX")
 

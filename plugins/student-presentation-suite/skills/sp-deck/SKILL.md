@@ -6,9 +6,8 @@ version: 0.6.0
 
 # Student Presentation PPT
 
-创建或改进可编辑的学生学术 PPTX。仅大纲走 `sp-outline`；只读审查/诊断走
-`sp-review`；编辑请求由 `sp-review` 诊断后以结构化
-交接（`outputs/<topic>-slide-spec.yaml`）进入本 skill 的编辑分支。
+创建或改进可编辑的学生学术 PPTX。仅大纲走 `sp-outline`；只读审查/诊断走 `sp-review`；
+编辑请求由 `sp-review` 诊断后以结构化交接（`outputs/<topic>-slide-spec.yaml`）进入本 skill 的编辑分支。
 
 ## Canonical references
 
@@ -35,7 +34,7 @@ version: 0.6.0
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" <init | confirm --summary-file <summary> | transition --to <state> [--reason <摘要>]>
-# 完成：transition --to complete --pptx <pptx> --qa-manifest <manifest> --delivery-report <report>（见第 7 步）
+# 完成：transition --to complete --pptx <pptx> --delivery-report <report>（见第 7 步）
 ```
 
 确认前只允许读取用户材料和收集需求，不得检查环境、生成、编辑、渲染或交付。
@@ -51,30 +50,31 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" <init | confirm --summa
    （`create` / `edit_ooxml` / `rebuild_from_source`），规则见 `references/pptx-production.md`。
 3. **规划**：验证 Presentation Brief 与 Slide Spec（review 交接可不另建 brief，但仍需完成
    Production Summary 确认）；有 Brief 时用 `validate_slide_spec.py --brief <brief>` 检查交接一致性，
-   再运行 `analyze_presentation_spec.py --strict`；检查 source 后把明确的
+   内容质量分析默认作为建议，不再运行 strict 阻断；检查 source 后把明确的
    `--production-mode` 传给 `slide_spec_to_pptx_brief.py`。随后
    `check_claude_pptx_env.py --mode <production_mode> --json --strict`（须在 mode 确定之后）。
    创建/编辑能力缺失 → `blocked`；只缺渲染能力 → 仍可生成，未渲染时按第 7 步处理。
    转为 `planned`。
 4. **生产**：转为 `producing`，按 `references/pptx-production.md` 对应分支生成候选
-   （create 用薄 deck.js 调用 controlled composer；edit_ooxml 用 `pptx_tool.py` 解包/修改/clean/pack；
-   rebuild 记录理由），产出 `<topic>-package-report.json`；`build_support_outputs.py` 仅按已确认
+   （create 默认用完整 deck.js 做 adaptive-freeform 构图并执行 safety preflight；
+   composer/版式库仅用于锁定、兼容或失败兜底；edit_ooxml 用 `pptx_tool.py` 解包/修改/clean/pack；
+   rebuild 记录理由）；`build_support_outputs.py` 仅按已确认
    deliverables 生成 notes/script/teleprompter/training cards/references，预览和 PDF 由渲染/导出流程生成。
    所有模式输出新文件，禁止覆盖 source deck。
-5. **QA**：转为 `qa`，按 `references/pptx-qa.md` 顺序：内容 QA（markitdown 提取核对缺页/
-   notes/错字/占位符）→ asset manifest → 复用 package report → 完整渲染+逐页目检（默认必做，最多一次完整重建）
-   → `qa-manifest` → strict delivery check。发现 blocker 无需 reset：
+5. **QA**：转为 `qa`，按 `references/pptx-qa.md` 的三道门禁执行：规划期一次 Slide Spec
+   校验；最终 PPTX 做 package validation、完整渲染与逐页目检；随后一次 `--simple` strict
+   delivery check。普通任务不生成 content/asset/visual/QA manifest 中间报告。发现 blocker 无需 reset：
    `transition --to producing --reason <blocker 摘要>` 返工重建后，重跑内容 QA、渲染目检、
-   qa-manifest 与 delivery check，再转回 `qa`；修复后仍有 blocker 则转为 `incomplete`。
+   package/render/delivery check，再转回 `qa`；修复后仍有 blocker 则转为 `incomplete`。
 6. **编辑/版本**：编辑任务生成 change summary 与 revision manifest；版本快照传完整参数。
-7. **完成**：PPTX、QA manifest、严格 delivery report 全部绑定且 blocker 为零时，
-   `transition --to complete --pptx <pptx> --qa-manifest <manifest> --delivery-report <report>`；
+7. **完成**：PPTX 与简化 delivery report 绑定且 blocker 为零时，
+   `transition --to complete --pptx <pptx> --delivery-report <report>`；
    视觉 QA 是 complete 的硬门禁；缺少渲染或用户放弃时用 `--allow-missing-preview`
    生成 incomplete 报告，并转为 `incomplete`，不得 complete。
 ## Output contract
 
 仅写入 `${CLAUDE_PROJECT_DIR}/outputs` 或当前项目的 `outputs/`：PPTX、speaker notes、
-逐页 preview/contact sheet、content QA、visual inspection、asset manifest、package report、QA manifest、delivery report，以及编辑任务的 change summary 与
+逐页 preview/contact sheet、package report、delivery report，以及编辑任务的 change summary 与
 `outputs/<topic>-slide-spec.yaml`（供 review 做 plan-vs-actual）。中间文件放在
 `outputs/.pptx-work/<work-id>/`。交付完成后提示用户可运行 `sp-review` 做
 只读复核/评分。最终回复报告所有绝对路径、页数、package validation、visual QA、交付状态和剩余限制。

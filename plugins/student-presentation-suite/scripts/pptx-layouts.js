@@ -104,7 +104,7 @@ function executableLayout(layout) {
     })),
     text_policy: family.text_policy,
     asset_slots: family.asset_slots.filter((name) => layout.zones && layout.zones[name]),
-    corner_decoration: 'style-default',
+    corner_decoration: 'optional-toolbox-reference',
     variant_fallbacks: [layout.fallback].filter(Boolean),
   };
 }
@@ -252,17 +252,8 @@ function historySilhouettes(history) {
     .filter(Boolean);
 }
 
-function scoreLayout(layout, context, tokens, history) {
+function scoreLayout(layout, context, _tokens, history) {
   let score = 0;
-  const dna = (tokens && tokens.style_dna) || {};
-  const composition = dna.composition || {};
-  const preferredTags = new Set(
-    composition.preferred_layout_tags || dna.preferred_layout_tags || [],
-  );
-  const preferredIds = new Set(composition.signature_layouts || []);
-
-  for (const tag of layout.style_tags || []) if (preferredTags.has(tag)) score += 7;
-  if (preferredIds.has(layout.id)) score += 12;
   if (context.density && context.density === layout.density) score += 5;
   if ((context.layout || context.layoutId) === layout.id) score += 40;
   const rawVisual = context.visualFamily || context.layoutFamily;
@@ -279,7 +270,7 @@ function scoreLayout(layout, context, tokens, history) {
   return score;
 }
 
-function selectLayouts(context = {}, tokens = {}, history = [], count = 3) {
+function suggestLayouts(context = {}, tokens = {}, history = [], count = 3) {
   const requestedCount = Math.max(1, Number(count) || 3);
   let candidates = registry.layouts.filter((layout) => isFeasible(layout, context));
 
@@ -321,14 +312,33 @@ function selectLayouts(context = {}, tokens = {}, history = [], count = 3) {
     const relaxed = { ...context, visualFamily: undefined, layoutFamily: undefined };
     candidates = registry.layouts.filter((layout) => isFeasible(layout, relaxed));
   }
+  if (candidates.length < requestedCount) {
+    const relaxed = { ...context, visualFamily: undefined, layoutFamily: undefined };
+    const existing = new Set(candidates.map((layout) => layout.id));
+    for (const layout of registry.layouts) {
+      if (!existing.has(layout.id) && isFeasible(layout, relaxed)) {
+        candidates.push(layout);
+        existing.add(layout.id);
+      }
+    }
+  }
 
   return candidates
     .map((layout) => ({
       ...getLayout(layout.id),
       score: scoreLayout(layout, context, tokens, history),
+      usage: 'inspiration',
+      adaptable: true,
+      editable_axes: ['proportions', 'position', 'zones', 'shapes', 'media-crop'],
     }))
     .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
     .slice(0, requestedCount);
+}
+
+// Backwards-compatible name. Selecting a layout returns ranked inspiration; it
+// does not authorize callers to resolve or render exact coordinates.
+function selectLayouts(context = {}, tokens = {}, history = [], count = 3) {
+  return suggestLayouts(context, tokens, history, count);
 }
 
 function resolveLayout(id, safeArea, options = {}) {
@@ -358,6 +368,7 @@ function resolveLayout(id, safeArea, options = {}) {
 
 module.exports = {
   getLayout,
+  suggestLayouts,
   selectLayouts,
   resolveLayout,
   registry,

@@ -4,7 +4,6 @@ const fs = require('node:fs');
 const H = require('pptx-helpers');
 const L = require('pptx-layouts');
 const V = require('pptx-visuals');
-const SVG = require('pptx-svg-library');
 
 const FAMILY_BY_TYPE = Object.freeze({
   chart: 'dashboard',
@@ -76,36 +75,124 @@ function contextFor(slideSpec, context) {
   };
 }
 
-function chooseLayout(slideSpec, context) {
-  const selected = L.selectLayouts(
+function suggestCompositions(slideSpec, context, count = 3) {
+  const selected = L.suggestLayouts(
     contextFor(slideSpec, context),
     context.tokens,
-    context.history,
-    1,
+    context.history || [],
+    count,
   );
   if (!selected.length) throw new RangeError(`No feasible layout for slide ${slideSpec.id}`);
-  return selected[0];
+  return selected;
 }
 
 function resolveSlideComposition(slideSpec, context) {
-  const layout = chooseLayout(slideSpec, context);
   const area =
     context.safeArea ||
     H.safeArea(context.slideW || H.SLIDE_W_IN, context.slideH || H.SLIDE_H_IN, context.tokens, {
       reserveTitle: false,
     });
-  return L.resolveLayout(layout.id, area, { mirror: Boolean(context.mirror) });
+  const mode = context.compositionMode || 'adaptive-freeform';
+  const locked = slideSpec.layout_lock === true;
+  if (!locked && mode !== 'deterministic-fallback') {
+    return {
+      mode: 'adaptive-freeform',
+      layout_hint: slideSpec.layout || null,
+      safeArea: area,
+      suggestions: suggestCompositions(slideSpec, context, context.suggestionCount || 3),
+      exact: false,
+    };
+  }
+
+  let layout;
+  if (locked) {
+    try {
+      layout = L.getLayout(slideSpec.layout);
+    } catch (error) {
+      throw new RangeError(
+        `Slide ${slideSpec.id} locks unknown layout ${slideSpec.layout}: ${error.message}`,
+      );
+    }
+  } else {
+    layout = suggestCompositions(slideSpec, context, 1)[0];
+  }
+  return {
+    ...L.resolveLayout(layout.id, area, { mirror: Boolean(context.mirror) }),
+    mode: locked ? 'layout-locked' : 'deterministic-fallback',
+    exact: true,
+  };
 }
 
-function preflightSlide(slideSpec, context) {
-  const layout = resolveSlideComposition(slideSpec, context);
+function suppliedComposition(slideSpec, context) {
+  return context.composition || context.compositions?.[slideSpec.id] || null;
+}
+
+function actualComposition(slideSpec, context) {
+  const resolved = resolveSlideComposition(slideSpec, context);
+  if (resolved.exact) return resolved;
+  const supplied = suppliedComposition(slideSpec, context);
+  if (!supplied) return resolved;
   const body = bodyText(slideSpec);
-  const results = [
-    H.preflightText(slideSpec.title, layout.zones.title, context.tokens, context.lang, 'title'),
-  ];
+  const requiredZones = ['title'];
   if (
     shouldRenderBody(slideSpec) &&
     ((Array.isArray(body) && body.length) || (!Array.isArray(body) && body))
+  )
+    requiredZones.push('body');
+  if (slideSpec.visual) requiredZones.push('visual');
+  const missingZones = requiredZones.filter((name) => !supplied.zones?.[name]);
+  if (missingZones.length) {
+    throw new RangeError(
+      `Slide ${slideSpec.id} freeform composition is missing zones: ${missingZones.join(', ')}`,
+    );
+  }
+  return {
+    ...supplied,
+    id: supplied.id || `freeform-${slideSpec.id}`,
+    mode: 'adaptive-freeform',
+    exact: false,
+    safeArea: resolved.safeArea,
+    suggestions: resolved.suggestions,
+    silhouette: supplied.silhouette || 'custom',
+  };
+}
+
+function preflightSlide(slideSpec, context) {
+  const layout = actualComposition(slideSpec, context);
+  const body = bodyText(slideSpec);
+  const results = [];
+  const errors = [];
+  if (!layout.zones) {
+    errors.push(
+      'adaptive-freeform requires caller-supplied composition zones before rendering; layout suggestions are advisory only',
+    );
+  } else {
+    const slideW = context.slideW || H.SLIDE_W_IN;
+    const slideH = context.slideH || H.SLIDE_H_IN;
+    for (const [name, box] of Object.entries(layout.zones)) {
+      if (
+        !Number.isFinite(box.x) ||
+        !Number.isFinite(box.y) ||
+        !Number.isFinite(box.w) ||
+        !Number.isFinite(box.h) ||
+        box.x < 0 ||
+        box.y < 0 ||
+        box.w <= 0 ||
+        box.h <= 0 ||
+        box.x + box.w > slideW + 1e-6 ||
+        box.y + box.h > slideH + 1e-6
+      ) {
+        errors.push(`${name}: composition zone is outside the slide canvas`);
+      }
+    }
+    results.push(
+      H.preflightText(slideSpec.title, layout.zones.title, context.tokens, context.lang, 'title'),
+    );
+  }
+  if (
+    shouldRenderBody(slideSpec) &&
+    ((Array.isArray(body) && body.length) || (!Array.isArray(body) && body)) &&
+    layout.zones
   ) {
     results.push(
       H.preflightText(
@@ -118,15 +205,19 @@ function preflightSlide(slideSpec, context) {
     );
   }
   const missingAsset = Boolean(slideSpec.visual?.asset && !fs.existsSync(slideSpec.visual.asset));
-  const errors = results
-    .filter((result) => !result.ok)
-    .map((result) => `${result.role}: ${result.resolution}`);
+  errors.push(
+    ...results
+      .filter((result) => !result.ok)
+      .map((result) => `${result.role}: ${result.resolution}`),
+  );
   if (missingAsset && context.imageStrategy !== 'hybrid-adaptive')
     errors.push('visual asset does not exist and no adaptive fallback is enabled');
   return {
     ok: errors.length === 0,
     slide_id: slideSpec.id,
-    layout: layout.id,
+    layout: layout.id || null,
+    composition_mode: layout.mode,
+    suggestions: layout.suggestions?.map((item) => item.id) || [],
     text: results,
     errors,
     missing_asset: missingAsset,
@@ -134,53 +225,25 @@ function preflightSlide(slideSpec, context) {
 }
 
 function fallbackIllustration(slide, slideSpec, box, context) {
-  const tokens = context.tokens;
-  const corner = tokens.style_dna?.corner_svg_set || 'minimal-focus';
-  slide.addImage({
-    data: SVG.getCornerSvg(corner, {
-      primary: tokens.palette?.primary_accent,
-      secondary: tokens.palette?.secondary_accent,
-    }),
-    x: box.x + box.w * 0.18,
-    y: box.y + box.h * 0.08,
-    w: box.w * 0.64,
-    h: box.h * 0.64,
-    altText:
-      slideSpec.visual?.alt_text ||
-      slideSpec.visual?.purpose ||
-      tokens.style_dna?.fallback_illustration ||
-      'Explanatory diagram',
-  });
-  if (slideSpec.visual?.purpose) {
-    H.addFittedText(
-      slide,
-      slideSpec.visual.purpose,
-      { x: box.x + box.w * 0.08, y: box.y + box.h * 0.76, w: box.w * 0.84, h: box.h * 0.18 },
-      tokens,
-      context.lang,
-      'caption',
-      { align: 'center', label: '视觉用途说明' },
-    );
-  }
+  V.renderVisual(
+    slide,
+    'hero',
+    {
+      title: slideSpec.visual?.purpose || slideSpec.claim || 'Key idea',
+      subtitle: slideSpec.visual?.alt_text || '',
+    },
+    box,
+    context.tokens,
+    context.lang,
+  );
 }
 
 function renderSlide(slide, slideSpec, context) {
   const preflight = preflightSlide(slideSpec, context);
   if (!preflight.ok)
     throw new RangeError(`Slide ${slideSpec.id} preflight failed: ${preflight.errors.join('; ')}`);
-  const layout = resolveSlideComposition(slideSpec, context);
+  const layout = actualComposition(slideSpec, context);
   H.addBackground(slide, context.tokens, false);
-  const cornerName = context.tokens.style_dna?.corner_svg_set;
-  if (cornerName && ['cover', 'section-divider', 'closing'].includes(slideSpec.kind)) {
-    H.addStyleMotif(slide, { x: 0.32, y: 0.24, w: 1.2, h: 0.86 }, context.tokens, 'restrained');
-    SVG.addCornerDecoration(
-      slide,
-      cornerName,
-      { x: (context.slideW || H.SLIDE_W_IN) - 1.18, y: 0.12, w: 0.9, h: 0.9 },
-      context.tokens,
-      { transparency: 8 },
-    );
-  }
   H.addFittedText(
     slide,
     slideSpec.title,
@@ -218,8 +281,13 @@ function renderSlide(slide, slideSpec, context) {
     if (family && assetUsable) {
       const visualBox = family === 'summary' ? layout.zones.body : layout.zones.visual;
       V.renderVisualSpec(slide, slideSpec.visual, family, visualBox, context.tokens, context.lang);
-    } else fallbackIllustration(slide, slideSpec, layout.zones.visual, context);
-  } else if (!['cover', 'section-divider', 'closing', 'references'].includes(slideSpec.kind)) {
+    } else if (layout.mode === 'deterministic-fallback') {
+      fallbackIllustration(slide, slideSpec, layout.zones.visual, context);
+    }
+  } else if (
+    layout.mode === 'deterministic-fallback' &&
+    !['cover', 'section-divider', 'closing', 'references'].includes(slideSpec.kind)
+  ) {
     fallbackIllustration(
       slide,
       { ...slideSpec, visual: { purpose: slideSpec.claim || 'Organize the slide claim' } },
@@ -230,7 +298,12 @@ function renderSlide(slide, slideSpec, context) {
   if (slideSpec.speaker_notes && typeof slide.addNotes === 'function')
     slide.addNotes(slideSpec.speaker_notes);
   context.history.push({ layout: layout.id, silhouette: layout.silhouette });
-  return { slide_id: slideSpec.id, layout: layout.id, silhouette: layout.silhouette };
+  return {
+    slide_id: slideSpec.id,
+    layout: layout.id,
+    silhouette: layout.silhouette,
+    composition_mode: layout.mode,
+  };
 }
 
 function renderDeck(pptx, spec, context) {
@@ -253,4 +326,10 @@ function renderDeck(pptx, spec, context) {
   return { preflight, rendered };
 }
 
-module.exports = { preflightSlide, resolveSlideComposition, renderSlide, renderDeck };
+module.exports = {
+  preflightSlide,
+  resolveSlideComposition,
+  suggestCompositions,
+  renderSlide,
+  renderDeck,
+};

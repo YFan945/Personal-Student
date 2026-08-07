@@ -192,6 +192,38 @@ class StateTransitionTests(unittest.TestCase):
             manifest.write_text("{}", encoding="utf-8")
             self.assertTrue(module.validate_completion_manifest(manifest, pptx))
 
+    def test_complete_accepts_simplified_delivery_without_qa_manifest(self) -> None:
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            with zipfile.ZipFile(pptx, "w") as archive:
+                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
+            delivery = root / "delivery.json"
+            delivery.write_text(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "status": "complete",
+                        "gate_profile": "simplified-v1",
+                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                        "slide_spec_validation_passed": True,
+                        "package_validation_passed": True,
+                        "package_blockers": 0,
+                        "visual_reviewed": True,
+                        "preview_page_coverage": "1/1",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                [], module.validate_completion_manifest(None, pptx, delivery)
+            )
+            broken = json.loads(delivery.read_text(encoding="utf-8"))
+            broken["visual_reviewed"] = False
+            delivery.write_text(json.dumps(broken), encoding="utf-8")
+            self.assertTrue(module.validate_completion_manifest(None, pptx, delivery))
+
     def test_complete_rejects_missing_manifest(self) -> None:
         module = self.module
         self.assertTrue(module.validate_completion_manifest(None, None))

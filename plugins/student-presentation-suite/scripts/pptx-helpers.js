@@ -579,8 +579,8 @@ function addDivider(slide, x, y, w, tokens, weight) {
 /**
  * 给 slide 设置背景色（canvas 角色落到背景）。
  * 设置页面背景。生成脚本必须逐页调用。
- * 深色页应先用 paletteMode(tokens, 'dark') 得到页面 token，并把该 token
- * 传给所有 helper/visual；dark=true 仅为旧调用保留背景切换兼容性。
+ * dark=true 仅为包含 dark_palette 的旧项目保留兼容性；正式轻量风格
+ * 直接由调用方按背景参考选择并校验文字颜色。
  * @param {object} slide - pptxgen slide 对象
  * @param {object} tokens
  * @param {boolean} [dark] - true 用 dark_palette.canvas，false/缺省用 canvas
@@ -593,91 +593,24 @@ function addBackground(slide, tokens, dark) {
 }
 
 /**
- * Add the selected style's restrained signature motif in a caller-owned area.
- * The motif is structural decoration only; callers must not place it over content.
+ * Explicit compatibility helper for the selected reference's optional SVG motif.
+ * Nothing calls this automatically; callers must not place it over content.
  * @param {object} slide
  * @param {{x:number,y:number,w:number,h:number}} area
  * @param {object} tokens
  * @param {"restrained"|"standard"|"expressive"} [intensity]
  */
 function addStyleMotif(slide, area, tokens, intensity = 'standard') {
-  const key = String(tokens.style_key || '').toLowerCase();
-  const accent = color(tokens, 'primary_accent');
-  const secondary = color(tokens, 'secondary_accent');
-  const line = (x, y, w, h = 0, width = 1.25, transparency = 0) =>
-    slide.addShape(_shapeType.line, { x, y, w, h, line: { color: accent, width, transparency } });
-  const box = (x, y, w, h, shape = _shapeType.rect, transparency = 70, rotate = 0) =>
-    slide.addShape(shape, {
-      x,
-      y,
-      w,
-      h,
-      rotate,
-      fill: { color: secondary, transparency },
-      line: { color: accent, width: 1.1 },
-    });
-  const scale = intensity === 'expressive' ? 1 : intensity === 'restrained' ? 0.62 : 0.82;
-  const x = area.x + area.w * (1 - 0.22 * scale);
-  const y = area.y + area.h * 0.04;
-  const w = area.w * 0.18 * scale;
-  const h = area.h * 0.3 * scale;
-
-  if (key === 'academic-rigorous') {
-    line(x, y, 0, h, 1.4);
-    for (let i = 0; i < 3; i += 1)
-      box(x - 0.04, y + (i * h) / 2.5, 0.08, 0.08, _shapeType.ellipse, 10);
-  } else if (key === 'berry-cream') {
-    for (let i = 0; i < 3; i += 1)
-      box(x + i * w * 0.22, y + (i % 2) * h * 0.22, w * 0.3, w * 0.3, _shapeType.ellipse, 25);
-  } else if (key === 'charcoal-editorial') {
-    line(x + w * 0.72, y, 0, h, 2.2);
-    line(x, y + h * 0.18, w * 0.55, 0, 0.8, 30);
-  } else if (key === 'cherry-bold') {
-    line(x, y, w, h, 4);
-    box(x + w * 0.55, y + h * 0.5, w * 0.28, h * 0.18, _shapeType.rect, 15);
-  } else if (key === 'coral-energy') {
-    for (let i = 0; i < 3; i += 1)
-      line(x + i * w * 0.12, y + i * h * 0.08, w * 0.72, h * 0.42, 2.4, i * 18);
-  } else if (key === 'creative-student') {
-    box(x, y + h * 0.16, w * 0.72, h * 0.56, _shapeType.rect, 52, -7);
-    box(x + w * 0.46, y, w * 0.28, h * 0.18, _shapeType.rect, 20, 8);
-  } else if (key === 'data-driven') {
-    line(x, y, 0, h, 1.5);
-    line(x, y, w * 0.74, 0, 1.5);
-    line(x, y + h, w * 0.74, 0, 1.5);
-  } else if (key === 'forest-moss') {
-    for (let i = 0; i < 3; i += 1)
-      box(
-        x + i * w * 0.08,
-        y + i * h * 0.11,
-        w * (0.82 - i * 0.14),
-        h * (0.76 - i * 0.18),
-        _shapeType.roundRect,
-        100,
-      );
-  } else if (key === 'midnight-business') {
-    box(x, y, w * 0.28, h, _shapeType.rect, 45, -12);
-    box(x + w * 0.34, y + h * 0.18, w * 0.28, h * 0.82, _shapeType.rect, 67, -12);
-  } else if (key === 'modern-minimal') {
-    line(x, y + h * 0.5, w * 0.72, 0, 0.9, 25);
-    box(x + w * 0.7, y + h * 0.42, 0.1, 0.1, _shapeType.ellipse, 0);
-  } else if (key === 'ocean-tech') {
-    line(x, y + h * 0.2, w * 0.35, h * 0.34, 1.6);
-    line(x + w * 0.35, y + h * 0.24, w * 0.38, h * 0.3, 1.6);
-    for (let i = 0; i < 3; i += 1)
-      box(x + i * w * 0.35, y + (i === 1 ? h * 0.48 : h * 0.14), 0.1, 0.1, _shapeType.ellipse, 5);
-  } else if (key === 'sage-calm') {
-    box(x, y, w * 0.76, h * 0.76, _shapeType.ellipse, 100);
-    box(x + w * 0.52, y + h * 0.54, 0.1, 0.1, _shapeType.ellipse, 5);
-  } else if (key === 'teal-trust') {
-    line(x, y + h * 0.42, w * 0.74, 0, 1.6);
-    for (let i = 0; i < 3; i += 1)
-      box(x + i * w * 0.34, y + h * 0.35, 0.11, 0.11, _shapeType.ellipse, i === 1 ? 0 : 65);
-  } else if (key === 'warm-terracotta') {
-    box(x, y, w * 0.68, h * 0.72, _shapeType.rect, 100, -3);
-    line(x + w * 0.12, y + h * 0.22, w * 0.44, 0, 1.3);
-    line(x + w * 0.12, y + h * 0.43, w * 0.3, 0, 1.3);
-  }
+  const name = tokens.svg_reference?.name;
+  if (!name || String(name).toLowerCase() === 'none') return slide;
+  const SVG = require('pptx-svg-library');
+  if (!SVG.CORNER_SETS[name] && !SVG.LEGACY_CORNER_ALIASES[name]) return slide;
+  const scale = intensity === 'expressive' ? 0.3 : intensity === 'restrained' ? 0.17 : 0.23;
+  const w = area.w * scale;
+  const h = Math.min(area.h * 0.42, w);
+  SVG.addCornerDecoration(slide, name, { x: area.x + area.w - w, y: area.y, w, h }, tokens, {
+    transparency: intensity === 'restrained' ? 28 : 10,
+  });
   return slide;
 }
 

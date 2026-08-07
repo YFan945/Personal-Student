@@ -11,25 +11,26 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class VisualSystemSmokeGalleryTests(unittest.TestCase):
-    def test_style_gallery_covers_all_styles_with_eight_slide_jobs(self) -> None:
+    def test_style_gallery_covers_all_styles_with_six_slide_jobs(self) -> None:
         catalog = json.loads((ROOT / "references" / "design-tokens.json").read_text(encoding="utf-8"))
-        self.assertEqual(14, len(catalog["styles"]))
+        self.assertEqual(12, len(catalog["styles"]))
         for style_key in catalog["styles"]:
             with self.subTest(style=style_key):
                 source = style_deck_source(resolve_design_tokens(style_key))
-                self.assertEqual(8, source.count("= baseSlide("))
-                for family in ("quote", "dashboard", "process-path", "summary"):
+                self.assertEqual(6, source.count("= baseSlide("))
+                for family in ("architecture", "dashboard", "summary"):
                     self.assertIn(f"'{family}'", source)
-                self.assertIn("L.selectLayouts", source)
-                self.assertIn("H.addStyleMotif", source)
-                self.assertIn("hasAsset:false", source)
-                self.assertIn("missing-asset fallback", source)
+                self.assertNotIn("L.resolveLayout", source)
+                self.assertNotIn("L.selectLayouts", source)
+                self.assertNotIn("H.addStyleMotif", source)
+                self.assertIn("没有可靠素材时，用图表、关系图或留白，不制造纪实感", source)
                 self.assertIn("SVG.addCornerDecoration", source)
 
     def test_layout_gallery_contains_all_36_layout_ids(self) -> None:
         registry = json.loads((ROOT / "skills" / "sp-deck" / "references" / "layout-library.json").read_text(encoding="utf-8"))
         source = layout_deck_source(resolve_design_tokens("Modern Minimal"), registry)
         self.assertEqual(36, len(registry["layouts"]))
+        self.assertIn("reference", source.lower())
         self.assertIn("L.resolveLayout", source)
         self.assertIn("renderLayoutSample", source)
         self.assertIn("V.renderVisual", source)

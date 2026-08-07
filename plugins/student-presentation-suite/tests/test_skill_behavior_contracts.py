@@ -3,9 +3,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import unittest
+from copy import deepcopy
 from pathlib import Path
 
 import yaml
+from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parents[1]
@@ -104,11 +106,15 @@ class SkillBehaviorContractTests(unittest.TestCase):
         )
         qa = self.read("skills/sp-deck/references/pptx-qa.md")
         self.assertIn("pptxgenjs-safety.md", production)
-        self.assertIn('require("pptx-composer")', production)
-        self.assertIn("全 deck preflight", production)
+        self.assertIn("adaptive-freeform", production)
+        self.assertIn("deterministic fallback", production)
+        self.assertNotIn('**默认**\n   `require("pptx-composer")`', production)
+        self.assertIn("safety preflight", production)
         self.assertIn("QA 和 delivery 绑定", production)
         self.assertIn("package validation", qa)
-        self.assertIn("首个 candidate 全部通过时结束视觉检查", qa)
+        self.assertIn("默认只使用三道门禁", qa)
+        self.assertIn("--simple --strict --visual-reviewed", qa)
+        self.assertIn("Advanced evidence mode", qa)
 
     def test_cross_skill_handoff_is_deterministic(self) -> None:
         shared = self.read("references/shared-standards.md")
@@ -163,9 +169,9 @@ class SkillBehaviorContractTests(unittest.TestCase):
 
     def test_missing_preview_never_qualifies_for_complete(self) -> None:
         qa = self.read("skills/sp-deck/references/pptx-qa.md")
-        self.assertIn("只能是 `incomplete`", qa)
+        self.assertIn("状态只能是\n`incomplete`", qa)
         self.assertNotIn("代码允许 complete", qa)
-        self.assertIn("`incomplete → qa`", qa)
+        self.assertIn("仍有 blocker 时交付 `incomplete`", qa)
 
     def test_review_and_outline_use_intake_without_overreaching(self) -> None:
         planning = self.read("skills/sp-outline/SKILL.md")
@@ -199,12 +205,16 @@ class SkillBehaviorContractTests(unittest.TestCase):
         styles = sorted(
             (ROOT / "skills/sp-deck/references/visual-styles").glob("*.md")
         )
-        self.assertEqual(14, len(styles))
-        self.assertIn("three best topic-fit choices", menu)
-        self.assertIn("complete 14-style menu only", menu)
-        for style in styles:
-            heading = style.read_text(encoding="utf-8").splitlines()[0].removeprefix("# ")
-            self.assertIn(heading.split("（", 1)[0], menu)
+        self.assertEqual(12, len(styles))
+        self.assertIn("Step A shows exactly three categories plus `Other`", menu)
+        self.assertIn("Step B shows all four styles", menu)
+        self.assertIn("visual_style_custom", menu)
+        self.assertNotIn("Berry Cream", menu.split("## Compatibility", 1)[0])
+        self.assertNotIn("Sage Calm", menu.split("## Compatibility", 1)[0])
+        intake = self.read("references/presentation-intake.md")
+        for category in ("学术与专业类", "商务与科技类", "创意与人文类"):
+            self.assertIn(category, intake)
+        self.assertNotIn("显示全部 14", intake)
 
     def test_six_scenario_examples_exist(self) -> None:
         names = {
@@ -260,6 +270,9 @@ class SkillBehaviorContractTests(unittest.TestCase):
         for scenario in ("coursework", "defense", "competition", "club-showcase", "research"):
             self.assertIn(scenario, brief_schema["properties"]["scenario"]["enum"])
         meta = slide_schema["properties"]["meta"]["properties"]
+        slide_properties = slide_schema["properties"]["slides"]["items"]["properties"]
+        self.assertEqual("boolean", slide_properties["layout_lock"]["type"])
+        self.assertFalse(slide_properties["layout_lock"]["default"])
         for field in (
             "scenario",
             "audience_type",
@@ -290,6 +303,38 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("revision", slide_schema["properties"])
         self.assertIn("revision_operation", slide_schema["properties"])
         self.assertIn("target_slides", slide_schema["properties"])
+
+    def test_other_visual_style_requires_complete_custom_reference(self) -> None:
+        brief_schema = json.loads(self.read("references/presentation-brief.schema.json"))
+        slide_schema = json.loads(self.read("references/slide-spec.schema.json"))
+        brief = yaml.safe_load(self.read("examples/high-score-research-brief.yaml"))
+        spec = yaml.safe_load(self.read("examples/high-score-research-slide-spec.yaml"))
+        brief["visual_style"] = "Other"
+        spec["meta"]["visual_style"] = "Other"
+        self.assertTrue(list(Draft202012Validator(brief_schema).iter_errors(brief)))
+        self.assertTrue(list(Draft202012Validator(slide_schema).iter_errors(spec)))
+        custom = {
+            "style_character": "Quiet scientific field notes",
+            "palette": {
+                "canvas": "FFFFFF",
+                "surface": "F5F5F5",
+                "primary_text": "111111",
+                "secondary_text": "555555",
+                "primary_accent": "2563EB",
+                "secondary_accent": "93C5FD",
+            },
+            "backgrounds": {
+                "cover": "Blue field",
+                "content": "White canvas",
+                "section": "Pale blue field",
+                "closing": "Blue field",
+            },
+            "svg_reference": {"name": "none", "usage": "No recurring motif"},
+        }
+        brief["visual_style_custom"] = deepcopy(custom)
+        spec["meta"]["visual_style_custom"] = deepcopy(custom)
+        self.assertEqual([], list(Draft202012Validator(brief_schema).iter_errors(brief)))
+        self.assertEqual([], list(Draft202012Validator(slide_schema).iter_errors(spec)))
 
     def test_skills_route_through_layered_quality_workflow(self) -> None:
         planning = self.read("skills/sp-outline/SKILL.md")

@@ -111,20 +111,19 @@ Batch fields so that the most impactful decisions come first. Typical grouping:
 Basic）。`Citation style` 不再询问：默认 `Classroom/课堂引用`，内容中不强调引用风格。
 
 **Round 3 — 视觉与素材**:
-- `Visual style` → **两步选择**（样式 > 4 种时强制分步）:
-  - **Step A — 风格方向**：按场景归类为 4 个方向，让用户先选方向（方向定义与示例见 `../skills/sp-deck/references/visual-style-menu.md`）
-    → 学术严谨类 / 商务专业类 / 科技现代类 / 创意人文类
-    （每个方向下列出包含的样式名和中文别名，让用户知道里面有什么）
-  - **Step B — 具体样式**：根据用户选的方向，展示该方向下的 3-4 个具体样式，标注最佳推荐
-    → 如果某方向超过 4 个样式，拆成 2 轮
-  - **快捷出口**：Step A 的选项之一始终是 "显示全部 14 种样式"，选此则分 4 轮逐一展示所有样式
-  - **风格方向归类参考**（带 `*` 的样式属于多个方向）:
-    - 学术严谨类：Academic Rigorous、Data Driven*、Charcoal Editorial
-    - 商务专业类：Midnight Business、Teal Trust、Modern Minimal*
-    - 科技现代类：Ocean Tech、Modern Minimal*、Data Driven*
-    - 创意人文类：Creative Student、Coral Energy、Forest Moss、Warm Terracotta、Berry Cream、Sage Calm、Cherry Bold
-  - Step A 必须根据 topic 推荐最匹配的方向作为第一个选项 `（推荐）`，而不是机械按固定顺序
-  - 若用户在 Step B 中看到上方带 `*` 的跨方向样式，标注为"也适用于 [另一方向]"
+- `Visual style` → **两步选择**:
+  - **Step A — 风格类别**：根据 topic 将最匹配的类别放在第一个选项并标注
+    `（推荐）`，一次提供以下四个选项：
+    - 学术与专业类：Academic Rigorous、Data Driven、Modern Minimal、Charcoal Editorial
+    - 商务与科技类：Midnight Business、Ocean Tech、Teal Trust、Cherry Bold
+    - 创意与人文类：Creative Student、Coral Energy、Forest Moss、Warm Terracotta
+    - 其他：用户自由描述视觉方向
+  - **Step B — 具体样式**：仅当用户选择前三类时，一次显示该类全部 4 种，
+    根据 topic 标注一个最佳推荐。不要再提供“显示全部”、跨类别或分轮入口。
+  - 用户选择“其他”时不进入 Step B。根据主题和用户描述补齐
+    `visual_style_custom` 的四项结构：`style_character`、六角色 `palette`、
+    `backgrounds`（cover/content/section/closing）和 `svg_reference`（name/usage）。
+    Production Summary 必须完整展示这四项；未展示并确认前不得进入 `planned`。
 - `Image strategy` → options:
   - `自适应混合（推荐）` → 生成能力可用且获准时制作关键插图；否则自动采用图表、原生形状或文字构图，不因缺少外部生图工具阻断生产
   - `内置生图 skill 生成插图` → 全部插图（含封面/背景/概念图）由 imagegen 生成
@@ -157,11 +156,12 @@ Basic）。`Citation style` 不再询问：默认 `Classroom/课堂引用`，内
   3. Interaction mode → Beginner（推荐）
   （Quality level 不再询问，默认 High-score/高分）
 
-→ 用户选择后，调用 AskUserQuestion（Round 3a — 风格方向）：
-  1. 风格方向 → 科技现代类（推荐）/ 学术严谨类 / 商务专业类 / 创意人文类
+→ 用户选择后，调用 AskUserQuestion（Round 3a — 风格类别）：
+  1. 风格类别 → 商务与科技类（推荐）/ 学术与专业类 / 创意与人文类 / 其他
 
-→ 用户选"科技现代类"后，调用 AskUserQuestion（Round 3b — 具体样式与配图）：
-  1. Visual style → Ocean Tech 海洋科技（推荐）/ Modern Minimal 现代简洁 / Data Driven 数据驱动
+→ 用户选"商务与科技类"后，调用 AskUserQuestion（Round 3b — 具体样式与配图）：
+  1. Visual style → Ocean Tech 海洋科技（推荐）/ Midnight Business 午夜商务 /
+     Teal Trust 青绿可信 / Cherry Bold 樱桃醒目
   2. Image strategy → 生图+SVG/原生形状结合（推荐）/ Diagram-only 仅图表 / 内置生图 skill / Web image / ...
   （Citation style 不再询问，默认 Classroom）
 
@@ -198,6 +198,7 @@ After confirmation, map supported values into Slide Spec `meta`:
   `export_formats`, `versioning`
 - `format`, `members`, `course`, `rubric`
 - `source_material`, `template`, `logo`, `image_source`, `visual_style`
+- `visual_style_custom`（仅 `visual_style: Other` 或兼容旧未知风格时使用）
 - `deliverables`, `output_prefix`
 
 Use existing-deck top-level fields for editing: `source_deck`, `edit_intent`,

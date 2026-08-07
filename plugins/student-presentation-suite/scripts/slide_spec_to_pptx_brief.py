@@ -260,7 +260,9 @@ def build_brief(
         or data.get("revision_operation")
     )
     production_mode = derive_production_mode(data, production_mode)
-    design_tokens = resolve_design_tokens(meta.get("visual_style"))
+    design_tokens = resolve_design_tokens(
+        meta.get("visual_style"), meta.get("visual_style_custom")
+    )
 
     lines = [
         "# Claude PPTX Production Brief",
@@ -279,7 +281,9 @@ def build_brief(
         "## Runtime Contract",
         "",
         "Create/rebuild mode writes a pptxgenjs `deck.js` following `pptxgenjs-safety.md`;",
-        "use `pptx-layouts.js`, `pptx-helpers.js`, and `pptx-visuals.js` by default. Edit",
+        "compose each slide adaptively from its task and assets. Use `pptx-helpers.js` for safety;",
+        "treat `pptx-layouts.js`, composer, SVG, shape, and visual libraries as optional inspiration",
+        "or deterministic fallback. A slide layout is exact only when `layout_lock: true`. Edit",
         "mode uses only `pptx_tool.py` and must preserve the source package. Do not duplicate",
         "runtime implementation or helper documentation inside this data brief.",
         "",
@@ -342,6 +346,7 @@ def build_brief(
             f"- Logo: {meta_value(meta, 'logo')}",
             f"- Image source policy: {meta_value(meta, 'image_source')}",
             f"- Visual style: {meta_value(meta, 'visual_style')}",
+            f"- Custom visual reference: {json.dumps(meta.get('visual_style_custom'), ensure_ascii=False) if meta.get('visual_style_custom') else 'not applicable'}",
             "- Required deliverables:",
             text_block(
                 meta.get("deliverables")
@@ -354,15 +359,16 @@ def build_brief(
         [
             "",
             "## Resolved Design Tokens",
-            "These are production constraints, not optional style suggestions. Keep the same palette roles, "
-            "type scale, spacing system, and line semantics throughout the deck.",
+            "Geometry, typography minima, palette roles, and contrast are safety constraints. "
+            "Style character, background treatments, and SVG reference are lightweight suggestions; "
+            "they do not choose layouts, shapes, image treatment, charts, components, or page rhythm.",
             "```json",
             json.dumps(design_tokens, ensure_ascii=False, indent=2),
             "```",
         ]
     )
     if design_tokens.get("custom_style"):
-        lines.append("- Custom visual style: apply the shared safety tokens; record any approved palette override in the QA report.")
+        lines.append("- Custom visual reference: use the confirmed four-part reference above and retain shared safety rules.")
     if is_improvement:
         lines.extend(
             [
@@ -475,6 +481,7 @@ def build_brief(
                 f"### Slide {slide['id']}: {slide['title']}",
                 f"- Slide kind: {kind}",
                 f"- Layout intent: {slide['layout']}",
+                f"- Layout behavior: {'locked exact composition' if slide.get('layout_lock') else 'adaptive hint; proportions, shapes, zones, and composition may change'}",
                 f"- Story role: {slide.get('role', 'not specified')}",
                 f"- Claim: {claim or 'not specified'}",
                 f"- Owner: {slide['owner']} / Timing: {slide['timing_sec']}s",
@@ -504,9 +511,9 @@ def build_brief(
             "- Reuse the producing-stage package report when its PPTX hash still matches; otherwise run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" validate <pptx> --output <package-report.json> --json`. Source-derived decks add `--original <source>`.",
             "- 视觉 QA（渲染能力可用时，以 `check_claude_pptx_env.py` 判定）：Run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" render <pptx> --output-dir <render-dir> --prefix <topic>`, then inspect every rendered page once. Repair and rerun only when the first candidate has a blocker.",
             "- 无渲染能力时 delivery 以 `--allow-missing-preview` 生成 `incomplete` 报告；不能转 complete，补渲染后经 `incomplete → qa` 恢复边重入 QA。",
-            "- Run content-qa, validate-asset-manifest, full render, and visual-inspection first. Then run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" qa-manifest --pptx <pptx> [--preview <page.png> ...] --slide-spec <spec> --slide-spec-report <slide-spec-report.json> --package-report <package-report.json> --content-qa <content-qa.json> --visual-inspection <visual-inspection.json> --asset-manifest <asset-manifest.json> --asset-manifest-report <asset-report.json> --output <manifest>`; rendered QA is accepted only when all evidence binds the current PPTX and previews.",
-            f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/skills/sp-deck/scripts/pptx_delivery_check.py\" --pptx <pptx> --notes <notes> [--preview <preview>] --package-report <package-report.json> --qa-manifest <manifest> --output \"{delivery_report_path}\" --strict --json` (add `--allow-missing-preview` when render was skipped).",
-            f"- Transition to complete only with `workflow_guard.py transition --to complete --pptx <pptx> --qa-manifest <manifest> --delivery-report \"{delivery_report_path}\"`.",
+            "- Validate the final PPTX package, render every page, and inspect every preview. Normal tasks do not create separate content/asset/visual manifests.",
+            f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/skills/sp-deck/scripts/pptx_delivery_check.py\" --simple --strict --visual-reviewed --pptx <pptx> --slide-spec-report <slide-spec-report.json> --notes <notes> --preview <page.png> --package-report <package-report.json> --output \"{delivery_report_path}\" --json`.",
+            f"- Transition to complete with `workflow_guard.py transition --to complete --pptx <pptx> --delivery-report \"{delivery_report_path}\"`.",
             f"- For existing deck improvements, verify `{change_summary_path}` lists kept content, changed slides, unresolved risks, and QA results.",
             f"- When versioning is enabled, store the versioned package under `{resolved_output_dir / 'versions'}` and write `{revision_manifest_path}`.",
             "- Final response must report file existence, slide count, package validation, visual QA status, and limitations.",

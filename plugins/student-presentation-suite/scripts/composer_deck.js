@@ -9,7 +9,8 @@ const C = require('pptx-composer');
 const [output, specPath, tokensPath, assetManifestPath] = process.argv.slice(2);
 if (!output || !specPath || !tokensPath || ['--help', '-h'].includes(output)) {
   process.stdout.write(
-    'Usage: composer_deck.js <output.pptx> <slide-spec.json> <resolved-tokens.json> [asset-manifest.json]\n',
+    'Usage: composer_deck.js <output.pptx> <slide-spec.json> <resolved-tokens.json> [asset-manifest.json]\n' +
+      'Compatibility command: renders locked layouts and deterministic fallback; adaptive-freeform deck.js is the default production path.\n',
   );
   process.exit(output ? 0 : 2);
 }
@@ -32,6 +33,7 @@ async function main() {
     tokens,
     lang: lang === 'chinese' ? 'chinese' : lang === 'bilingual' ? 'bilingual' : 'english',
     assetManifest: assets,
+    compositionMode: 'deterministic-fallback',
   });
   await pptx.writeFile({ fileName: path.resolve(output) });
   process.stdout.write(`${JSON.stringify({ ok: true, slides: report.rendered.length })}\n`);

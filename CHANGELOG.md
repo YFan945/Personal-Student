@@ -6,6 +6,22 @@ Codex 发行记录不在此维护。
 
 ## Unreleased
 
+- 默认门禁由多份中间证据链收敛为三步：一次 Slide Spec/Brief 校验、最终 PPTX 的 package
+  validation + 全页渲染/查看、一次 `simplified-v1` delivery check；普通任务不再生成
+  content/asset/visual/QA manifest 独立报告。
+- `workflow_guard complete` 在简化流程中只需当前 PPTX 与 delivery report；旧的 QA manifest
+  evidence-chain 继续作为高风险编辑、排错和显式审计模式兼容保留。
+- 将正式视觉选择收敛为三类、每类四种轻量参考，另设 `Other` 自定义入口；每种参考只定义
+  风格气质、六角色 palette、四类背景和一个可选 SVG，不再驱动布局、形状、图片、图表或节奏。
+- `Berry Cream` 与 `Sage Calm` 分别兼容迁移到 `Warm Terracotta` 与 `Forest Moss`；其他
+  未知旧名称保留气质文字并使用 Modern Minimal 安全参考，同时输出兼容警告。
+- 默认视觉生产模式保持 `adaptive-freeform`：AI 根据页面任务和素材自由决定比例、形状与
+  坐标，36 版式、12 个 SVG 和视觉组件只提供建议与确定性兜底。
+- Slide Spec 新增可选 `layout_lock`；未锁定的已知版式 ID 也仅为构图提示，显式锁定可恢复
+  精确版式。composer 不再为自由构图自动添加角饰或缺图插画，完整 safety/来源/渲染 QA 保持硬门禁。
+- Brief 与 Slide Spec 支持并校验 `visual_style_custom`；`Other` 四项结构不完整时不能进入规划。
+- 视觉 gallery 调整为 12×6，SVG atlas 调整为 12 页；布局候选排序明确与视觉风格无关。
+
 ### 重构：Anthropic 对齐的视觉引擎与生产证据链
 
 - 新增 suite-owned 受控 composer、八维可执行 Style DNA、非矩形形状、14 套原创 SVG

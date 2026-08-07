@@ -1,4 +1,4 @@
-"""Resolve machine-readable visual style tokens for PPTX production and QA."""
+"""Resolve lightweight visual references for PPTX production and QA."""
 
 from __future__ import annotations
 
@@ -8,29 +8,26 @@ import re
 from pathlib import Path
 from typing import Any
 
+from shared.pptx_static_core import contrast_ratio
+
 ROOT = Path(__file__).resolve().parents[1]
 TOKEN_FILE = ROOT / "references" / "design-tokens.json"
 
-
-# These profiles are executable defaults, not prose-only style suggestions.  Keep
-# them here so old design-tokens.json files remain readable while callers always
-# receive the complete v2 Style DNA contract.
-STYLE_VISUAL_PROFILES: dict[str, dict[str, Any]] = {
-    "academic-rigorous": {"shape_grammar": ["rect", "bracket"], "corner_svg_set": "academic-bracket", "component_variants": "evidence-rail", "image_frame": "captioned-document", "background_treatment": "baseline-grid", "text_alignment_policy": "structured-left", "visual_rhythm": "measured-proof", "fallback_illustration": "evidence-map"},
-    "berry-cream": {"shape_grammar": ["ellipse", "pill"], "corner_svg_set": "berry-petal", "component_variants": "voice-cluster", "image_frame": "soft-portrait", "background_treatment": "cream-bloom", "text_alignment_policy": "warm-balanced", "visual_rhythm": "intimate-pause", "fallback_illustration": "participant-cluster"},
-    "charcoal-editorial": {"shape_grammar": ["rect", "parallelogram"], "corner_svg_set": "editorial-crop", "component_variants": "offset-column", "image_frame": "monochrome-crop", "background_treatment": "paper-rule", "text_alignment_policy": "editorial-left", "visual_rhythm": "asymmetric-spread", "fallback_illustration": "editorial-index"},
-    "cherry-bold": {"shape_grammar": ["chevron", "parallelogram"], "corner_svg_set": "cherry-slash", "component_variants": "decision-flag", "image_frame": "duotone-cut", "background_treatment": "diagonal-field", "text_alignment_policy": "decisive-center", "visual_rhythm": "compressed-impact", "fallback_illustration": "decision-path"},
-    "coral-energy": {"shape_grammar": ["ellipse", "arch"], "corner_svg_set": "coral-arc", "component_variants": "momentum-disc", "image_frame": "bright-orbit", "background_treatment": "rising-path", "text_alignment_policy": "active-balanced", "visual_rhythm": "launch-and-proof", "fallback_illustration": "momentum-route"},
-    "creative-student": {"shape_grammar": ["parallelogram", "pill"], "corner_svg_set": "studio-tape", "component_variants": "sticky-collage", "image_frame": "taped-polaroid", "background_treatment": "paper-scrap", "text_alignment_policy": "studio-mixed", "visual_rhythm": "iterative-collage", "fallback_illustration": "prototype-wall"},
-    "data-driven": {"shape_grammar": ["rect", "bracket"], "corner_svg_set": "data-axis", "component_variants": "plot-frame", "image_frame": "neutral-evidence", "background_treatment": "coordinate-grid", "text_alignment_policy": "analytical-left", "visual_rhythm": "metric-interval", "fallback_illustration": "data-relationship"},
-    "forest-moss": {"shape_grammar": ["ellipse", "arch"], "corner_svg_set": "moss-contour", "component_variants": "terrain-layer", "image_frame": "organic-window", "background_treatment": "topographic-wash", "text_alignment_policy": "grounded-left", "visual_rhythm": "layered-landscape", "fallback_illustration": "place-system"},
-    "midnight-business": {"shape_grammar": ["parallelogram", "chevron"], "corner_svg_set": "midnight-beam", "component_variants": "luminous-stack", "image_frame": "navy-overlay", "background_treatment": "deep-beam", "text_alignment_policy": "executive-grid", "visual_rhythm": "anchor-and-brief", "fallback_illustration": "decision-stack"},
-    "modern-minimal": {"shape_grammar": ["none", "ellipse"], "corner_svg_set": "minimal-focus", "component_variants": "open-plane", "image_frame": "quiet-crop", "background_treatment": "open-canvas", "text_alignment_policy": "focal-balance", "visual_rhythm": "whitespace-pulse", "fallback_illustration": "single-focus"},
-    "ocean-tech": {"shape_grammar": ["hexagon", "ellipse"], "corner_svg_set": "ocean-circuit", "component_variants": "node-network", "image_frame": "technical-viewport", "background_treatment": "signal-field", "text_alignment_policy": "system-grid", "visual_rhythm": "overview-and-zoom", "fallback_illustration": "system-network"},
-    "sage-calm": {"shape_grammar": ["ellipse", "pill"], "corner_svg_set": "sage-orbit", "component_variants": "reflection-loop", "image_frame": "soft-window", "background_treatment": "quiet-orbit", "text_alignment_policy": "calm-balance", "visual_rhythm": "gentle-progression", "fallback_illustration": "reflection-cycle"},
-    "teal-trust": {"shape_grammar": ["pill", "hexagon"], "corner_svg_set": "teal-checkpoint", "component_variants": "service-lane", "image_frame": "context-window", "background_treatment": "handoff-route", "text_alignment_policy": "service-grid", "visual_rhythm": "need-to-handoff", "fallback_illustration": "service-journey"},
-    "warm-terracotta": {"shape_grammar": ["arch", "parallelogram"], "corner_svg_set": "terracotta-stamp", "component_variants": "archive-layer", "image_frame": "archival-arch", "background_treatment": "material-wash", "text_alignment_policy": "narrative-left", "visual_rhythm": "chronology-pause", "fallback_illustration": "archive-timeline"},
+STYLE_ALIASES = {
+    "berry-cream": "warm-terracotta",
+    "sage-calm": "forest-moss",
 }
+
+PALETTE_ROLES = (
+    "canvas",
+    "surface",
+    "primary_text",
+    "secondary_text",
+    "primary_accent",
+    "secondary_accent",
+)
+BACKGROUND_ROLES = ("cover", "content", "section", "closing")
+HEX_COLOR = re.compile(r"^[0-9A-Fa-f]{6}$")
 
 
 def style_key(value: str) -> str:
@@ -46,21 +43,120 @@ def _merge(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
     return base
 
 
-def resolve_design_tokens(visual_style: str | None) -> dict[str, Any]:
-    """Return resolved defaults plus a named style; reject unknown named styles."""
+def validate_custom_style(custom: dict[str, Any] | None) -> list[str]:
+    """Return actionable validation errors for the four-field Other contract."""
+    if not isinstance(custom, dict):
+        return ["visual_style_custom is required when visual_style is Other"]
+    errors: list[str] = []
+    expected = {"style_character", "palette", "backgrounds", "svg_reference"}
+    extra = sorted(set(custom) - expected)
+    if extra:
+        errors.append(f"visual_style_custom contains unsupported fields: {', '.join(extra)}")
+    if not isinstance(custom.get("style_character"), str) or not custom["style_character"].strip():
+        errors.append("visual_style_custom.style_character is required")
+    palette = custom.get("palette")
+    if not isinstance(palette, dict):
+        errors.append("visual_style_custom.palette is required")
+    else:
+        extra_palette = sorted(set(palette) - set(PALETTE_ROLES))
+        if extra_palette:
+            errors.append(
+                "visual_style_custom.palette contains unsupported roles: "
+                + ", ".join(extra_palette)
+            )
+        for role in PALETTE_ROLES:
+            value = str(palette.get(role, ""))
+            if not HEX_COLOR.fullmatch(value):
+                errors.append(f"visual_style_custom.palette.{role} must be a 6-digit hex color")
+        if not errors:
+            for text_role in ("primary_text", "secondary_text"):
+                for background_role in ("canvas", "surface"):
+                    ratio = contrast_ratio(palette[text_role], palette[background_role])
+                    if ratio < 4.5:
+                        errors.append(
+                            f"visual_style_custom.palette.{text_role} must reach 4.5:1 "
+                            f"against {background_role}; got {ratio:.2f}:1"
+                        )
+            for background_role in ("canvas", "surface"):
+                ratio = contrast_ratio(palette["primary_accent"], palette[background_role])
+                if ratio < 3.0:
+                    errors.append(
+                        "visual_style_custom.palette.primary_accent must reach 3:1 "
+                        f"against {background_role}; got {ratio:.2f}:1"
+                    )
+    backgrounds = custom.get("backgrounds")
+    if not isinstance(backgrounds, dict):
+        errors.append("visual_style_custom.backgrounds is required")
+    else:
+        extra_backgrounds = sorted(set(backgrounds) - set(BACKGROUND_ROLES))
+        if extra_backgrounds:
+            errors.append(
+                "visual_style_custom.backgrounds contains unsupported roles: "
+                + ", ".join(extra_backgrounds)
+            )
+        for role in BACKGROUND_ROLES:
+            if not isinstance(backgrounds.get(role), str) or not backgrounds[role].strip():
+                errors.append(f"visual_style_custom.backgrounds.{role} is required")
+    svg_reference = custom.get("svg_reference")
+    if not isinstance(svg_reference, dict):
+        errors.append("visual_style_custom.svg_reference is required")
+    else:
+        extra_svg = sorted(set(svg_reference) - {"name", "usage"})
+        if extra_svg:
+            errors.append(
+                "visual_style_custom.svg_reference contains unsupported fields: "
+                + ", ".join(extra_svg)
+            )
+        for role in ("name", "usage"):
+            if not isinstance(svg_reference.get(role), str) or not svg_reference[role].strip():
+                errors.append(f"visual_style_custom.svg_reference.{role} is required")
+    return errors
+
+
+def resolve_design_tokens(
+    visual_style: str | None,
+    visual_style_custom: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Resolve global safety tokens plus a lightweight visual reference."""
     catalog = json.loads(TOKEN_FILE.read_text(encoding="utf-8"))
     styles = catalog["styles"]
-    key = style_key(visual_style or "modern-minimal")
-    if key not in styles:
-        tokens = copy.deepcopy(catalog["defaults"])
-        tokens["style_key"] = key or "custom"
-        tokens["style_name"] = visual_style or "Custom"
-        tokens["custom_style"] = True
-        return tokens
+    requested_name = visual_style or "Modern Minimal"
+    requested_key = style_key(requested_name)
+    warnings: list[str] = []
+
+    if requested_key in STYLE_ALIASES:
+        target = STYLE_ALIASES[requested_key]
+        warnings.append(
+            f"Legacy visual style {requested_name!r} maps to {styles[target]['name']!r}."
+        )
+        requested_key = target
+
     tokens = copy.deepcopy(catalog["defaults"])
-    _merge(tokens, styles[key])
-    tokens.setdefault("style_dna", {})
-    _merge(tokens["style_dna"], STYLE_VISUAL_PROFILES[key])
-    tokens["style_key"] = key
-    tokens["style_name"] = styles[key]["name"]
+    if requested_key == "other":
+        errors = validate_custom_style(visual_style_custom)
+        if errors:
+            raise ValueError("; ".join(errors))
+        assert visual_style_custom is not None
+        _merge(tokens, visual_style_custom)
+        tokens["style_key"] = "other"
+        tokens["style_name"] = "Other"
+        tokens["custom_style"] = True
+    elif requested_key in styles:
+        _merge(tokens, styles[requested_key])
+        tokens["style_key"] = requested_key
+        tokens["style_name"] = styles[requested_key]["name"]
+    else:
+        fallback = styles["modern-minimal"]
+        _merge(tokens, fallback)
+        tokens["style_character"] = requested_name
+        tokens["style_key"] = requested_key or "custom"
+        tokens["style_name"] = requested_name or "Custom"
+        tokens["custom_style"] = True
+        warnings.append(
+            "Legacy custom style has no visual_style_custom record; Modern Minimal safety "
+            "colors, backgrounds, and SVG reference were used."
+        )
+
+    if warnings:
+        tokens["compatibility_warnings"] = warnings
     return tokens

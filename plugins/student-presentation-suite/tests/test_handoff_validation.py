@@ -69,3 +69,20 @@ class HandoffValidationTests(unittest.TestCase):
                 ".meta.deliverables",
             }.issubset(paths)
         )
+
+    def test_custom_visual_reference_must_match(self) -> None:
+        custom = {
+            "style_character": "Quiet field notes",
+            "palette": {"canvas": "FFFFFF"},
+            "backgrounds": {"cover": "Blue"},
+            "svg_reference": {"name": "none", "usage": "none"},
+        }
+        brief = {"visual_style": "Other", "visual_style_custom": custom}
+        spec = {
+            "meta": {
+                "visual_style": "Other",
+                "visual_style_custom": {**custom, "style_character": "Loud poster"},
+            }
+        }
+        paths = {item["path"] for item in handoff_errors(brief, spec)}
+        self.assertIn(".meta.visual_style_custom", paths)

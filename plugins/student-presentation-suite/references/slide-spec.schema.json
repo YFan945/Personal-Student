@@ -4,6 +4,9 @@
   "title": "Student Presentation Slide Spec",
   "type": "object",
   "additionalProperties": false,
+  "$defs": {
+    "visualStyleCustom": {"type":"object","additionalProperties":false,"required":["style_character","palette","backgrounds","svg_reference"],"properties":{"style_character":{"type":"string","minLength":1},"palette":{"type":"object","additionalProperties":false,"required":["canvas","surface","primary_text","secondary_text","primary_accent","secondary_accent"],"properties":{"canvas":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"surface":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"primary_text":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"secondary_text":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"primary_accent":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"secondary_accent":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"}}},"backgrounds":{"type":"object","additionalProperties":false,"required":["cover","content","section","closing"],"properties":{"cover":{"type":"string","minLength":1},"content":{"type":"string","minLength":1},"section":{"type":"string","minLength":1},"closing":{"type":"string","minLength":1}}},"svg_reference":{"type":"object","additionalProperties":false,"required":["name","usage"],"properties":{"name":{"type":"string","minLength":1},"usage":{"type":"string","minLength":1}}}}}
+  },
   "required": ["slides"],
   "properties": {
     "schema_version": { "enum": ["1.0", "2.0"] },
@@ -74,6 +77,7 @@
           ]
         },
         "visual_style": { "type": "string", "minLength": 1 },
+        "visual_style_custom": { "$ref": "#/$defs/visualStyleCustom" },
         "deliverables": {
           "type": "array",
           "items": {
@@ -86,7 +90,16 @@
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "visual_style": { "const": "Other" } },
+            "required": ["visual_style"]
+          },
+          "then": { "required": ["visual_style_custom"] }
+        }
+      ]
     },
     "source_deck": {
       "type": "string",
@@ -182,6 +195,11 @@
           "id": { "type": "integer", "minimum": 1 },
           "title": { "type": "string", "minLength": 1 },
           "layout": { "type": "string", "minLength": 1 },
+          "layout_lock": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, resolve the named layout exactly. When false or omitted, layout is an adaptable composition hint."
+          },
           "role": {
             "enum": [
               "opening",

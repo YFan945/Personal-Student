@@ -59,6 +59,10 @@ class ScenarioRenderMatrixTests(unittest.TestCase):
         )
         source = SCRIPT.read_text(encoding="utf-8")
         for scenario in (
+            "adaptive-freeform",
+            "layout-hint-unlocked",
+            "layout-locked",
+            "freeform-deterministic-fallback",
             "outline-handoff",
             "review-static-only",
             "review-rendered",

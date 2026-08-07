@@ -2,7 +2,8 @@
 
 本文件只维护生成 deck.js 时的 PptxGenJS gotchas。页面视觉、共享版式和 QA 分别以
 `visual-style-menu.md`、`layout-library.json` 和 `pptx-qa.md` 为准。创建/重建默认加载
-`pptx-layouts.js`、`pptx-helpers.js` 和 `pptx-visuals.js`；逐页渲染检查是 complete 交付
+`pptx-helpers.js` 执行安全检查；layout、visual、shape、SVG 和 composer 库均为可选建议或
+fallback，不是逐页模板。逐页渲染检查是 complete 交付
 的必要证据。wrapper 只在生成后做 `normalize-generated`（修复类），不做静态门禁。
 
 ## 布局与坐标
@@ -92,7 +93,8 @@
 
 ## Runtime helper 使用守则
 
-- 默认用 `L.selectLayouts`/`L.resolveLayout`、`H.safeArea`/`H.gridLayout`/`H.color`/
+- 默认用 `H.safeArea`/`H.gridLayout`/`H.color`/
   `H.addBackground` 和 `V.renderVisual` 降低手算坐标与组件契约错误。
 - `H.assertTextFits` 只 `console.warn` 不阻断生成；溢出靠 QA 逐页视觉检查兜底。
-- 组件库无法表达的页面可自定义构图，但仍须满足本文件 gotchas、版式容量和视觉 QA。
+- 页面默认可自定义构图；可先用 `L.suggestLayouts` 获取候选。只有 `layout_lock: true`、模板
+  复现或确定性 fallback 才直接 `L.resolveLayout`。所有页面仍须满足本文件 gotchas、容量和视觉 QA。

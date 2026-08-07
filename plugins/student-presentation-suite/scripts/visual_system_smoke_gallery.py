@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate 14x8 style, 36-layout, and SVG-atlas visual smoke galleries."""
+"""Generate 12x6 style, 36-layout, and 12-page SVG visual smoke galleries."""
 
 from __future__ import annotations
 
@@ -38,7 +38,6 @@ def style_deck_source(tokens: dict[str, object]) -> str:
     style_label = json.dumps(str(tokens["style_name"]), ensure_ascii=False)
     return f"""
 const pptxgen = require('pptxgenjs');
-const L = require('pptx-layouts');
 const H = require('pptx-helpers');
 const V = require('pptx-visuals');
 const S = require('pptx-shapes');
@@ -57,67 +56,45 @@ function baseSlide(mode = 'light', reserveTitle = true) {{
 }}
 
 {{
-  const mode = TOKENS.dark_palette ? 'dark' : 'light';
-  const {{ slide, tokens, area }} = baseSlide(mode, false);
+  const {{ slide, tokens, area }} = baseSlide('light', false);
   H.addTextBox(slide, {style_label}, {{x:area.x,y:area.y+area.h*0.24,w:area.w*0.58,h:area.h*0.24}}, tokens, 'chinese', {{fontSize:34,bold:true,margin:0}});
-  H.addTextBox(slide, TOKENS.style_dna.signature_motif, {{x:area.x,y:area.y+area.h*0.56,w:area.w*0.58,h:area.h*0.24}}, tokens, 'chinese', {{fontSize:15,color:H.color(tokens,'secondary_text'),margin:0}});
-  H.addStyleMotif(slide, area, tokens, 'expressive');
+  H.addFittedText(slide, TOKENS.style_character, {{x:area.x,y:area.y+area.h*0.54,w:area.w*0.74,h:area.h*0.30}}, tokens, 'english', 'caption', {{fontSize:13,color:H.color(tokens,'secondary_text'),margin:0,label:'Style character'}});
+  slide.addShape(pptx.ShapeType.ellipse, {{x:area.x+area.w*0.78,y:area.y+area.h*0.20,w:area.h*0.36,h:area.h*0.36,fill:{{color:H.color(tokens,'primary_accent'),transparency:8}},line:{{transparency:100}}}});
 }}
 
 {{
   const {{ slide, tokens, area }} = baseSlide('light', false);
-  SVG.addCornerDecoration(slide, TOKENS.style_dna.corner_svg_set, {{x:area.x,y:area.y+area.h*0.10,w:area.w*0.24,h:area.h*0.62}}, tokens);
+  slide.addShape(pptx.ShapeType.arc, {{x:area.x,y:area.y+area.h*0.10,w:area.w*0.24,h:area.h*0.62,adjustPoint:0.35,rotate:12,fill:{{color:H.color(tokens,'secondary_accent'),transparency:36}},line:{{color:H.color(tokens,'primary_accent'),width:1.4}}}});
   H.addFittedText(slide, '02 证据如何成为结论', {{x:area.x+area.w*0.28,y:area.y+area.h*0.20,w:area.w*0.68,h:area.h*0.34}}, tokens, 'chinese', 'title', {{bold:true,label:'章节标题'}});
-  H.addFittedText(slide, TOKENS.style_dna.visual_rhythm, {{x:area.x+area.w*0.30,y:area.y+area.h*0.64,w:area.w*0.50,h:area.h*0.14}}, tokens, 'chinese', 'caption', {{label:'章节节奏'}});
+  H.addFittedText(slide, '从方法进入证据', {{x:area.x+area.w*0.30,y:area.y+area.h*0.64,w:area.w*0.50,h:area.h*0.14}}, tokens, 'chinese', 'caption', {{label:'章节引导'}});
 }}
 
 {{
   const {{ slide, tokens, area }} = baseSlide('light', false);
   const stressTitle = '长标题与素材缺失并存时，版式仍须保持清晰';
-  const chosen = L.selectLayouts({{slideKind:'content', visualFamily:'visual-dominant', hasAsset:false, title:stressTitle, itemCount:3, seed:TOKENS.style_key}}, TOKENS, [], 1)[0];
-  if (!chosen) throw new Error('missing-asset fallback did not produce a feasible layout');
-  const zones = L.resolveLayout(chosen.id, area).zones;
-  const titleBox = {{...zones.title, h:zones.title.h + area.h*0.060}};
-  H.addFittedText(slide, stressTitle, titleBox, tokens, 'chinese', 'title', {{bold:true,label:'长标题 fallback'}});
-  const bodyShape = TOKENS.style_dna.shape_grammar[0] === 'arch' ? TOKENS.style_dna.shape_grammar[1] : TOKENS.style_dna.shape_grammar[0];
-  S.addStyledContainer(slide, bodyShape, zones.body, tokens, {{fillTransparency:78}});
-  const bodyInset = S.safeInsetForShape(bodyShape, zones.body);
-  H.addFittedText(slide, '先适配任务与容量，再应用风格。', {{x:zones.body.x+bodyInset.x,y:zones.body.y+bodyInset.y,w:zones.body.w-bodyInset.x*2,h:zones.body.h-bodyInset.y*2}}, tokens, 'chinese', 'body', {{bold:true,max:22,label:'fallback 结论'}});
-  SVG.addCornerDecoration(slide, TOKENS.style_dna.corner_svg_set, zones.visual, tokens);
-  const noteBox = {{x:area.x+area.w*0.70,y:area.y+area.h*0.84,w:area.w*0.27,h:area.h*0.10}};
-  S.addStyledContainer(slide, 'pill', noteBox, tokens, {{fill:H.color(tokens,'surface'),fillTransparency:0,line:H.color(tokens,'secondary_accent')}});
-  H.addFittedText(slide, TOKENS.style_dna.fallback_illustration, noteBox, tokens, 'chinese', 'caption', {{align:'center',color:H.color(tokens,'secondary_text'),label:'fallback 说明'}});
+  const titleBox = {{x:area.x,y:area.y+area.h*0.04,w:area.w*0.78,h:area.h*0.25}};
+  const bodyBox = {{x:area.x,y:area.y+area.h*0.42,w:area.w*0.48,h:area.h*0.34}};
+  const visualBox = {{x:area.x+area.w*0.57,y:area.y+area.h*0.30,w:area.w*0.38,h:area.h*0.54}};
+  H.addFittedText(slide, stressTitle, titleBox, tokens, 'chinese', 'title', {{bold:true,label:'长标题'}});
+  H.addFittedText(slide, '没有可靠素材时，用图表、关系图或留白，不制造纪实感。', bodyBox, tokens, 'chinese', 'body', {{label:'内容策略'}});
+  V.renderVisual(slide, 'architecture', {{nodes:['问题','证据','结论']}}, visualBox, tokens, 'chinese');
 }}
 
 {{
   const {{ slide, tokens, area }} = baseSlide('light', true);
-  H.addTitle(slide, '缺少照片时使用有解释作用的原创 SVG', area, tokens, 'chinese');
-  SVG.addCornerDecoration(slide, TOKENS.style_dna.corner_svg_set, {{x:area.x+area.w*0.06,y:area.y+area.h*0.08,w:area.w*0.38,h:area.h*0.76}}, tokens);
-  H.addFittedText(slide, '缺图时改用结构化插图', {{x:area.x+area.w*0.50,y:area.y+area.h*0.20,w:area.w*0.43,h:area.h*0.30}}, tokens, 'chinese', 'body', {{bold:true,label:'SVG 解释'}});
-  H.addFittedText(slide, `原创图形：${{TOKENS.style_dna.fallback_illustration}}；不伪装成真实照片。`, {{x:area.x+area.w*0.50,y:area.y+area.h*0.56,w:area.w*0.43,h:area.h*0.20}}, tokens, 'chinese', 'caption', {{label:'SVG 来源说明'}});
-}}
-
-{{
-  const {{ slide, tokens, area }} = baseSlide('light', true);
-  H.addTitle(slide, '参与者证据需要来源与解释', area, tokens, 'chinese');
-  V.renderVisual(slide, 'quote', {{quote:'设计不是装饰，而是让证据更容易被理解。', source:'课堂访谈样例（演示数据）'}}, area, tokens, 'chinese');
-}}
-
-{{
-  const {{ slide, tokens, area }} = baseSlide('light', true);
-  H.addTitle(slide, '数据页只突出一个可追溯结论', area, tokens, 'chinese');
+  H.addTitle(slide, '数据与证据页突出可追溯结论', area, tokens, 'chinese');
   V.renderVisual(slide, 'dashboard', {{title:'方案质量评分', takeaway:'QA 后清晰度提高 21 分。', series:[{{name:'评分', labels:['初稿','精修','QA'], values:[68,84,89]}}]}}, area, tokens, 'chinese');
 }}
 
 {{
   const {{ slide, tokens, area }} = baseSlide('light', true);
-  H.addTitle(slide, '流程页保持步骤容量与方向清晰', area, tokens, 'chinese');
-  V.renderVisual(slide, 'process-path', {{steps:['确认任务','选择版式','生成页面','渲染复核']}}, area, tokens, 'chinese');
+  H.addTitle(slide, 'SVG 是可选母题，不是视觉配额', area, tokens, 'chinese');
+  SVG.addCornerDecoration(slide, TOKENS.svg_reference.name, {{x:area.x+area.w*0.05,y:area.y+area.h*0.10,w:area.w*0.40,h:area.h*0.72}}, tokens);
+  H.addFittedText(slide, TOKENS.svg_reference.usage, {{x:area.x+area.w*0.50,y:area.y+area.h*0.16,w:area.w*0.46,h:area.h*0.56}}, tokens, 'english', 'caption', {{fontSize:13,label:'SVG 使用建议'}});
 }}
 
 {{
-  const mode = TOKENS.dark_palette ? 'dark' : 'light';
-  const {{ slide, tokens, area }} = baseSlide(mode, true);
+  const {{ slide, tokens, area }} = baseSlide('light', true);
   H.addTitle(slide, '以同一视觉系统完成收束', area, tokens, 'chinese');
   V.renderVisual(slide, 'summary', {{takeaways:['风格有差异','版式可适配','QA 决定完成状态']}}, area, tokens, 'chinese');
 }}
@@ -292,14 +269,26 @@ def build_gallery(work: Path, render: bool, gallery: str) -> dict[str, object]:
     if gallery in {"styles", "all"}:
         for style_key in sorted(catalog["styles"]):
             tokens = resolve_design_tokens(style_key)
-            results.append(generate_one(work, f"style-{style_key}", style_deck_source(tokens), render, 8))
+            results.append(generate_one(work, f"style-{style_key}", style_deck_source(tokens), render, 6))
     if gallery in {"layouts", "all"}:
         tokens = resolve_design_tokens("Modern Minimal")
         results.append(generate_one(work, "layouts-36", layout_deck_source(tokens, registry), render, 36))
     if gallery in {"svg", "all"}:
         tokens = resolve_design_tokens("Modern Minimal")
-        results.append(generate_one(work, "svg-atlas-14", svg_atlas_source(tokens), render, 14))
-    return {"ok": True, "rendered": render, "gallery": gallery, "artifacts": results}
+        results.append(generate_one(work, "svg-atlas-12", svg_atlas_source(tokens), render, 12))
+    return {
+        "ok": True,
+        "rendered": render,
+        "gallery": gallery,
+        "gallery_contract": {
+            "styles": "adaptive-freeform visual QA; no catalog ID is shown to the audience",
+            "layouts": "internal inspiration and deterministic fallback QA only",
+            "svg": "optional toolbox atlas; not a visual quota",
+            "style_pages_per_deck": 6,
+            "minimum_distinct_style_silhouettes": 5,
+        },
+        "artifacts": results,
+    }
 
 
 def main() -> None:

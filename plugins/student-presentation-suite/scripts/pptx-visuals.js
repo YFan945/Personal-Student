@@ -53,9 +53,7 @@ function containImage(path, box) {
 
 function addPanel(slide, box, tokens, options) {
   const p = palette(tokens);
-  const grammar = tokens.style_dna?.shape_grammar || ['roundRect'];
-  const shape =
-    options?.shape || grammar[Number(options?.variant || 0) % grammar.length] || 'roundRect';
+  const shape = options?.shape || 'roundRect';
   return S.addStyledContainer(slide, shape, box, tokens, {
     fill: options?.fill || p.surface,
     line: options?.line || p.accent,
@@ -148,7 +146,7 @@ function addProcessFlow(slide, data, area, tokens, lang) {
   const y = area.y + (area.h - cardH) / 2;
   steps.forEach((step, index) => {
     const x = area.x + index * (cardW + gap);
-    const shape = (tokens.style_dna?.shape_grammar || ['roundRect'])[index % 2];
+    const shape = 'roundRect';
     const card = { x, y, w: cardW, h: cardH };
     const inset = S.safeInsetForShape(shape, card);
     addPanel(slide, card, tokens, { shape, variant: index });
@@ -222,7 +220,7 @@ function addComparison(slide, data, area, tokens, lang) {
   const cells = H.gridLayout(area, entries.length, 1, { columnGap: gap });
   const p = palette(tokens);
   entries.forEach((entry, index) => {
-    const shape = (tokens.style_dna?.shape_grammar || ['roundRect'])[index % 2];
+    const shape = 'roundRect';
     addPanel(slide, cells[index], tokens, {
       shape,
       line: index === Number(data.highlight || 0) ? p.accent2 : p.accent,
@@ -276,7 +274,7 @@ function addMetricDashboard(slide, data, area, tokens, lang) {
   });
   const p = palette(tokens);
   metrics.forEach((metric, index) => {
-    const shape = (tokens.style_dna?.shape_grammar || ['roundRect'])[index % 2];
+    const shape = 'roundRect';
     addPanel(slide, cells[index], tokens, { shape, variant: index });
     const value = metric && typeof metric === 'object' ? metric.value : metric;
     const label = metric && typeof metric === 'object' ? metric.label : '';
@@ -396,7 +394,7 @@ function addArchitecture(slide, data, area, tokens, lang) {
         line: { color: palette(tokens).muted, width: 1.5, endArrowType: 'triangle' },
       });
     }
-    const shape = (tokens.style_dna?.shape_grammar || ['roundRect'])[index % 2];
+    const shape = 'roundRect';
     addPanel(slide, cell, tokens, { shape, variant: index });
     addLabel(slide, textOf(node), cell, tokens, lang, {
       bold: true,
@@ -471,19 +469,17 @@ function addAnnotatedVisual(slide, data, area, tokens, lang) {
   const p = palette(tokens);
   const imageBox = { x: area.x, y: area.y, w: area.w * 0.56, h: area.h };
   if (data.asset) {
-    const imageShape = (tokens.style_dna?.shape_grammar || ['rect'])[0];
-    addPanel(slide, imageBox, tokens, { shape: imageShape, fill: p.surface, line: p.muted });
+    addPanel(slide, imageBox, tokens, { shape: 'rect', fill: p.surface, line: p.muted });
     slide.addImage({
       path: data.asset,
       ...containImage(data.asset, imageBox),
       altText: data.alt_text || data.altText || data.purpose || 'Presentation visual',
     });
-  } else {
-    const fallbackName = tokens.style_dna?.corner_svg_set || 'minimal-focus';
+  } else if (data.svg_reference) {
     addPanel(slide, imageBox, tokens, { shape: 'none', fill: p.canvas, line: p.muted });
     SVG.addCornerDecoration(
       slide,
-      fallbackName,
+      data.svg_reference,
       {
         x: imageBox.x + imageBox.w * 0.16,
         y: imageBox.y + imageBox.h * 0.12,
@@ -491,6 +487,16 @@ function addAnnotatedVisual(slide, data, area, tokens, lang) {
         h: imageBox.h * 0.68,
       },
       tokens,
+    );
+  } else {
+    addPanel(slide, imageBox, tokens, { shape: 'ellipse', fill: p.surface, line: p.accent });
+    addLabel(
+      slide,
+      data.title || data.purpose || textOf(items(data.annotations || data.items)[0], 'Overview'),
+      imageBox,
+      tokens,
+      lang,
+      { bold: true, label: '解释焦点' },
     );
   }
   const annotations = items(data.annotations || data.items).slice(0, 3);

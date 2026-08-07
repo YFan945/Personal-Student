@@ -30,7 +30,7 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" <subcommand> ...
   [--package-report <package-report>]`：重新执行原始 Slide Spec 的 schema/语义校验，
   再把生成契约、逐页检查证据和 package validation 报告绑定到最终 PPTX；不接受自报
   scenario contract。`--package-report` 可选用 `validate --output` 产物，校验
-  `ok`/hash/profile/schema_validation。
+  `ok`/hash/profile/schema_validation。该命令属于高级证据模式，普通任务不调用。
 
 Package 输入的结构命令强制要求不同的 `--output`；facade 拒绝覆盖 source。
 旧的 `skills/.../scripts/pptx_skill/` 已被移除，不得恢复或引用。不要修改
